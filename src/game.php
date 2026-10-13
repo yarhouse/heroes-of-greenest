@@ -1007,29 +1007,62 @@ function cmd_drink(array $me, string $target): array
     return ["You drink the {$o['name']} and regain " . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}."];
 }
 
+/** The hero sheet as data: the score panel in play.js draws it, `score` prints it. Takes a with_stats() row. */
+function hero_sheet(array $me): array
+{
+    $xp = q('SELECT level, xp FROM levels WHERE level IN (?, ?)', [$me['level'], $me['level'] + 1])
+        ->fetchAll(PDO::FETCH_KEY_PAIR);
+    $c = CLASSES[$me['class']];
+    $uses = max(0, $me['uses'] - $me['uses_spent']) . "/{$me['uses']}";
+    return [
+        'name' => $me['name'],
+        'level' => $me['level'],
+        'class' => $c['name'],
+        'hp' => $me['hp'],
+        'max_hp' => $me['max_hp'],
+        'ac' => $me['ac'],
+        'prof' => $me['prof_bonus'],
+        'abilities' => array_map(
+            fn ($a) => [ucfirst(substr($a, 0, 3)), $me[$a], mod($me[$a])],
+            ABILITIES
+        ),
+        'weapon' => $me['weapon'],
+        'to_hit' => $me['to_hit'],
+        'damage' => sprintf('%s%+d', $me['damage'], $me['attack_mod']),
+        'attacks' => $me['attacks'],
+        'resources' => [
+            ['Hit Dice', ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d{$c['die']}"],
+            match ($me['class']) {
+                'fighter' => ['Second Wind', $uses],
+                'barbarian' => ['Rage', $uses],
+                'rogue' => ['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6'],
+                'cleric' => ['Spell slots', slots_left($me)],
+            },
+        ],
+        'status' => array_values(array_filter([
+            $me['raging'] ? 'raging' : null,
+            $me['resting'] !== null ? "taking a {$me['resting']} rest" : null,
+        ])),
+        'xp' => $me['xp'],
+        'xp_from' => $xp[$me['level']],
+        'xp_next' => $xp[$me['level'] + 1] ?? null,
+        'gold' => $me['gold'],
+    ];
+}
+
 function cmd_score(array $me): array
 {
-    $abilities = [];
-    foreach (ABILITIES as $ability) {
-        $abilities[] = sprintf('%s %d (%+d)', ucfirst(substr($ability, 0, 3)), $me[$ability], mod($me[$ability]));
-    }
-    $next = q('SELECT xp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
-    $c = CLASSES[$me['class']];
-    $uses = fn ($what) => "   $what " . max(0, $me['uses'] - $me['uses_spent']) . "/{$me['uses']}";
+    $s = hero_sheet($me);
     return [
-        "{$me['name']}, level {$me['level']} {$c['name']}",
-        implode('  ', $abilities),
-        "HP {$me['hp']}/{$me['max_hp']}   AC {$me['ac']}   Proficiency Bonus +{$me['prof_bonus']}",
-        sprintf('%s %+d to hit, %s%+d damage', $me['weapon'], $me['to_hit'], $me['damage'], $me['attack_mod'])
-            . ($me['attacks'] > 1 ? ", {$me['attacks']} attacks a round" : ''),
-        'Hit Dice ' . ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d{$c['die']}" . match ($me['class']) {
-            'fighter' => $uses('Second Wind'),
-            'barbarian' => $uses('Rage') . ($me['raging'] ? ' (raging)' : ''),
-            'rogue' => '   Sneak Attack ' . intdiv($me['level'] + 1, 2) . 'd6',
-            'cleric' => '   Spell slots ' . slots_left($me),
-        } . ($me['resting'] !== null ? "   Taking a {$me['resting']} rest" : ''),
-        "XP {$me['xp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
-            . "   Gold {$me['gold']}",
+        "{$s['name']}, level {$s['level']} {$s['class']}",
+        implode('  ', array_map(fn ($a) => sprintf('%s %d (%+d)', ...$a), $s['abilities'])),
+        "HP {$s['hp']}/{$s['max_hp']}   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
+        sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
+            . ($s['attacks'] > 1 ? ", {$s['attacks']} attacks a round" : ''),
+        implode('   ', [...array_map(fn ($r) => implode(' ', $r), $s['resources']), ...$s['status']]),
+        "XP {$s['xp']}"
+            . ($s['xp_next'] === null ? ' (max level)' : " ({$s['xp_next']} for level " . ($s['level'] + 1) . ')')
+            . "   Gold {$s['gold']}",
     ];
 }
 

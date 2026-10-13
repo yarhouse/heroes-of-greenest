@@ -9,7 +9,7 @@ Unordered ideas. Move an item to a commit when it ships.
 - [x] **Always-visible `score`.** Show the `score` output (abilities, HP, AC, XP) in a panel that stays on screen instead of needing the command. Maybe desktop-only, since a phone screen has no room beside the terminal.
 - [x] **ASCII map.** Rooms two steps around the hero, under the score panel (and the `map` command on phones).
 - [ ] **Map fog of war.** Show a room's shape only once a hero has been next to it, and its contents only once inside. Needs a per-hero visited-rooms table.
-- [ ] **Bootstrap as the theme framework.** Bootstrap 5 (5.3 is current; 6 isn't out yet). No build step, so self-host the CSS in `public/` (CSP blocks CDNs). The terminal output stays plain text via `textContent`.
+- [x] **Bootstrap as the theme framework.** Bootstrap 5.3.8, self-hosted in `public/vendor/bootstrap/` (CSP blocks CDNs) and themed to the terminal palette. The terminal output stays plain text via `textContent`. First use: the hero sheet card, a drawer on phones.
 - [ ] **Project scripts.** Nothing is on DreamHost yet.
   - [ ] **DreamHost SSH deployment.** Copy `public/`, `src/`, `bin/` and `db/` up over SSH; never overwrite `config.php` or `var/`.
   - [ ] **DreamHost SQL seed script.** Load `schema.sql` (first install only, it's destructive), then `seed.sql` and `db/areas/*.sql`, against DreamHost's MySQL.

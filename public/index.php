@@ -24,11 +24,12 @@ $me = session_user();
 $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Heroes of Greenest</title>
+<link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -37,14 +38,54 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
     <div id="log" role="log" aria-live="polite"></div>
     <ul id="hints" role="listbox" aria-label="Matching commands" hidden></ul>
     <form id="prompt" autocomplete="off">
-        <label for="cmd" class="sr-only">Command</label>
+        <label for="cmd" class="visually-hidden">Command</label>
         <span aria-hidden="true">&gt;</span>
         <input id="cmd" autofocus autocapitalize="off" spellcheck="false" maxlength="300"
             role="combobox" aria-autocomplete="list" aria-controls="hints" aria-expanded="false"
             data-commands="<?= $e(json_encode(COMMANDS)) ?>">
+        <button id="hero-toggle" type="button" class="btn btn-sm d-lg-none" data-bs-toggle="offcanvas"
+            data-bs-target="#hero" aria-controls="hero" hidden>Hero</button>
     </form>
-    <aside id="score" aria-label="Your hero"></aside>
+    <!-- The hero sheet: docked beside the log on wide screens, a slide-in drawer on phones. play.js fills it. -->
+    <aside id="hero" class="offcanvas-lg offcanvas-end" tabindex="-1" aria-labelledby="hero-name">
+        <div class="offcanvas-header pb-0">
+            <button type="button" class="btn-close ms-auto" data-bs-dismiss="offcanvas" data-bs-target="#hero"
+                aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body">
+            <section id="sheet" class="card w-100" hidden>
+                <header class="card-header d-flex align-items-baseline justify-content-between gap-2">
+                    <h2 id="hero-name" class="h5 m-0"></h2>
+                    <span id="hero-class" class="small text-body-secondary text-end"></span>
+                </header>
+                <div class="card-body vstack gap-3">
+                    <div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="text-body-secondary">HP</span><span id="hp-text"></span>
+                        </div>
+                        <div id="hp-bar" class="progress" role="progressbar" aria-label="Hit points">
+                            <div class="progress-bar"></div>
+                        </div>
+                    </div>
+                    <div id="tiles" class="row row-cols-3 g-1"></div>
+                    <div id="abilities" class="row row-cols-6 g-1" aria-label="Ability modifiers and scores"></div>
+                    <dl id="rows" class="vstack gap-1 small m-0"></dl>
+                    <div id="status"></div>
+                    <div>
+                        <div class="d-flex justify-content-between small">
+                            <span class="text-body-secondary">XP</span><span id="xp-text"></span>
+                        </div>
+                        <div id="xp-bar" class="progress" role="progressbar" aria-label="Experience to next level">
+                            <div class="progress-bar"></div>
+                        </div>
+                    </div>
+                </div>
+                <pre id="map" class="card-footer m-0" aria-label="Map"></pre>
+            </section>
+        </div>
+    </aside>
 </main>
+<script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="play.js"></script>
 <?php else : ?>
 <main class="login">

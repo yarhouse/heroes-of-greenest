@@ -37,7 +37,8 @@ function is_https(): bool
 /** Security headers, session start, and refusal of cross-site POSTs. Call first in every web entry point. */
 function web_init(): void
 {
-    header("Content-Security-Policy: default-src 'self'; frame-ancestors 'none'");
+    // img data: is for Bootstrap's built-in icons (close button, checkboxes, selects).
+    header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; frame-ancestors 'none'");
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: same-origin');
 

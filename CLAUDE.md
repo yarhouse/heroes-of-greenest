@@ -5,7 +5,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 ## Layout
 
-- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI, `style.css`, `fonts/` (JetBrains Mono, self-hosted).
+- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI and hero sheet, `style.css`, `fonts/` (JetBrains Mono), `vendor/bootstrap/` (Bootstrap 5.3, CSS + JS bundle; never edit). All self-hosted: the CSP is `'self'` (plus `data:` images for Bootstrap's icons).
 - `src/boot.php` — config, `db()`/`q()`, `web_init()` (headers, session, Origin check), login/logout/`session_user()`/`save_hero()`.
 - `src/game.php` — `run_command()` parser and `cmd_*` handlers. Handlers take the `users` row and return lines of plain text. `CLASSES` and `SPELLS` hold the class rules; while `users.setup` is set, every command goes to `cmd_setup()` (character creation).
 - `src/delve.php` — the Delve: a dungeon below the Mill Cellar, generated from a weekly seed (rooms 50001-50999) and rebuilt when a hero next reaches its stair (room 50000).
@@ -28,7 +28,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 ## Security
 
 - All SQL through `q()` with bound parameters. Never interpolate input into SQL.
-- Output is plain text rendered with `textContent` in `play.js`; never send HTML from `api.php`. `index.php` escapes with `$e()`.
+- Output is plain text rendered with `textContent` in `play.js`; never send HTML from `api.php`. The hero sheet is data (`hero_sheet()`), laid out by `play.js` with Bootstrap classes. `index.php` escapes with `$e()`.
 - Passwords: `password_hash`, 8-72 bytes. 5 failed logins lock an account for 15 minutes.
 - Sessions: private save path, HttpOnly + SameSite=Strict (+ Secure on HTTPS), 30 days, regenerated on login, invalidated when the password changes.
 - CSRF: SameSite=Strict, Origin check on every POST, and `api.php` accepts only `application/json`.

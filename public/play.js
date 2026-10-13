@@ -5,7 +5,8 @@ const log = /** @type {HTMLElement} */ (document.getElementById('log'));
 const form = /** @type {HTMLFormElement} */ (document.getElementById('prompt'));
 const input = /** @type {HTMLInputElement} */ (document.getElementById('cmd'));
 const hints = /** @type {HTMLUListElement} */ (document.getElementById('hints'));
-const score = /** @type {HTMLElement} */ (document.getElementById('score'));
+const sheet = /** @type {HTMLElement} */ (document.getElementById('sheet'));
+const heroToggle = /** @type {HTMLButtonElement} */ (document.getElementById('hero-toggle'));
 /** @type {Record<string, string>} usage => what it does, from COMMANDS in game.php */
 const commands = JSON.parse(input.dataset.commands ?? '{}');
 
@@ -31,14 +32,83 @@ async function send(cmd) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cmd }),
         });
-        /** @type {{ lines?: string[], score?: string[], logout?: boolean }} */
+        /** @type {{ lines?: string[], hero?: Hero, map?: string[], logout?: boolean }} */
         const data = await res.json();
         for (const line of data.lines ?? []) print(line);
-        if (data.score) score.textContent = data.score.join('\n');
+        sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
+        if (data.hero) drawHero(data.hero, data.map ?? []);
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
         print('The connection falters. Try again.', 'error');
     }
+}
+
+/**
+ * hero_sheet() in game.php.
+ * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, ac: number, prof: number,
+ *   abilities: [string, number, number][], weapon: string, to_hit: number, damage: string, attacks: number,
+ *   resources: [string, string][], status: string[], xp: number, xp_from: number, xp_next: number | null,
+ *   gold: number }} Hero
+ */
+
+/** @param {string} id */
+const byId = (id) => /** @type {HTMLElement} */ (document.getElementById(id));
+
+/** @param {string} tag @param {string} cls @param {string | number} [text] */
+function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    node.className = cls;
+    if (text !== undefined) node.textContent = String(text);
+    return node;
+}
+
+/** @param {number} n */
+const signed = (n) => (n < 0 ? '' : '+') + n;
+
+/**
+ * One labelled box; every number on the sheet that isn't a bar or a row is one of these.
+ * @param {string} label @param {string | number} value @param {number} [sub]
+ */
+function tile(label, value, sub) {
+    const box = el('div', 'stat border rounded-1 text-center h-100 py-1');
+    box.append(el('small', 'd-block text-body-secondary text-uppercase', label), el('span', 'd-block fs-5', value));
+    if (sub !== undefined) box.append(el('small', 'd-block text-body-secondary', sub));
+    const col = el('div', 'col');
+    col.append(box);
+    return col;
+}
+
+/** @param {string} id @param {number} now @param {number} max @param {string} [color] */
+function bar(id, now, max, color = '') {
+    const outer = byId(id);
+    const fill = /** @type {HTMLElement} */ (outer.firstElementChild);
+    outer.setAttribute('aria-valuenow', String(now));
+    outer.setAttribute('aria-valuemax', String(max));
+    fill.style.width = (max > 0 ? Math.min(100, (100 * now) / max) : 100) + '%'; // CSSOM, so the CSP allows it
+    fill.className = 'progress-bar ' + color;
+}
+
+/** @param {Hero} h @param {string[]} map */
+function drawHero(h, map) {
+    byId('hero-name').textContent = h.name;
+    byId('hero-class').textContent = `Level ${h.level} ${h.class}`;
+    byId('hp-text').textContent = `${h.hp}/${h.max_hp}`;
+    const hp = h.hp / h.max_hp;
+    bar('hp-bar', h.hp, h.max_hp, hp > 0.5 ? 'bg-success' : hp > 0.25 ? 'bg-warning' : 'bg-danger');
+    byId('tiles').replaceChildren(tile('AC', h.ac), tile('Prof', signed(h.prof)), tile('Gold', h.gold));
+    byId('abilities').replaceChildren(...h.abilities.map(([name, score, mod]) => tile(name, signed(mod), score)));
+    const attack = `${signed(h.to_hit)} · ${h.damage}` + (h.attacks > 1 ? ` ×${h.attacks}` : '');
+    byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources].map(([k, v]) => {
+        const row = el('div', 'd-flex justify-content-between gap-3');
+        row.append(el('dt', 'fw-normal text-body-secondary', k), el('dd', 'm-0 text-end', v));
+        return row;
+    }));
+    const status = byId('status');
+    status.replaceChildren(...h.status.map((s) => el('span', 'badge text-bg-warning fw-normal', s)));
+    status.hidden = h.status.length === 0;
+    byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
+    bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
+    byId('map').textContent = map.join('\n');
 }
 
 form.addEventListener('submit', (e) => {

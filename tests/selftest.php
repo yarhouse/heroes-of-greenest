@@ -117,6 +117,9 @@ try {
         && says($score, 'HP 11/11   AC 17   Proficiency Bonus +2'), 'score: Standard Array Fighter, AC and HP');
     check(says($score, 'Greatsword +4 to hit, 2d6+2 damage') && says($score, 'Hit Dice 1/1 d10   Second Wind 2/2')
         && says($score, 'XP 0 (300 for level 2)'), 'score: attack, Hit Dice, Second Wind and XP');
+    $sheet = hero_sheet(with_stats(hero('Testa')));
+    check($sheet['xp_from'] === 0 && $sheet['xp_next'] === 300 && $sheet['abilities'][0] === ['Str', 15, 2]
+        && $sheet['resources'][1] === ['Second Wind', '2/2'], 'hero sheet: the score panel gets numbers, not text');
 
     // Map: Town Square (safe) has Market Lane west, the inn (safe) east, the keep north, the Mill Bridge (stair down) south.
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
@@ -360,7 +363,7 @@ try {
     check(says($out, 'for 10 damage.') && says($out, 'for 2 damage (halved by your Rage).')
         && hero('Testc')['hp'] === 12,
         'Rage: +2 damage on Strength attacks, half damage taken');
-    check(says(run_command(hero('Testc'), 'score'), 'Rage 1/2 (raging)'), 'score shows the Rage');
+    check(says(run_command(hero('Testc'), 'score'), 'Rage 1/2   raging'), 'score shows the Rage');
     $dice_queue = [20, 1];
     run_command(hero('Testc'), 'flee');
     check(hero('Testc')['raging'] === 0 && hero('Testc')['fighting'] === null, 'the Rage ends with the fight');

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// api.php :: runs one player command and returns { lines: string[], score?: string[], logout?: true } as JSON.
+// api.php :: runs one player command; replies { lines, hero?: hero_sheet(), map?: cmd_map(), logout? } as JSON.
 
 require __DIR__ . '/../src/boot.php';
 require __DIR__ . '/../src/game.php';
@@ -37,5 +37,7 @@ if (strtolower(trim($cmd)) === 'quit') {
 }
 $lines = run_command($me, $cmd);
 $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
-$score = $me['setup'] === null ? [...cmd_score(with_stats($me)), '', ...cmd_map($me)] : []; // none while creating
-reply(['lines' => $lines, 'score' => $score]);
+if ($me['setup'] !== null) {
+    reply(['lines' => $lines]); // no sheet while creating
+}
+reply(['lines' => $lines, 'hero' => hero_sheet(with_stats($me)), 'map' => cmd_map($me)]);
