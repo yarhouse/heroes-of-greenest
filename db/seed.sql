@@ -43,29 +43,33 @@ INSERT INTO delve (seed) VALUES (0);
 -- Monsters 1-16 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
-INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, dex_save) VALUES
-(1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, 5),                    -- p.353
-(2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, 2),           -- p.302
-(3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, 2),              -- p.290
-(4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 1),                 -- p.261
-(5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, 2),            -- p.290
-(6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2),                        -- p.364
-(7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 3),              -- p.325
-(8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, -2),                     -- p.343
-(9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1),     -- p.298
-(10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 1),                -- p.289
-(11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 2),                -- p.290
-(12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2),      -- p.272
-(13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1),                -- p.312
-(14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 5),          -- p.261
-(15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2), -- p.299
-(16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 1),                     -- p.333
-(1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, 5),                 -- SRD Giant Rat
-(1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, 2),                -- SRD Kobold Warrior
-(1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, 2)      -- SRD Kobold Warrior
+-- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha.
+INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
+    con_save, int_save, wis_save, cha_save) VALUES
+(1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3),                 -- p.353
+(2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1),      -- p.302
+(3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1),           -- p.290
+(4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 0, 1, 1, 0, 0, 0),                 -- p.261
+(5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1),         -- p.290
+(6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2),                      -- p.364
+(7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 0, 3, 2, -2, -1, -3),           -- p.325
+(8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, 1, -2, 3, -4, 0, -3),                   -- p.343
+(9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1),    -- p.298
+(10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 2, 1, 0, -2, 0, -2),              -- p.289
+(11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0),               -- p.290
+(12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2, 2, 1, -1, 0, -1),    -- p.272
+(13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, 4, -1, 3, -3, -2, -2),             -- p.312
+(14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 4, 5, 2, 2, 2, 2),          -- p.261
+(15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2, 2, 2, 1, 0, 1), -- p.299
+(16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2),                  -- p.333
+(1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3),              -- SRD Giant Rat
+(1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1),           -- SRD Kobold Warrior
+(1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1) -- SRD Kobold Warrior
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
-    attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp, dex_save = new.dex_save;
+    attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
+    str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
+    wis_save = new.wis_save, cha_save = new.cha_save;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES

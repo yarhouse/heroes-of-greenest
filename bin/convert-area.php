@@ -124,7 +124,7 @@ preg_match_all('/^M\w* (\d+) TO (\d+)/m', $sec['RESETS'], $placed, PREG_SET_ORDE
 // The SRD stat blocks (monsters below Greenest's own 1001) from seed.sql, to borrow stats from by CR.
 preg_match_all(
     "/^\\((\\d+), '((?:[^']|'')*)', (\\d+), '([^']+)', (-?\\d+), '((?:[^']|'')*)', (\\d+), (-?\\d+), '([^']+)', "
-        . "([\\d.]+), (\\d+), (-?\\d+)\\)/m",
+        . "([\\d.]+), (\\d+), (-?\\d+(?:, -?\\d+){5})\\)/m",
     file_get_contents(__DIR__ . '/../db/seed.sql'),
     $rows,
     PREG_SET_ORDER
@@ -170,9 +170,9 @@ ksort($used_mobs);
 $sql_mobs = [];
 foreach (array_keys($used_mobs) as $vnum) {
     $m = $mobs[$vnum];
-    [, , $srd_name, $ac, $hp, $init, $attack, $attacks, $to_hit, $damage, $cr, $xp, $dex] = borrow($m['level'], $srd);
+    [, , $srd_name, $ac, $hp, $init, $attack, $attacks, $to_hit, $damage, $cr, $xp, $saves] = borrow($m['level'], $srd);
     $sql_mobs[] = "($vnum, " . str($m['name']) . ", $ac, '$hp', $init, '$attack', $attacks, $to_hit, '$damage', $cr, "
-        . "$xp, $dex) /* SRD $srd_name, Rift level {$m['level']} */";
+        . "$xp, $saves) /* SRD $srd_name, Rift level {$m['level']} */";
 }
 
 $base = basename($file, ".are");
@@ -199,11 +199,13 @@ echo insert('INSERT INTO rooms (id, name, description)', $sql_rooms,
     "AS new\nON DUPLICATE KEY UPDATE name = new.name, description = new.description");
 echo insert('INSERT INTO exits (room_id, dir, to_room)', $sql_exits, '');
 echo insert(
-    'INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, dex_save)',
+    'INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,'
+        . ' con_save, int_save, wis_save, cha_save)',
     $sql_mobs,
     "AS new\nON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative,\n"
     . "    attack = new.attack, attacks = new.attacks, to_hit = new.to_hit, damage = new.damage,\n"
-    . "    cr = new.cr, xp = new.xp, dex_save = new.dex_save"
+    . "    cr = new.cr, xp = new.xp, str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save,\n"
+    . "    int_save = new.int_save, wis_save = new.wis_save, cha_save = new.cha_save"
 );
 echo "-- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.\n";
 echo insert('INSERT INTO spawns (id, room_id, monster_id, dead_since)', $sql_spawns, '');

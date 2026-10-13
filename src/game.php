@@ -363,8 +363,8 @@ function room_monsters(int $room_id): array
     }
     return q(
         'SELECT s.id, s.hp, m.name, m.ac, m.initiative, m.attack, m.attacks, m.to_hit, m.damage, m.cr, m.xp,
-         m.dex_save FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL
-         ORDER BY s.id',
+         m.str_save, m.dex_save, m.con_save, m.int_save, m.wis_save, m.cha_save
+         FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
         [$room_id]
     )->fetchAll();
 }
@@ -530,6 +530,13 @@ function attack_d20(array &$me, bool $adv = false): array
 function d20(bool $adv): int
 {
     return $adv ? max(roll('1d20'), roll('1d20')) : roll('1d20');
+}
+
+/** $foe's saving throw against $dc with its 'str' to 'cha' save: [the total, whether it saved]. No natural 1 or 20. */
+function save(array $foe, string $ability, int $dc): array
+{
+    $total = roll('1d20') + $foe[$ability . '_save'];
+    return [$total, $total >= $dc];
 }
 
 /** True if $who (a users row) has $condition. */
@@ -766,8 +773,8 @@ function cmd_cast(array $me, string $arg): array
     if ($spell === 'sacred flame') {
         return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
             $dc = 8 + $me['prof_bonus'] + mod($me['wisdom']);
-            $save = roll('1d20') + $foe['dex_save'];
-            if ($save >= $dc) {
+            [$save, $saved] = save($foe, 'dex', $dc);
+            if ($saved) {
                 $lines[] = "The {$foe['name']} dodges your Sacred Flame (Dex save $save vs DC $dc).";
                 return false;
             }

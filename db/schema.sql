@@ -19,7 +19,7 @@ CREATE TABLE exits (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Monster templates, each from an SRD 5.2.1 stat block. Only the main attack is kept, made `attacks` times
--- (Multiattack); traits, reactions, bonus actions, saves and spells are skipped.
+-- (Multiattack), and its six saving throws; traits, reactions, bonus actions and spells are skipped.
 CREATE TABLE monsters (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -32,7 +32,12 @@ CREATE TABLE monsters (
     damage VARCHAR(30) NOT NULL, -- dice, with any extra damage added in, e.g. '2d6+1d6+2'
     cr DECIMAL(5, 3) NOT NULL,
     xp INT UNSIGNED NOT NULL,
-    dex_save TINYINT NOT NULL -- for Sacred Flame
+    str_save TINYINT NOT NULL,
+    dex_save TINYINT NOT NULL,
+    con_save TINYINT NOT NULL,
+    int_save TINYINT NOT NULL,
+    wis_save TINYINT NOT NULL,
+    cha_save TINYINT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read

@@ -266,8 +266,9 @@ try {
     run_command(hero('Testa'), 's');
 
     // Combat, with every roll queued. Testa wears Kit A: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
-    q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, dex_save)
-        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25, 0)");
+    q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
+        con_save, int_save, wis_save, cha_save)
+        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25, 0, 0, 0, 0, 0, 0)");
     q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9999, 2, 9999, NOW() - INTERVAL 1 DAY)');
     $dice_queue = [6, 6];
     check(says(run_command(hero('Testa'), 'n'), 'A Training Dummy is here.'), 'a dead monster respawns when read');
@@ -448,6 +449,10 @@ try {
     $dice_queue = [12, 1];
     check(says(run_command(hero('Teste'), 'cast sacred'), 'dodges your Sacred Flame (Dex save 12 vs DC 12)'),
         'a made save takes nothing; in a fight a spell goes at your foe');
+    $ogre = q('SELECT * FROM monsters WHERE id = 13')->fetch();
+    $dice_queue = [9, 9];
+    check(save($ogre, 'con', 12) === [12, true] && save($ogre, 'wis', 8) === [7, false],
+        'six saves per stat block (Ogre: Con +3, Wis -2)');
     $dice_queue = [11, 2, 3, 4, 5, 1]; // 15 vs AC 10 for 2+3+4+5; Slam misses
     $out = run_command(hero('Teste'), 'cast guiding');
     check(says($out, 'Your Guiding Bolt strikes the Training Dummy (15 vs AC 10) for 14 damage.')
