@@ -17,10 +17,12 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 ## Design rules
 
-- No background ticks. The world changes only when someone sends a command; anything time-based (respawn, regen) is computed from timestamps when read.
+- No background ticks. The world changes only when someone sends a command; anything time-based (respawn, rests) is computed from timestamps when read.
+- Rules are SRD 5.2.1 (5e), from `ref/SRD_CC_v5.2.1.pdf`; monster stats always come from an SRD stat block, never invented. Keep the SRD attribution (README, `seed.sql`, generated areas, login page).
+- Every random number goes through `roll()` in `game.php`; tests queue exact die faces in `$dice_queue`.
 - Combat and other multi-step actions resolve one round per command.
 - Group play is asynchronous: shared world, `say` echoes persist in rooms, `who` shows last seen.
-- Borrow freely from the sibling repos: `../dragon-knight` (monster/item/spell/level tables in `install.php`, combat formulas in `fight.php`) and `../riftshadow/area/*.are` (rooms, mobs, objects; ROM/Diku license: keep credits, non-commercial). Their code is reference only.
+- Borrow freely from `../riftshadow/area/*.are` (rooms, mobs, objects; ROM/Diku license: keep credits, non-commercial) and ideas from `../dragon-knight`. Their code is reference only.
 
 ## Security
 

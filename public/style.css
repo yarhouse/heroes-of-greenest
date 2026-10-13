@@ -93,6 +93,9 @@ body {
 
 .login input:focus-visible, .login button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.login .credits { margin-top: 3rem; font-size: 0.75rem; color: var(--dim); }
+.login .credits a { color: inherit; overflow-wrap: anywhere; }
+
 .login button {
     margin-top: 0.5rem;
     padding: 0.5rem 1.25rem;

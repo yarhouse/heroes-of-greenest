@@ -43,6 +43,17 @@ php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600 > db/a
 
 That links Southern Fields (6) south to the mines' entrance (24600), and back north.
 
+## Rules
+
+The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored): heroes are
+Fighters with the Standard Array, combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
+levels follow Character Advancement. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the
+Swaying Lantern. The plan and what's left out are in the project's `d20-plan.md`. "5E compatible."
+
+This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
+available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0
+International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+
 ## Accounts
 
 Invite only. `php bin/adduser.php <Name>` creates a hero, or resets the password of an existing one (which also logs them out everywhere and clears any lockout).

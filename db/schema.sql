@@ -5,7 +5,8 @@ DROP TABLE IF EXISTS objects, events, users, items, levels, spawns, monsters, ex
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(80) NOT NULL,
-    description TEXT NOT NULL
+    description TEXT NOT NULL,
+    safe BOOLEAN NOT NULL DEFAULT FALSE -- heroes can rest here
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE exits (
@@ -17,16 +18,20 @@ CREATE TABLE exits (
     FOREIGN KEY (to_room) REFERENCES rooms (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Monster templates. Stats and columns follow Dragon Knight's monsters table.
+-- Monster templates, each from an SRD 5.2.1 stat block. Only the main attack is kept, made `attacks` times
+-- (Multiattack); traits, reactions, bonus actions, saves and spells are skipped.
 CREATE TABLE monsters (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
-    max_hp SMALLINT UNSIGNED NOT NULL,
-    max_dam SMALLINT UNSIGNED NOT NULL,
-    armor SMALLINT UNSIGNED NOT NULL,
-    level SMALLINT UNSIGNED NOT NULL,
-    max_exp SMALLINT UNSIGNED NOT NULL,
-    max_gold SMALLINT UNSIGNED NOT NULL
+    ac TINYINT UNSIGNED NOT NULL,
+    hp VARCHAR(20) NOT NULL, -- dice rolled at each spawn, e.g. '3d6-3'
+    initiative TINYINT NOT NULL,
+    attack VARCHAR(30) NOT NULL,
+    attacks TINYINT UNSIGNED NOT NULL,
+    to_hit TINYINT NOT NULL,
+    damage VARCHAR(30) NOT NULL, -- dice, with any extra damage added in, e.g. '2d6+1d6+2'
+    cr DECIMAL(5, 3) NOT NULL,
+    xp INT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read
@@ -43,16 +48,17 @@ CREATE TABLE spawns (
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Experience needed for each level and the stats gained on reaching it (Dragon Knight's levels table).
+-- SRD Character Advancement (XP, Proficiency Bonus) and Fighter Features (Second Wind uses, attacks per round).
 CREATE TABLE levels (
-    level SMALLINT UNSIGNED PRIMARY KEY,
-    exp INT UNSIGNED NOT NULL,
-    hp SMALLINT UNSIGNED NOT NULL,
-    strength SMALLINT UNSIGNED NOT NULL,
-    dexterity SMALLINT UNSIGNED NOT NULL
+    level TINYINT UNSIGNED PRIMARY KEY,
+    xp INT UNSIGNED NOT NULL,
+    prof_bonus TINYINT UNSIGNED NOT NULL,
+    second_wind TINYINT UNSIGNED NOT NULL,
+    attacks TINYINT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Item templates: Dragon Knight's items and drops tables in one. Worn bonuses are added to the hero's stats when read.
+-- Item templates: Dragon Knight's items and drops tables in one. Until SRD gear (d20 plan milestone 2), worn items
+-- have no effect: every hero fights with STARTER_KIT.
 CREATE TABLE items (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -75,16 +81,24 @@ CREATE TABLE users (
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
-    -- Dragon Knight's starting stats. hp is as of hp_at; regen since then is worked out when read.
-    level SMALLINT UNSIGNED NOT NULL DEFAULT 1,
-    hp SMALLINT NOT NULL DEFAULT 15,
-    hp_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    max_hp SMALLINT UNSIGNED NOT NULL DEFAULT 15,
-    strength SMALLINT UNSIGNED NOT NULL DEFAULT 5,
-    dexterity SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+    -- A level 1 Fighter with the SRD's Standard Array for Fighters; max HP is 10 + Con modifier.
+    level TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    xp INT UNSIGNED NOT NULL DEFAULT 0,
+    hp SMALLINT NOT NULL DEFAULT 11,
+    max_hp SMALLINT UNSIGNED NOT NULL DEFAULT 11,
+    strength TINYINT UNSIGNED NOT NULL DEFAULT 15,
+    dexterity TINYINT UNSIGNED NOT NULL DEFAULT 14,
+    constitution TINYINT UNSIGNED NOT NULL DEFAULT 13,
+    intelligence TINYINT UNSIGNED NOT NULL DEFAULT 8,
+    wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
+    charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
+    hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one d10 Hit Die per level
+    second_wind_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
     gold INT UNSIGNED NOT NULL DEFAULT 100,
-    exp INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
+    foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
+    resting ENUM('short', 'long') NULL, -- finishes on the first command after rest_until
+    rest_until DATETIME NULL,
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (fighting) REFERENCES spawns (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

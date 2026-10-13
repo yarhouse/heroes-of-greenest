@@ -8,9 +8,13 @@ const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' 
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
 const START_ROOM = 1;
-const REGEN_SECS = 600; // out of combat, a hero heals from 0 to full HP in this long
+const SHORT_REST_SECS = 600;
+const LONG_REST_SECS = 3600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
 const MAX_TRINKETS = 3; // Dragon Knight's three drop slots
+// shortcut: every hero fights with the SRD Fighter's starting Chain Mail and Greatsword (option A) and the Defense
+// fighting style, and worn items do nothing, until SRD gear (d20 plan milestone 2) replaces Dragon Knight's items.
+const STARTER_KIT = ['weapon' => 'Greatsword', 'damage' => '2d6', 'ac' => 17]; // Chain Mail 16 + Defense 1
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
@@ -22,7 +26,10 @@ const COMMANDS = [
     'down' => 'move down (or d)',
     'kill <monster>' => 'attack; one round per command (or k)',
     'flee' => 'try to escape a fight to a random exit',
-    'score' => 'your level, HP and stats',
+    'second' => 'Second Wind: regain 1d10 + your level in HP',
+    'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
+    'sleep' => 'long rest in a safe place (1 h): recover everything',
+    'score' => 'your abilities, HP, AC and XP',
     'inventory' => 'what you carry and wear (or i)',
     'get <item>' => 'pick something up',
     'drop <item>' => 'put something down',
@@ -33,29 +40,49 @@ const COMMANDS = [
     'quit' => 'log out',
 ];
 
+/** Faces for the next dice rolled, used in order before any real rolls. Only tests fill it. */
+$dice_queue = [];
+
+/** Rolls dice like '1d20', '2d6+3' or '2d6+1d6-1'; a critical hit rolls every die twice. All game randomness. */
+function roll(string $dice, bool $crit = false): int
+{
+    global $dice_queue;
+    if (!preg_match('/^\d+(d\d+)?([+-]\d+(d\d+)?)*$/', $dice)) {
+        throw new LogicException("Bad dice: $dice");
+    }
+    preg_match_all('/([+-]?)(\d+)(?:d(\d+))?/', $dice, $terms, PREG_SET_ORDER);
+    $total = 0;
+    foreach ($terms as $t) {
+        $value = (int) $t[2];
+        if (isset($t[3])) {
+            $sides = (int) $t[3];
+            $value = 0;
+            for ($i = (int) $t[2] * ($crit ? 2 : 1); $i > 0; $i--) {
+                $face = array_shift($dice_queue) ?? random_int(1, $sides);
+                if ($face < 1 || $face > $sides) {
+                    throw new LogicException("Queued a $face for a d$sides");
+                }
+                $value += $face;
+            }
+        }
+        $total += $t[1] === '-' ? -$value : $value;
+    }
+    return $total;
+}
+
+/** An ability score's modifier: 8 is -1, 10 is +0, 15 is +2. */
+function mod(int $score): int
+{
+    return (int) floor(($score - 10) / 2);
+}
+
 /** Runs one command for $me (a users row) and returns the output lines. */
 function run_command(array $me, string $input): array
 {
     q('UPDATE users SET last_seen = NOW() WHERE id = ?', [$me['id']]);
-    // Worn gear adds to stats here, never in the users row. Attack and defense follow Dragon Knight:
-    // strength + weapon, dexterity + armor + shield.
-    $gear = q(
-        'SELECT SUM(i.attack), SUM(i.defense), SUM(i.max_hp), SUM(i.strength), SUM(i.dexterity)
-         FROM objects o JOIN items i ON i.id = o.item_id WHERE o.user_id = ? AND o.worn',
-        [$me['id']]
-    )->fetch(PDO::FETCH_NUM);
-    [$attack, $defense, $max_hp, $strength, $dexterity] = array_map('intval', $gear);
-    $me['max_hp'] = max(1, $me['max_hp'] + $max_hp);
-    $me['strength'] = max(0, $me['strength'] + $strength);
-    $me['dexterity'] = max(0, $me['dexterity'] + $dexterity);
-    $me['attack'] = $me['strength'] + $attack;
-    $me['defense'] = $me['dexterity'] + $defense;
-    // Regen since HP last changed, frozen while fighting. Every write of hp or fighting resets hp_at.
-    $me['hp'] = (int) q(
-        'SELECT IF(fighting IS NULL, LEAST(?, hp + FLOOR(TIMESTAMPDIFF(SECOND, hp_at, NOW()) * ? / ?)), hp)
-         FROM users WHERE id = ?',
-        [$me['max_hp'], $me['max_hp'], REGEN_SECS, $me['id']]
-    )->fetchColumn();
+    $me += q('SELECT prof_bonus, second_wind, attacks FROM levels WHERE level = ?', [$me['level']])->fetch();
+    $me['ac'] = STARTER_KIT['ac'];
+    $rested = $me['resting'] !== null ? finish_rest($me) : [];
     $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
     if (str_starts_with($input, "'")) {
         $input = 'say ' . substr($input, 1);
@@ -71,6 +98,9 @@ function run_command(array $me, string $input): array
         $verb === 'l' || $verb === 'look' => cmd_look($me),
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
+        $verb === 'second' => cmd_second($me),
+        $verb === 'rest' => cmd_rest($me, 'short'),
+        $verb === 'sleep' => cmd_rest($me, 'long'),
         $verb === 'score' => cmd_score($me),
         $verb === 'i' || $verb === 'inventory' => cmd_inventory($me),
         $verb === 'get' => cmd_get($me, trim($arg)),
@@ -83,7 +113,7 @@ function run_command(array $me, string $input): array
     };
     // look already lists what was said in the room, so don't repeat it.
     $shows_room = $verb === 'l' || $verb === 'look' || in_array($verb, DIRS, true);
-    return $shows_room ? $out : array_merge($heard, $out);
+    return array_merge($rested, $shows_room ? [] : $heard, $out);
 }
 
 /** What others said in my room since my last command. Advances my read pointer either way. */
@@ -140,23 +170,29 @@ function cmd_move(array $me, string $dir): array
     if ($to === false) {
         return ["You can't go $dir."];
     }
-    q('UPDATE users SET room_id = ? WHERE id = ?', [$to, $me['id']]);
-    return cmd_look(['room_id' => (int) $to] + $me);
+    q('UPDATE users SET room_id = ?, resting = NULL, rest_until = NULL WHERE id = ?', [$to, $me['id']]);
+    $stop = $me['resting'] !== null ? ['You stop resting.'] : [];
+    return [...$stop, ...cmd_look(['room_id' => (int) $to] + $me)];
 }
 
-/** Respawns monsters in the room whose timer ran out, then returns the living ones, oldest spawn first. */
+/** Respawns monsters in the room whose timer ran out (rolling their HP), then returns the living ones, oldest first. */
 function room_monsters(int $room_id): array
 {
-    // Dragon Knight rolls a fresh monster's HP between 80% and 100% of its max.
-    q(
-        'UPDATE spawns s JOIN monsters m ON m.id = s.monster_id
-         SET s.dead_since = NULL, s.hp = m.max_hp - FLOOR(RAND() * (m.max_hp - FLOOR(m.max_hp * 0.8) + 1))
-         WHERE s.room_id = ? AND s.dead_since < NOW() - INTERVAL s.respawn_secs SECOND',
+    $due = q(
+        'SELECT s.id, m.hp AS dice FROM spawns s JOIN monsters m ON m.id = s.monster_id
+         WHERE s.room_id = ? AND s.dead_since < NOW() - INTERVAL s.respawn_secs SECOND ORDER BY s.id',
         [$room_id]
-    );
+    )->fetchAll();
+    foreach ($due as $s) {
+        // "dead_since IS NOT NULL" so two heroes arriving at once can't both respawn it.
+        q('UPDATE spawns SET dead_since = NULL, hp = ? WHERE id = ? AND dead_since IS NOT NULL', [
+            max(1, roll($s['dice'])), $s['id'],
+        ]);
+    }
     return q(
-        'SELECT s.id, s.hp, m.name, m.level, m.max_dam, m.armor, m.max_exp, m.max_gold FROM spawns s
-         JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
+        'SELECT s.id, s.hp, m.name, m.ac, m.initiative, m.attack, m.attacks, m.to_hit, m.damage, m.cr, m.xp
+         FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL
+         ORDER BY s.id',
         [$room_id]
     )->fetchAll();
 }
@@ -170,7 +206,7 @@ function find_foe(array $me, string $target): ?array
         }
     }
     if ($me['fighting'] !== null) { // never expected (a kill clears everyone fighting it), but don't strand the hero
-        q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
     }
     return null;
 }
@@ -186,7 +222,8 @@ function a_an(string $name): string
     return (preg_match('/^[aeiou]/i', $name) ? 'An ' : 'A ') . $name;
 }
 
-// Combat follows Dragon Knight's fight.php: one round per command, same rolls.
+// Combat follows SRD 5.2.1: initiative when a fight starts, then one round per command in initiative order.
+// Attack rolls are d20 + bonus against AC; a natural 20 is a critical hit (damage dice twice), a natural 1 misses.
 
 function cmd_kill(array $me, string $target): array
 {
@@ -195,39 +232,42 @@ function cmd_kill(array $me, string $target): array
         return [$target === '' || $me['fighting'] !== null ? 'Kill what?' : "You don't see a $target here."];
     }
     $lines = [];
-    $hero_first = true;
     if ($me['fighting'] === null) {
-        q('UPDATE users SET fighting = ?, hp = ?, hp_at = NOW() WHERE id = ?', [$foe['id'], $me['hp'], $me['id']]);
-        $lines[] = "You attack the {$foe['name']}!";
-        $hero_first = beats(random_int(1, 10), $me['dexterity'], random_int(1, 7), $foe['max_dam']);
-        if (!$hero_first) {
-            $lines[] = "The {$foe['name']} strikes before you are ready!";
-        }
+        $mine = roll('1d20') + mod($me['dexterity']);
+        $theirs = roll('1d20') + $foe['initiative'];
+        $me['foe_first'] = $theirs > $mine; // ties go to the hero
+        q(
+            'UPDATE users SET fighting = ?, foe_first = ?, resting = NULL, rest_until = NULL WHERE id = ?',
+            [$foe['id'], (int) $me['foe_first'], $me['id']]
+        );
+        $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
     }
-    if (!$hero_first && monster_attacks($me, $foe, $lines)) {
-        return $lines;
+    $over = $me['foe_first']
+        ? monster_turn($me, $foe, $lines) || hero_turn($me, $foe, $lines)
+        : hero_turn($me, $foe, $lines) || monster_turn($me, $foe, $lines);
+    if (!$over) {
+        $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
     }
-    if (hero_attacks($me, $foe, $lines) || ($hero_first && monster_attacks($me, $foe, $lines))) {
-        return $lines;
-    }
-    $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
     return $lines;
 }
 
+/** Fleeing is a contest: d20 + Dex modifier against the monster's d20 + initiative. Failing draws an attack. */
 function cmd_flee(array $me): array
 {
     $foe = $me['fighting'] === null ? null : find_foe($me, '');
     if (!$foe) {
         return ["You aren't fighting anything."];
     }
-    if (!beats(random_int(4, 10), $me['dexterity'], random_int(1, 5), $foe['max_dam'])) {
-        $lines = ["You try to flee, but the {$foe['name']} blocks your way!"];
-        if (!monster_attacks($me, $foe, $lines)) {
+    $mine = roll('1d20') + mod($me['dexterity']);
+    $theirs = roll('1d20') + $foe['initiative'];
+    if ($mine < $theirs) {
+        $lines = ["You try to break away, but the {$foe['name']} cuts you off ($mine vs $theirs)!"];
+        if (!monster_turn($me, $foe, $lines, 1)) {
             $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.";
         }
         return $lines;
     }
-    q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE id = ?', [$me['id']]);
+    q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
     $dir = q('SELECT dir FROM exits WHERE room_id = ? ORDER BY RAND() LIMIT 1', [$me['room_id']])->fetchColumn();
     if ($dir === false) {
         return ["You break away from the {$foe['name']}, but there's nowhere to run."];
@@ -235,85 +275,159 @@ function cmd_flee(array $me): array
     return ["You flee $dir from the {$foe['name']}!", ...cmd_move(['fighting' => null] + $me, $dir)];
 }
 
-/** Dragon Knight's initiative and escape check: my roll + sqrt(dexterity) against theirs + sqrt(max damage). */
-function beats(int $roll, int $dexterity, int $their_roll, int $max_dam): bool
+/** My attacks on $foe this round (more than one with Extra Attack). Returns true if it died. */
+function hero_turn(array $me, array &$foe, array &$lines): bool
 {
-    return $roll + ceil(sqrt($dexterity)) > $their_roll + ceil(sqrt($max_dam));
+    $str = mod($me['strength']);
+    for ($i = 0; $i < $me['attacks']; $i++) {
+        $d20 = roll('1d20');
+        $total = $d20 + $str + $me['prof_bonus'];
+        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+            $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
+            $lines[] = "You miss the {$foe['name']} ($why).";
+            continue;
+        }
+        $dmg = max(0, roll(STARTER_KIT['damage'], $d20 === 20) + $str);
+        $crit = $d20 === 20 ? 'Critical hit! ' : '';
+        $lines[] = "{$crit}You hit the {$foe['name']} ($total vs AC {$foe['ac']}) for $dmg damage.";
+        q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
+        $foe['hp'] -= $dmg;
+        if ($foe['hp'] <= 0) {
+            // The kill goes to whoever marks it dead first, in case two heroes land the last blow at once.
+            $won = q(
+                'UPDATE spawns SET dead_since = NOW() WHERE id = ? AND dead_since IS NULL AND hp <= 0',
+                [$foe['id']]
+            )->rowCount() === 1;
+            if ($won) {
+                win($me, $foe, $lines);
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
-/** My swing at $foe. Returns true if it died. */
-function hero_attacks(array $me, array &$foe, array &$lines): bool
+/** The killer's reward: the stat block's full XP, a little gold by CR, levels, and maybe loot. */
+function win(array $me, array $foe, array &$lines): void
 {
-    $armor = $foe['armor'];
-    if (random_int(1, 200) <= sqrt($armor)) {
-        $lines[] = "The {$foe['name']} dodges your attack.";
-        return false;
-    }
-    $attack = $me['attack'];
-    $hit = (int) ceil(random_int(intdiv($attack * 3, 4), $attack) / 3);
-    if (random_int(1, 150) <= sqrt($me['strength'])) {
-        $hit *= 2;
-        $lines[] = 'Excellent hit!';
-    }
-    $dmg = max(1, $hit - (int) ceil(random_int(intdiv($armor * 3, 4), $armor) / 3));
-    $lines[] = "You hit the {$foe['name']} for $dmg damage.";
-    q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
-    $foe['hp'] -= $dmg;
-    // The kill goes to whoever marks it dead first, in case two heroes land the last blow at once.
-    $won = q(
-        'UPDATE spawns SET dead_since = NOW() WHERE id = ? AND dead_since IS NULL AND hp <= 0',
-        [$foe['id']]
-    )->rowCount() === 1;
-    if (!$won) {
-        return $foe['hp'] <= 0;
-    }
-    q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE fighting = ?', [$foe['id']]);
-    $exp = max(1, random_int(intdiv($foe['max_exp'] * 5, 6), $foe['max_exp']));
-    $gold = max(1, random_int(intdiv($foe['max_gold'] * 5, 6), $foe['max_gold']));
-    q('UPDATE users SET exp = exp + ?, gold = gold + ? WHERE id = ?', [$exp, $gold, $me['id']]);
-    $lines[] = "The {$foe['name']} dies! You gain $exp experience and $gold gold.";
-    // Like Dragon Knight: at most one level per kill, and no heal on levelling.
-    $up = q('SELECT * FROM levels WHERE level = ? AND exp <= ?', [$me['level'] + 1, $me['exp'] + $exp])->fetch();
-    if ($up) {
-        q(
-            'UPDATE users SET level = ?, max_hp = max_hp + ?, strength = strength + ?, dexterity = dexterity + ?
-             WHERE id = ?',
-            [$up['level'], $up['hp'], $up['strength'], $up['dexterity'], $me['id']]
-        );
-        $lines[] = "You reach level {$up['level']}! +{$up['hp']} max HP, +{$up['strength']} strength, "
-            . "+{$up['dexterity']} dexterity.";
-    }
-    if (random_int(1, LOOT_CHANCE) === 1) {
-        $lines[] = "The {$foe['name']} drops " . lcfirst(a_an(loot((int) $foe['level'], (int) $me['room_id']))) . '.';
-    }
-    return true;
-}
-
-/** $foe's swing at me. Returns true if I died (and woke in town). */
-function monster_attacks(array &$me, array $foe, array &$lines): bool
-{
-    if (random_int(1, 150) <= sqrt($me['dexterity'])) {
-        $lines[] = "You dodge the {$foe['name']}'s attack.";
-        return false;
-    }
-    $defense = $me['defense'];
-    $max = $foe['max_dam'];
-    $dmg = max(1, random_int(intdiv($max, 2), $max) - (int) ceil(random_int(intdiv($defense * 3, 4), $defense) / 4));
-    $me['hp'] -= $dmg;
-    $lines[] = "The {$foe['name']} hits you for $dmg damage.";
-    if ($me['hp'] > 0) {
-        q('UPDATE users SET hp = ?, hp_at = NOW() WHERE id = ?', [$me['hp'], $me['id']]);
-        return false;
-    }
-    // Dragon Knight's death: back to town with a quarter of your HP and half your gold.
-    $me['hp'] = (int) ceil($me['max_hp'] / 4);
+    q('UPDATE users SET fighting = NULL WHERE fighting = ?', [$foe['id']]);
+    $cr = max(1, (int) ceil((float) $foe['cr']));
+    $gold = roll($cr . 'd6');
+    $xp = $me['xp'] + $foe['xp'];
+    $level = (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn();
+    $gain = ($level - $me['level']) * (6 + mod($me['constitution'])); // the SRD's fixed Fighter HP per level
     q(
-        'UPDATE users SET hp = ?, hp_at = NOW(), gold = gold - gold DIV 2, fighting = NULL, room_id = ? WHERE id = ?',
-        [$me['hp'], START_ROOM, $me['id']]
+        'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
+        [$xp, $gold, $level, $gain, $gain, $me['id']]
     );
-    array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
-    array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
-    return true;
+    $lines[] = "The {$foe['name']} dies! You gain {$foe['xp']} XP and $gold gold.";
+    if ($level > $me['level']) {
+        $lines[] = "You reach level $level! +$gain max HP.";
+    }
+    if (roll('1d' . LOOT_CHANCE) === 1) {
+        $lines[] = "The {$foe['name']} drops " . lcfirst(a_an(loot($cr, (int) $me['room_id']))) . '.';
+    }
+}
+
+/** $foe attacks me: $n times, its Multiattack by default. Returns true if I died (and woke in town). */
+function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bool
+{
+    for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
+        $d20 = roll('1d20');
+        $total = $d20 + $foe['to_hit'];
+        $its = "The {$foe['name']}'s {$foe['attack']}";
+        if ($d20 === 1 || ($d20 < 20 && $total < $me['ac'])) {
+            $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . ').';
+            continue;
+        }
+        $dmg = max(0, roll($foe['damage'], $d20 === 20));
+        $me['hp'] -= $dmg;
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}) for $dmg damage.";
+        if ($me['hp'] <= 0) {
+            // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
+            $me['hp'] = (int) ceil($me['max_hp'] / 4);
+            q(
+                'UPDATE users SET hp = ?, gold = gold - gold DIV 2, fighting = NULL, room_id = ? WHERE id = ?',
+                [$me['hp'], START_ROOM, $me['id']]
+            );
+            array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
+            array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
+            return true;
+        }
+    }
+    q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
+    return false;
+}
+
+/** Second Wind: a bonus action, so it costs no turn and the monster doesn't swing. */
+function cmd_second(array $me): array
+{
+    $left = $me['second_wind'] - $me['second_wind_spent'];
+    if ($left <= 0) {
+        return ['You have no Second Wind left. Rest to recover it.'];
+    }
+    if ($me['hp'] >= $me['max_hp']) {
+        return ["You're already at full health."];
+    }
+    $hp = min($me['max_hp'], $me['hp'] + roll('1d10') + $me['level']);
+    q('UPDATE users SET hp = ?, second_wind_spent = second_wind_spent + 1 WHERE id = ?', [$hp, $me['id']]);
+    return [
+        'You catch your second wind and regain ' . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}, "
+            . ($left - 1) . ' Second Wind left.',
+    ];
+}
+
+/** Starts a short or long rest. It finishes on the first command after it's done, unless I leave the room. */
+function cmd_rest(array $me, string $kind): array
+{
+    if ($me['resting'] !== null) {
+        $mins = q('SELECT CEIL(TIMESTAMPDIFF(SECOND, NOW(), rest_until) / 60) FROM users WHERE id = ?', [$me['id']])
+            ->fetchColumn();
+        return ["You are already taking a {$me['resting']} rest ($mins min to go)."];
+    }
+    if ($me['fighting'] !== null) {
+        return ["You can't rest in the middle of a fight!"];
+    }
+    if (!q('SELECT safe FROM rooms WHERE id = ?', [$me['room_id']])->fetchColumn()) {
+        return ["It isn't safe to rest here. Try the town square or the Swaying Lantern."];
+    }
+    $secs = $kind === 'long' ? LONG_REST_SECS : SHORT_REST_SECS;
+    q('UPDATE users SET resting = ?, rest_until = NOW() + INTERVAL ? SECOND WHERE id = ?', [$kind, $secs, $me['id']]);
+    return ["You settle in for a $kind rest. It takes " . intdiv($secs, 60) . ' minutes; leaving cancels it.'];
+}
+
+/** If my rest's time is up, applies it and returns what it did. */
+function finish_rest(array &$me): array
+{
+    // Claiming the rest in one UPDATE means two requests at once can't both apply it.
+    $done = q(
+        'UPDATE users SET resting = NULL, rest_until = NULL
+         WHERE id = ? AND resting IS NOT NULL AND rest_until <= NOW()',
+        [$me['id']]
+    )->rowCount() === 1;
+    if (!$done) {
+        return [];
+    }
+    if ($me['resting'] === 'long') {
+        [$me['hp'], $me['hit_dice_spent'], $me['second_wind_spent']] = [$me['max_hp'], 0, 0];
+        $line = 'You finish a long rest: full HP, all Hit Dice and Second Wind back.';
+    } else {
+        $spent = 0;
+        while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
+            $me['hp'] = min($me['max_hp'], $me['hp'] + max(0, roll('1d10') + mod($me['constitution'])));
+            $me['hit_dice_spent']++;
+            $spent++;
+        }
+        $me['second_wind_spent'] = max(0, $me['second_wind_spent'] - 1);
+        $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice')
+            . " and regaining a Second Wind.";
+    }
+    $me['resting'] = null;
+    q(
+        'UPDATE users SET hp = ?, hit_dice_spent = ?, second_wind_spent = ? WHERE id = ?',
+        [$me['hp'], $me['hit_dice_spent'], $me['second_wind_spent'], $me['id']]
+    );
+    return [$line . " HP {$me['hp']}/{$me['max_hp']}."];
 }
 
 /** Drops a random item of up to $level on $room_id's floor and returns its name. */
@@ -329,7 +443,7 @@ function objects_here(string $where, int $id): array
 {
     $col = match ($where) { 'room_id' => 'room_id', 'user_id' => 'user_id' }; // the only two allowed in SQL
     return q(
-        "SELECT o.id, o.worn, i.name, i.slot, i.attack, i.defense, i.max_hp, i.strength, i.dexterity
+        "SELECT o.id, o.worn, i.name, i.slot
          FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ? ORDER BY i.name, o.id",
         [$id]
     )->fetchAll();
@@ -346,19 +460,6 @@ function find_object(array $objects, string $target): ?array
     return null;
 }
 
-/** "+5 attack, -50 max HP" */
-function item_bonuses(array $item): string
-{
-    $parts = [];
-    foreach (['attack' => 'attack', 'defense' => 'defense', 'max_hp' => 'max HP', 'strength' => 'strength',
-        'dexterity' => 'dexterity'] as $col => $label) {
-        if ($item[$col] !== 0) {
-            $parts[] = sprintf('%+d %s', $item[$col], $label);
-        }
-    }
-    return implode(', ', $parts);
-}
-
 function cmd_inventory(array $me): array
 {
     $carried = objects_here('user_id', (int) $me['id']);
@@ -368,7 +469,7 @@ function cmd_inventory(array $me): array
     $lines = ['You are carrying:'];
     foreach ($carried as $o) {
         $worn = $o['worn'] ? '  (equipped)' : '';
-        $lines[] = sprintf('  %-20s %-8s %s', $o['name'], $o['slot'], item_bonuses($o)) . $worn;
+        $lines[] = sprintf('  %-20s %-8s', $o['name'], $o['slot']) . $worn;
     }
     return $lines;
 }
@@ -435,12 +536,23 @@ function cmd_equip(array $me, string $target): array
 
 function cmd_score(array $me): array
 {
-    $next = q('SELECT exp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
+    $abilities = [];
+    foreach (['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as $ability) {
+        $abilities[] = sprintf('%s %d (%+d)', ucfirst(substr($ability, 0, 3)), $me[$ability], mod($me[$ability]));
+    }
+    $str = mod($me['strength']);
+    $next = q('SELECT xp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
     return [
-        "{$me['name']}, level {$me['level']}",
-        "HP {$me['hp']}/{$me['max_hp']}   Strength {$me['strength']}   Dexterity {$me['dexterity']}",
-        "Attack {$me['attack']}   Defense {$me['defense']}",
-        "Experience {$me['exp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
+        "{$me['name']}, level {$me['level']} Fighter",
+        implode('  ', $abilities),
+        "HP {$me['hp']}/{$me['max_hp']}   AC {$me['ac']}   Proficiency Bonus +{$me['prof_bonus']}",
+        sprintf('%s %+d to hit, %s%+d damage', STARTER_KIT['weapon'], $str + $me['prof_bonus'], STARTER_KIT['damage'],
+            $str)
+            . ($me['attacks'] > 1 ? ", {$me['attacks']} attacks a round" : ''),
+        'Hit Dice ' . ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d10   Second Wind "
+            . max(0, $me['second_wind'] - $me['second_wind_spent']) . "/{$me['second_wind']}"
+            . ($me['resting'] !== null ? "   Taking a {$me['resting']} rest" : ''),
+        "XP {$me['xp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
             . "   Gold {$me['gold']}",
     ];
 }
