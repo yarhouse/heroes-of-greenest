@@ -39,7 +39,7 @@ const CLASSES = [
         'name' => 'Barbarian', 'die' => 12, 'hp' => 12, 'per_level' => 7, 'scores' => [15, 13, 14, 10, 12, 8],
         'armor' => ['light', 'medium', 'shield'], 'gold' => 15,
         'kit' => [[14, true], [4, false], [4, false], [4, false], [4, false]], // Greataxe, 4 Handaxes
-        'about' => 'd12 HP, tough even unarmored. Rage to hit harder and take half damage.',
+        'about' => 'd12 HP, tough even unarmored. Rage to hit harder and shrug off weapon blows.',
     ],
     'rogue' => [
         'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
@@ -150,6 +150,9 @@ function with_stats(array $me): array
         'uses' => match ($class) { 'fighter' => $lv['second_wind'], 'barbarian' => $lv['rages'], default => 0 },
         'rage_damage' => $lv['rage_damage'],
         'slots' => $class === 'cleric' ? array_map('intval', explode(',', $lv['slots'])) : [],
+        'resistances' => $me['raging'] ? 'bludgeoning,piercing,slashing' : '',
+        'immunities' => '',
+        'vulnerabilities' => '',
     ];
     return $me + gear($me);
 }
@@ -362,9 +365,9 @@ function room_monsters(int $room_id): array
         ]);
     }
     return q(
-        'SELECT s.id, s.hp, m.name, m.ac, m.initiative, m.attack, m.attacks, m.to_hit, m.damage, m.cr, m.xp,
-         m.str_save, m.dex_save, m.con_save, m.int_save, m.wis_save, m.cha_save
-         FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
+        // s.id and s.hp come last, so they win over m.id and m.hp (the HP dice).
+        'SELECT m.*, s.id, s.hp FROM spawns s JOIN monsters m ON m.id = s.monster_id
+         WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
         [$room_id]
     )->fetchAll();
 }
@@ -501,9 +504,9 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
             $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
             $sneak = false;
         }
-        $dmg = max(0, $dmg);
+        [$dmg, $note] = typed(max(0, $dmg), $me['damage_type'], $foe);
         $lines[] = ($crit ? 'Critical hit! ' : '') . "You hit the {$foe['name']} ($total vs AC {$foe['ac']}$with) "
-            . "for $dmg damage" . ($sneaking ? ', with Sneak Attack.' : '.');
+            . "for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
@@ -562,6 +565,27 @@ function cmd_reckless(array $me, string $target): array
     });
 }
 
+/**
+ * $dmg of $type dealt to $who (a hero or monster with resistances, immunities and vulnerabilities as SET strings),
+ * after SRD 5.2.1 p.17: Immunity takes it all, Resistance halves it (rounded down), then Vulnerability doubles it.
+ * Returns [the damage, a note for the combat line].
+ */
+function typed(int $dmg, string $type, array $who): array
+{
+    $is = fn (string $key): bool => in_array($type, explode(',', $who[$key]), true);
+    if ($is('immunities')) {
+        return [0, ' (immune)'];
+    }
+    $note = '';
+    if ($is('resistances')) {
+        [$dmg, $note] = [intdiv($dmg, 2), ' (resisted)'];
+    }
+    if ($is('vulnerabilities')) {
+        [$dmg, $note] = [$dmg * 2, $note . ' (vulnerable)'];
+    }
+    return [$dmg, $note];
+}
+
 /** Deals $dmg to $foe. Returns true if that killed it. */
 function hurt_foe(array $me, array &$foe, int $dmg, array &$lines): bool
 {
@@ -616,14 +640,15 @@ function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bo
             $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . "$with).";
             continue;
         }
-        $dmg = max(0, roll($foe['damage'], $d20 === 20));
-        // shortcut: Rage's Resistance halves all damage, though it's only for Bludgeoning, Piercing and Slashing;
-        // monsters' damage types aren't stored, and only a few add other types (the Hobgoblin Captain's poison).
-        $dmg = $me['raging'] ? intdiv($dmg, 2) : $dmg;
+        [$dmg, $note] = typed(max(0, roll($foe['damage'], $d20 === 20)), $foe['damage_type'], $me);
+        if ($foe['extra_damage'] !== null) {
+            [$extra, $extra_note] = typed(roll($foe['extra_damage'], $d20 === 20), $foe['extra_type'], $me);
+            $dmg += $extra;
+            $note = implode('', array_unique([$note, $extra_note]));
+        }
         $me['hp'] -= $dmg;
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '')
-            . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg damage"
-            . ($me['raging'] ? ' (halved by your Rage).' : '.');
+            . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg damage$note.";
         if ($me['hp'] <= 0) {
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
             $me['hp'] = (int) ceil($me['max_hp'] / 4);
@@ -679,8 +704,8 @@ function cmd_rage(array $me): array
     }
     q('UPDATE users SET raging = TRUE, uses_spent = uses_spent + 1 WHERE id = ?', [$me['id']]);
     return [
-        "You fly into a Rage! +{$me['rage_damage']} damage with Strength attacks and half damage taken until the "
-            . 'fight ends. ' . ($left - 1) . ' Rage left.',
+        "You fly into a Rage! +{$me['rage_damage']} damage with Strength attacks and Resistance to Bludgeoning, "
+            . 'Piercing and Slashing damage until the fight ends. ' . ($left - 1) . ' Rage left.',
     ];
 }
 
@@ -778,8 +803,9 @@ function cmd_cast(array $me, string $arg): array
                 $lines[] = "The {$foe['name']} dodges your Sacred Flame (Dex save $save vs DC $dc).";
                 return false;
             }
-            $dmg = roll(1 + ($me['level'] >= 5) + ($me['level'] >= 11) + ($me['level'] >= 17) . 'd8');
-            $lines[] = "Radiant flame descends on the {$foe['name']} (Dex save $save vs DC $dc) for $dmg damage.";
+            $dice = 1 + ($me['level'] >= 5) + ($me['level'] >= 11) + ($me['level'] >= 17) . 'd8';
+            [$dmg, $note] = typed(roll($dice), 'radiant', $foe);
+            $lines[] = "Radiant flame descends on the {$foe['name']} (Dex save $save vs DC $dc) for $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
         }, $at);
     }
@@ -793,9 +819,9 @@ function cmd_cast(array $me, string $arg): array
             $lines[] = "Your Guiding Bolt misses the {$foe['name']} ($why$with).";
             return false;
         }
-        $dmg = roll(3 + $slot . 'd6', $d20 === 20);
+        [$dmg, $note] = typed(roll(3 + $slot . 'd6', $d20 === 20), 'radiant', $foe);
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your Guiding Bolt strikes the {$foe['name']} ($total vs AC "
-            . "{$foe['ac']}$with) for $dmg damage.";
+            . "{$foe['ac']}$with) for $dmg damage$note.";
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
@@ -902,6 +928,7 @@ function gear(array $me): array
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
         'damage' => $weapon === null ? '1'
             : (isset($worn['shield']) ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
+        'damage_type' => $weapon['damage_type'] ?? 'bludgeoning', // an Unarmed Strike's
         'attack_mod' => $attack_mod,
         'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0),
         'finesse' => $finesse,
@@ -940,8 +967,9 @@ function objects_here(string $where, int $id): array
 {
     $col = match ($where) { 'room_id' => 'room_id', 'user_id' => 'user_id' }; // the only two allowed in SQL
     return q(
-        "SELECT o.id, o.worn, i.name, i.slot, i.dice, i.versatile, i.martial, i.finesse, i.light, i.vex, i.two_handed,
-         i.ac, i.armor FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ? ORDER BY i.name, o.id",
+        // o.id comes last, so it wins over i.id.
+        "SELECT i.*, o.id, o.worn FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ?
+         ORDER BY i.name, o.id",
         [$id]
     )->fetchAll();
 }

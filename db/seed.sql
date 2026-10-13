@@ -43,33 +43,56 @@ INSERT INTO delve (seed) VALUES (0);
 -- Monsters 1-16 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
--- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha.
+-- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
+-- extra damage and its type, then Resistances, Immunities and Vulnerabilities to damage.
 INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
-    con_save, int_save, wis_save, cha_save) VALUES
-(1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3),                 -- p.353
-(2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1),      -- p.302
-(3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1),           -- p.290
-(4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 0, 1, 1, 0, 0, 0),                 -- p.261
-(5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1),         -- p.290
-(6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2),                      -- p.364
-(7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 0, 3, 2, -2, -1, -3),           -- p.325
-(8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, 1, -2, 3, -4, 0, -3),                   -- p.343
-(9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1),    -- p.298
-(10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 2, 1, 0, -2, 0, -2),              -- p.289
-(11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0),               -- p.290
-(12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2, 2, 1, -1, 0, -1),    -- p.272
-(13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, 4, -1, 3, -3, -2, -2),             -- p.312
-(14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 4, 5, 2, 2, 2, 2),          -- p.261
-(15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2, 2, 2, 1, 0, 1), -- p.299
-(16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2),                  -- p.333
-(1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3),              -- SRD Giant Rat
-(1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1),           -- SRD Kobold Warrior
-(1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1) -- SRD Kobold Warrior
+    con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities,
+    vulnerabilities) VALUES
+(1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,                 -- p.353
+    'piercing', NULL, NULL, '', '', ''),
+(2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,      -- p.302
+    'piercing', NULL, NULL, '', '', ''),
+(3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1,           -- p.290
+    'piercing', NULL, NULL, '', '', ''),
+(4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 0, 1, 1, 0, 0, 0,                 -- p.261
+    'slashing', NULL, NULL, '', '', ''),
+(5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1,         -- p.290
+    'slashing', NULL, NULL, '', '', ''),
+(6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2,                      -- p.364
+    'piercing', NULL, NULL, '', '', ''),
+(7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 0, 3, 2, -2, -1, -3,           -- p.325
+    'piercing', NULL, NULL, '', 'poison', 'bludgeoning'),
+(8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, 1, -2, 3, -4, 0, -3,                   -- p.343
+    'bludgeoning', NULL, NULL, '', 'poison', ''),
+(9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1,    -- p.298
+    'slashing', NULL, NULL, '', '', ''),
+(10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 2, 1, 0, -2, 0, -2,              -- p.289
+    'piercing', NULL, NULL, '', '', ''),
+(11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0,               -- p.290
+    'slashing', NULL, NULL, '', '', ''),
+(12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2, 2, 1, -1, 0, -1,    -- p.272
+    'bludgeoning', NULL, NULL, '', '', ''),
+(13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, 4, -1, 3, -3, -2, -2,             -- p.312
+    'bludgeoning', NULL, NULL, '', '', ''),
+(14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 4, 5, 2, 2, 2, 2,          -- p.261
+    'slashing', NULL, NULL, '', '', ''),
+(15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1,     -- p.299
+    'slashing', '1d6', 'poison', '', '', ''),
+(16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2,                  -- p.333
+    'slashing', NULL, NULL, '', '', ''),
+(1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
+    'piercing', NULL, NULL, '', '', ''),
+(1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior
+    'piercing', NULL, NULL, '', '', ''),
+(1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1, -- SRD Kobold Warrior
+    'piercing', NULL, NULL, '', '', '')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
     str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
-    wis_save = new.wis_save, cha_save = new.cha_save;
+    wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
+    extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
+    vulnerabilities = new.vulnerabilities;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
@@ -106,53 +129,53 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 
 -- SRD 5.2.1 Weapons (p.91: melee only, as there are no ranged attacks), Armor (p.92) and Potion of Healing (p.99).
 -- Ids are fixed: the class kits (CLASSES in game.php) and the finds below use them. Mastery is modeled for Vex only.
-INSERT INTO items (id, name, slot, cost, dice, versatile, martial, finesse, light, vex, two_handed, ac, armor) VALUES
-(1, 'Club', 'weapon', 0.1, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL),
-(2, 'Dagger', 'weapon', 2, '1d4', NULL, FALSE, TRUE, TRUE, FALSE, FALSE, 0, NULL),
-(3, 'Greatclub', 'weapon', 0.2, '1d8', NULL, FALSE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(4, 'Handaxe', 'weapon', 5, '1d6', NULL, FALSE, FALSE, TRUE, TRUE, FALSE, 0, NULL),
-(5, 'Javelin', 'weapon', 0.5, '1d6', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(6, 'Light Hammer', 'weapon', 2, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL),
-(7, 'Mace', 'weapon', 5, '1d6', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(8, 'Quarterstaff', 'weapon', 0.2, '1d6', '1d8', FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(9, 'Sickle', 'weapon', 1, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL),
-(10, 'Spear', 'weapon', 1, '1d6', '1d8', FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(11, 'Battleaxe', 'weapon', 10, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(12, 'Flail', 'weapon', 10, '1d8', NULL, TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(13, 'Glaive', 'weapon', 20, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(14, 'Greataxe', 'weapon', 30, '1d12', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(15, 'Greatsword', 'weapon', 50, '2d6', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(16, 'Halberd', 'weapon', 20, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(17, 'Lance', 'weapon', 10, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(18, 'Longsword', 'weapon', 15, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(19, 'Maul', 'weapon', 10, '2d6', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(20, 'Morningstar', 'weapon', 15, '1d8', NULL, TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(21, 'Pike', 'weapon', 5, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL),
-(22, 'Rapier', 'weapon', 25, '1d8', NULL, TRUE, TRUE, FALSE, TRUE, FALSE, 0, NULL),
-(23, 'Scimitar', 'weapon', 25, '1d6', NULL, TRUE, TRUE, TRUE, FALSE, FALSE, 0, NULL),
-(24, 'Shortsword', 'weapon', 10, '1d6', NULL, TRUE, TRUE, TRUE, TRUE, FALSE, 0, NULL),
-(25, 'Trident', 'weapon', 5, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(26, 'Warhammer', 'weapon', 15, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(27, 'War Pick', 'weapon', 5, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL),
-(28, 'Whip', 'weapon', 2, '1d4', NULL, TRUE, TRUE, FALSE, FALSE, FALSE, 0, NULL),
-(31, 'Padded Armor', 'armor', 5, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 11, 'light'),
-(32, 'Leather Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 11, 'light'),
-(33, 'Studded Leather Armor', 'armor', 45, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 12, 'light'),
-(34, 'Hide Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 12, 'medium'),
-(35, 'Chain Shirt', 'armor', 50, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 13, 'medium'),
-(36, 'Scale Mail', 'armor', 50, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'medium'),
-(37, 'Breastplate', 'armor', 400, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'medium'),
-(38, 'Half Plate Armor', 'armor', 750, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 15, 'medium'),
-(39, 'Ring Mail', 'armor', 30, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'heavy'),
-(40, 'Chain Mail', 'armor', 75, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 16, 'heavy'),
-(41, 'Splint Armor', 'armor', 200, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 17, 'heavy'),
-(42, 'Plate Armor', 'armor', 1500, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 18, 'heavy'),
-(50, 'Shield', 'shield', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 2, NULL),
-(60, 'Potion of Healing', 'potion', 50, '2d4+2', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL)
+INSERT INTO items (id, name, slot, cost, dice, versatile, martial, finesse, light, vex, two_handed, ac, armor, damage_type) VALUES
+(1, 'Club', 'weapon', 0.1, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(2, 'Dagger', 'weapon', 2, '1d4', NULL, FALSE, TRUE, TRUE, FALSE, FALSE, 0, NULL, 'piercing'),
+(3, 'Greatclub', 'weapon', 0.2, '1d8', NULL, FALSE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'bludgeoning'),
+(4, 'Handaxe', 'weapon', 5, '1d6', NULL, FALSE, FALSE, TRUE, TRUE, FALSE, 0, NULL, 'slashing'),
+(5, 'Javelin', 'weapon', 0.5, '1d6', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'piercing'),
+(6, 'Light Hammer', 'weapon', 2, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(7, 'Mace', 'weapon', 5, '1d6', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(8, 'Quarterstaff', 'weapon', 0.2, '1d6', '1d8', FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(9, 'Sickle', 'weapon', 1, '1d4', NULL, FALSE, FALSE, TRUE, FALSE, FALSE, 0, NULL, 'slashing'),
+(10, 'Spear', 'weapon', 1, '1d6', '1d8', FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'piercing'),
+(11, 'Battleaxe', 'weapon', 10, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'slashing'),
+(12, 'Flail', 'weapon', 10, '1d8', NULL, TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(13, 'Glaive', 'weapon', 20, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'slashing'),
+(14, 'Greataxe', 'weapon', 30, '1d12', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'slashing'),
+(15, 'Greatsword', 'weapon', 50, '2d6', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'slashing'),
+(16, 'Halberd', 'weapon', 20, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'slashing'),
+(17, 'Lance', 'weapon', 10, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'piercing'),
+(18, 'Longsword', 'weapon', 15, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'slashing'),
+(19, 'Maul', 'weapon', 10, '2d6', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'bludgeoning'),
+(20, 'Morningstar', 'weapon', 15, '1d8', NULL, TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'piercing'),
+(21, 'Pike', 'weapon', 5, '1d10', NULL, TRUE, FALSE, FALSE, FALSE, TRUE, 0, NULL, 'piercing'),
+(22, 'Rapier', 'weapon', 25, '1d8', NULL, TRUE, TRUE, FALSE, TRUE, FALSE, 0, NULL, 'piercing'),
+(23, 'Scimitar', 'weapon', 25, '1d6', NULL, TRUE, TRUE, TRUE, FALSE, FALSE, 0, NULL, 'slashing'),
+(24, 'Shortsword', 'weapon', 10, '1d6', NULL, TRUE, TRUE, TRUE, TRUE, FALSE, 0, NULL, 'piercing'),
+(25, 'Trident', 'weapon', 5, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'piercing'),
+(26, 'Warhammer', 'weapon', 15, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'bludgeoning'),
+(27, 'War Pick', 'weapon', 5, '1d8', '1d10', TRUE, FALSE, FALSE, FALSE, FALSE, 0, NULL, 'piercing'),
+(28, 'Whip', 'weapon', 2, '1d4', NULL, TRUE, TRUE, FALSE, FALSE, FALSE, 0, NULL, 'slashing'),
+(31, 'Padded Armor', 'armor', 5, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 11, 'light', NULL),
+(32, 'Leather Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 11, 'light', NULL),
+(33, 'Studded Leather Armor', 'armor', 45, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 12, 'light', NULL),
+(34, 'Hide Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 12, 'medium', NULL),
+(35, 'Chain Shirt', 'armor', 50, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 13, 'medium', NULL),
+(36, 'Scale Mail', 'armor', 50, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'medium', NULL),
+(37, 'Breastplate', 'armor', 400, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'medium', NULL),
+(38, 'Half Plate Armor', 'armor', 750, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 15, 'medium', NULL),
+(39, 'Ring Mail', 'armor', 30, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 14, 'heavy', NULL),
+(40, 'Chain Mail', 'armor', 75, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 16, 'heavy', NULL),
+(41, 'Splint Armor', 'armor', 200, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 17, 'heavy', NULL),
+(42, 'Plate Armor', 'armor', 1500, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 18, 'heavy', NULL),
+(50, 'Shield', 'shield', 10, NULL, NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 2, NULL, NULL),
+(60, 'Potion of Healing', 'potion', 50, '2d4+2', NULL, FALSE, FALSE, FALSE, FALSE, FALSE, 0, NULL, NULL)
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, cost = new.cost, dice = new.dice, versatile = new.versatile,
     martial = new.martial, finesse = new.finesse, light = new.light, vex = new.vex, two_handed = new.two_handed,
-    ac = new.ac, armor = new.armor;
+    ac = new.ac, armor = new.armor, damage_type = new.damage_type;
 
 -- Finds around Greenest. INSERT IGNORE leaves them wherever they are (or whoever has them) on re-runs, but brings
 -- back the potion if it was drunk.

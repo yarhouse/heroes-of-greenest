@@ -121,15 +121,24 @@ $exits[$entrance][BACK[$link_dir]] = $link_room;
 // Resets: "MOB <vnum> TO <room> ..." places a monster.
 preg_match_all('/^M\w* (\d+) TO (\d+)/m', $sec['RESETS'], $placed, PREG_SET_ORDER);
 
-// The SRD stat blocks (monsters below Greenest's own 1001) from seed.sql, to borrow stats from by CR.
-preg_match_all(
-    "/^\\((\\d+), '((?:[^']|'')*)', (\\d+), '([^']+)', (-?\\d+), '((?:[^']|'')*)', (\\d+), (-?\\d+), '([^']+)', "
-        . "([\\d.]+), (\\d+), (-?\\d+(?:, -?\\d+){5})\\)/m",
+// The SRD stat blocks (monsters below Greenest's own 1001) from seed.sql, to borrow stats from by CR. Every column is
+// copied as seed.sql writes it, so a new monsters column needs no change here.
+preg_match(
+    '/^INSERT INTO monsters \(([^)]+)\) VALUES\n(.*?)\nAS new\n(ON DUPLICATE KEY UPDATE .*?);/ms',
     file_get_contents(__DIR__ . '/../db/seed.sql'),
-    $rows,
-    PREG_SET_ORDER
-);
-$srd = array_values(array_filter($rows, fn ($r) => $r[1] < 1001));
+    $seed
+) || fail('Found no monsters INSERT in db/seed.sql.');
+$columns = preg_split('/,\s*/', trim($seed[1]));
+preg_match_all("/\\(((?:'(?:[^']|'')*'|[^'()])*)\\)/", preg_replace('/--[^\n]*/', '', $seed[2]), $tuples);
+$srd = [];
+foreach ($tuples[1] as $tuple) {
+    preg_match_all("/'(?:[^']|'')*'|[^,\\s]+/", $tuple, $values);
+    count($values[0]) === count($columns) || fail("A monster in db/seed.sql doesn't match its columns: ($tuple)");
+    $r = array_combine($columns, $values[0]);
+    if ((int) $r['id'] < 1001) {
+        $srd[] = $r;
+    }
+}
 $srd || fail('Found no SRD stat blocks in db/seed.sql.');
 
 /** The first SRD stat block nearest in CR to a Riftshadow level. */
@@ -138,7 +147,7 @@ function borrow(int $level, array $srd): array
     $cr = $level / RIFT_LEVELS_PER_CR;
     $best = $srd[0];
     foreach ($srd as $r) {
-        if (abs($r[10] - $cr) < abs($best[10] - $cr)) {
+        if (abs((float) $r['cr'] - $cr) < abs((float) $best['cr'] - $cr)) {
             $best = $r;
         }
     }
@@ -170,9 +179,10 @@ ksort($used_mobs);
 $sql_mobs = [];
 foreach (array_keys($used_mobs) as $vnum) {
     $m = $mobs[$vnum];
-    [, , $srd_name, $ac, $hp, $init, $attack, $attacks, $to_hit, $damage, $cr, $xp, $saves] = borrow($m['level'], $srd);
-    $sql_mobs[] = "($vnum, " . str($m['name']) . ", $ac, '$hp', $init, '$attack', $attacks, $to_hit, '$damage', $cr, "
-        . "$xp, $saves) /* SRD $srd_name, Rift level {$m['level']} */";
+    $r = borrow($m['level'], $srd);
+    $srd_name = str_replace("''", "'", substr($r['name'], 1, -1));
+    $r = ['id' => $vnum, 'name' => str($m['name'])] + $r;
+    $sql_mobs[] = '(' . implode(', ', $r) . ") /* SRD $srd_name, Rift level {$m['level']} */";
 }
 
 $base = basename($file, ".are");
@@ -198,15 +208,7 @@ SQL;
 echo insert('INSERT INTO rooms (id, name, description)', $sql_rooms,
     "AS new\nON DUPLICATE KEY UPDATE name = new.name, description = new.description");
 echo insert('INSERT INTO exits (room_id, dir, to_room)', $sql_exits, '');
-echo insert(
-    'INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,'
-        . ' con_save, int_save, wis_save, cha_save)',
-    $sql_mobs,
-    "AS new\nON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative,\n"
-    . "    attack = new.attack, attacks = new.attacks, to_hit = new.to_hit, damage = new.damage,\n"
-    . "    cr = new.cr, xp = new.xp, str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save,\n"
-    . "    int_save = new.int_save, wis_save = new.wis_save, cha_save = new.cha_save"
-);
+echo insert('INSERT INTO monsters (' . implode(', ', $columns) . ')', $sql_mobs, "AS new\n{$seed[3]}");
 echo "-- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.\n";
 echo insert('INSERT INTO spawns (id, room_id, monster_id, dead_since)', $sql_spawns, '');
 

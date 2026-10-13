@@ -19,7 +19,8 @@ CREATE TABLE exits (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Monster templates, each from an SRD 5.2.1 stat block. Only the main attack is kept, made `attacks` times
--- (Multiattack), and its six saving throws; traits, reactions, bonus actions and spells are skipped.
+-- (Multiattack), its damage types, its six saving throws, and its damage Resistances, Immunities and
+-- Vulnerabilities (SRD 5.2.1 p.17); traits, reactions, bonus actions, spells and condition immunities are skipped.
 CREATE TABLE monsters (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -29,7 +30,12 @@ CREATE TABLE monsters (
     attack VARCHAR(30) NOT NULL,
     attacks TINYINT UNSIGNED NOT NULL,
     to_hit TINYINT NOT NULL,
-    damage VARCHAR(30) NOT NULL, -- dice, with any extra damage added in, e.g. '2d6+1d6+2'
+    damage VARCHAR(30) NOT NULL, -- dice, e.g. '2d6+4'
+    damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL,
+    extra_damage VARCHAR(30) NULL, -- a second roll of another type, e.g. the Hobgoblin Captain's 1d6 Poison
+    extra_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL,
     cr DECIMAL(5, 3) NOT NULL,
     xp INT UNSIGNED NOT NULL,
     str_save TINYINT NOT NULL,
@@ -37,7 +43,13 @@ CREATE TABLE monsters (
     con_save TINYINT NOT NULL,
     int_save TINYINT NOT NULL,
     wis_save TINYINT NOT NULL,
-    cha_save TINYINT NOT NULL
+    cha_save TINYINT NOT NULL,
+    resistances SET('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT '',
+    immunities SET('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT '',
+    vulnerabilities SET('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT ''
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read
@@ -81,7 +93,9 @@ CREATE TABLE items (
     vex BOOLEAN NOT NULL DEFAULT FALSE, -- the Vex mastery: a hit gives Advantage on your next attack
     two_handed BOOLEAN NOT NULL DEFAULT FALSE, -- can't be used with a shield
     ac TINYINT UNSIGNED NOT NULL DEFAULT 0, -- armor's base AC, or a shield's bonus
-    armor ENUM('light', 'medium', 'heavy') NULL -- Dex adds all, up to +2, or nothing to the armor's AC
+    armor ENUM('light', 'medium', 'heavy') NULL, -- Dex adds all, up to +2, or nothing to the armor's AC
+    damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL -- a weapon's
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".

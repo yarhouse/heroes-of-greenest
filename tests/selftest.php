@@ -267,8 +267,9 @@ try {
 
     // Combat, with every roll queued. Testa wears Kit A: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
     q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
-        con_save, int_save, wis_save, cha_save)
-        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25, 0, 0, 0, 0, 0, 0)");
+        con_save, int_save, wis_save, cha_save, damage_type)
+        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25, 0, 0, 0, 0, 0, 0,
+        'bludgeoning')");
     q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9999, 2, 9999, NOW() - INTERVAL 1 DAY)');
     $dice_queue = [6, 6];
     check(says(run_command(hero('Testa'), 'n'), 'A Training Dummy is here.'), 'a dead monster respawns when read');
@@ -361,9 +362,9 @@ try {
         'Rage costs no turn');
     $dice_queue = [15, 6, 15, 4]; // hit for 6 + 2 Str + 2 Rage; Slam hits for 4, halved
     $out = run_command(hero('Testc'), 'kill');
-    check(says($out, 'for 10 damage.') && says($out, 'for 2 damage (halved by your Rage).')
+    check(says($out, 'for 10 damage.') && says($out, 'for 2 damage (resisted).')
         && hero('Testc')['hp'] === 12,
-        'Rage: +2 damage on Strength attacks, half damage taken');
+        'Rage: +2 damage on Strength attacks, Resistance to Bludgeoning');
     check(says(run_command(hero('Testc'), 'score'), 'Rage 1/2   raging'), 'score shows the Rage');
     $dice_queue = [20, 1];
     run_command(hero('Testc'), 'flee');
@@ -397,6 +398,26 @@ try {
     $dice_queue = [20, 1];
     run_command(hero('Testc'), 'flee');
     check(hero('Testc')['conditions'] === '' && hero('Testc')['fighting'] === null, 'conditions end with the fight');
+
+    // Damage types (SRD 5.2.1 p.17): Vulnerability doubles, Resistance halves, Immunity takes it all.
+    q("UPDATE monsters SET vulnerabilities = 'slashing', extra_damage = '1d4', extra_type = 'poison' WHERE id = 9999");
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    q("UPDATE users SET room_id = 2, hp = max_hp WHERE name = 'Testc'");
+    $dice_queue = [10, 1, 15, 6, 15, 4, 3]; // Greataxe 6 + 2, doubled; Slam 4 Bludgeoning plus 3 Poison
+    $out = run_command(hero('Testc'), 'kill dummy');
+    check(says($out, 'for 16 damage (vulnerable).') && says($out, 'hits you (18 vs AC 13) for 7 damage.'),
+        'Vulnerability doubles; a second damage roll adds in');
+    run_command(hero('Testc'), 'rage');
+    $dice_queue = [15, 6, 15, 4, 3];
+    $out = run_command(hero('Testc'), 'kill');
+    check(says($out, 'for 20 damage (vulnerable).') && says($out, 'for 5 damage (resisted).'),
+        "Rage resists the Slam's Bludgeoning but not its Poison");
+    q("UPDATE monsters SET vulnerabilities = '', immunities = 'slashing' WHERE id = 9999");
+    $dice_queue = [15, 6, 1];
+    check(says(run_command(hero('Testc'), 'kill'), 'for 0 damage (immune).'), 'Immunity takes all of it');
+    q("UPDATE monsters SET immunities = '', extra_damage = NULL, extra_type = NULL WHERE id = 9999");
+    $dice_queue = [20, 1];
+    run_command(hero('Testc'), 'flee');
 
     save_hero('Testd', 'correct horse');
     create('Testd', 'rogue');
