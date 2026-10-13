@@ -127,7 +127,7 @@ function session_user(): ?array
     if (!is_int($id)) {
         return null;
     }
-    $me = q('SELECT id, name, room_id, last_event_id, pass_hash FROM users WHERE id = ?', [$id])->fetch();
+    $me = q('SELECT * FROM users WHERE id = ?', [$id])->fetch();
     if (!$me || !hash_equals(pw_version($me['pass_hash']), $_SESSION['pwv'] ?? '')) {
         logout();
         return null;

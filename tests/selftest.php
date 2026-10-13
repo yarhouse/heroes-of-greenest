@@ -17,7 +17,7 @@ function check(bool $ok, string $what): void
 }
 function hero(string $name): array
 {
-    return q('SELECT id, name, room_id, last_event_id, pass_hash FROM users WHERE name = ?', [$name])->fetch();
+    return q('SELECT * FROM users WHERE name = ?', [$name])->fetch();
 }
 function says(array $lines, string $text): bool
 {
@@ -67,6 +67,54 @@ try {
         }
     }
     check(says(run_command(hero('Testa'), 'help'), 'say <text>'), 'help lists commands');
+
+    // Combat. Stats are rigged so each outcome is certain: armor 0 and dexterity 0 never dodge,
+    // dexterity 10000 always wins initiative and escapes, max_dam 10000 always blocks escape and kills.
+    q("INSERT INTO monsters VALUES (9999, 'Training Dummy', 50, 1, 0, 1, 6, 6)");
+    q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9999, 2, 9999, NOW() - INTERVAL 1 DAY)');
+    q("UPDATE users SET dexterity = 0, hp = 15, gold = 100 WHERE name = 'Testa'");
+    check(says(run_command(hero('Testa'), 'n'), 'A Training Dummy is here.'), 'a dead monster respawns when read');
+    $hp = (int) q('SELECT hp FROM spawns WHERE id = 9999')->fetchColumn();
+    check($hp >= 40 && $hp <= 50, 'respawn rolls 80-100% of max HP');
+    check(says(run_command(hero('Testa'), 'kill goblin'), "don't see a goblin"), 'kill needs a monster that is here');
+    $round = run_command(hero('Testa'), 'k dum');
+    check(
+        says($round, 'You hit the Training Dummy') && says($round, 'hits you for 1 damage'),
+        'k <word prefix> fights a round'
+    );
+    check(hero('Testa')['hp'] === 14 && hero('Testa')['fighting'] === 9999, 'the round is saved');
+    check(says(run_command(hero('Testa'), 'look'), 'Training Dummy is here, fighting you.'), 'look shows your foe');
+    check(says(run_command(hero('Testa'), 's'), 'Flee first'), "can't walk out of a fight");
+
+    q('UPDATE monsters SET max_dam = 10000 WHERE id = 9999');
+    $out = run_command(hero('Testa'), 'flee');
+    check(says($out, 'blocks your way') && says($out, 'You have died!'), 'a failed flee gives the monster a swing');
+    $t = hero('Testa');
+    check($t['room_id'] === START_ROOM && $t['hp'] === 4 && $t['gold'] === 50 && $t['fighting'] === null,
+        'death: back to town with 1/4 HP and half the gold');
+
+    q("UPDATE users SET dexterity = 10000 WHERE name = 'Testa'");
+    q('UPDATE monsters SET max_dam = 1 WHERE id = 9999');
+    run_command(hero('Testa'), 'n');
+    run_command(hero('Testa'), 'kill dummy');
+    $out = run_command(hero('Testa'), 'flee');
+    check(says($out, 'You flee south') && hero('Testa')['fighting'] === null, 'flee escapes by a random exit');
+
+    run_command(hero('Testb'), 'n');
+    run_command(hero('Testb'), 'kill dummy');
+    run_command(hero('Testa'), 'n');
+    q('UPDATE spawns SET hp = 1 WHERE id = 9999');
+    $out = run_command(hero('Testa'), 'kill dummy');
+    $t = hero('Testa');
+    check(says($out, 'The Training Dummy dies!') && $t['exp'] >= 5 && $t['exp'] <= 6 && $t['gold'] >= 55,
+        'a kill pays Dragon Knight experience and gold');
+    check(hero('Testb')['fighting'] === null, 'a kill ends the fight for everyone on that monster');
+    check(!says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'dead monsters are gone');
+    check(says(run_command(hero('Testa'), 'kill'), 'Kill what?'), 'kill with no target');
+    q('UPDATE spawns SET dead_since = NOW() - INTERVAL 599 SECOND WHERE id = 9999');
+    check(!says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'no respawn before respawn_secs');
+    q('UPDATE spawns SET dead_since = NOW() - INTERVAL 601 SECOND WHERE id = 9999');
+    check(says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'respawn after respawn_secs');
 } finally {
     db()->rollBack();
 }

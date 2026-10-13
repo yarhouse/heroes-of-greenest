@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS events, users, exits, rooms;
+DROP TABLE IF EXISTS events, users, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -17,6 +17,32 @@ CREATE TABLE exits (
     FOREIGN KEY (to_room) REFERENCES rooms (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Monster templates. Stats and columns follow Dragon Knight's monsters table.
+CREATE TABLE monsters (
+    id INT UNSIGNED PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    max_hp SMALLINT UNSIGNED NOT NULL,
+    max_dam SMALLINT UNSIGNED NOT NULL,
+    armor SMALLINT UNSIGNED NOT NULL,
+    level SMALLINT UNSIGNED NOT NULL,
+    max_exp SMALLINT UNSIGNED NOT NULL,
+    max_gold SMALLINT UNSIGNED NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A monster living in a room. Alive while dead_since is NULL; respawns on the first read
+-- after dead_since + respawn_secs (no background ticks).
+CREATE TABLE spawns (
+    id INT UNSIGNED PRIMARY KEY,
+    room_id INT UNSIGNED NOT NULL,
+    monster_id INT UNSIGNED NOT NULL,
+    respawn_secs INT UNSIGNED NOT NULL DEFAULT 600,
+    hp SMALLINT NOT NULL DEFAULT 0,
+    dead_since DATETIME NULL,
+    KEY (room_id),
+    FOREIGN KEY (room_id) REFERENCES rooms (id),
+    FOREIGN KEY (monster_id) REFERENCES monsters (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".
 CREATE TABLE users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -27,7 +53,16 @@ CREATE TABLE users (
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
-    FOREIGN KEY (room_id) REFERENCES rooms (id)
+    -- Dragon Knight's starting stats.
+    hp SMALLINT NOT NULL DEFAULT 15,
+    max_hp SMALLINT UNSIGNED NOT NULL DEFAULT 15,
+    strength SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+    dexterity SMALLINT UNSIGNED NOT NULL DEFAULT 5,
+    gold INT UNSIGNED NOT NULL DEFAULT 100,
+    exp INT UNSIGNED NOT NULL DEFAULT 0,
+    fighting INT UNSIGNED NULL,
+    FOREIGN KEY (room_id) REFERENCES rooms (id),
+    FOREIGN KEY (fighting) REFERENCES spawns (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Things said in a room. Shown live to others there, and as echoes to later visitors.

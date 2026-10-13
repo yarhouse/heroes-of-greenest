@@ -14,8 +14,8 @@ mysql -u root -e "CREATE DATABASE greenest; CREATE USER 'greenest'@'localhost' I
   GRANT ALL ON greenest.* TO 'greenest'@'localhost';"
 
 cp config.php.example config.php        # then edit the DB settings
-mysql greenest < db/schema.sql          # DESTRUCTIVE: wipes all tables
-mysql greenest < db/seed.sql            # rooms; safe to re-run after editing
+mysql -u greenest -p greenest < db/schema.sql   # DESTRUCTIVE: wipes all tables
+mysql -u greenest -p greenest < db/seed.sql     # world content; safe to re-run (respawns monsters)
 php bin/adduser.php Aaron               # prompts for a password
 php tests/selftest.php                  # should print all "ok"
 php -S localhost:8080 -t public         # play at http://localhost:8080
