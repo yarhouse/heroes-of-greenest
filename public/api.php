@@ -37,4 +37,4 @@ if (strtolower(trim($cmd)) === 'quit') {
 }
 $lines = run_command($me, $cmd);
 $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
-reply(['lines' => $lines, 'score' => cmd_score(with_stats($me))]);
+reply(['lines' => $lines, 'score' => [...cmd_score(with_stats($me)), '', ...cmd_map($me)]]);

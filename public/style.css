@@ -1,4 +1,12 @@
 /* style.css :: one dark terminal look for both pages. */
+
+/* Served from here, not Google Fonts: the CSP is 'self' only, and Google's subsets drop the map's box-drawing glyphs. */
+@font-face {
+    font-family: "JetBrains Mono";
+    src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2");
+    font-display: swap;
+}
+
 :root {
     color-scheme: dark;
     --bg: #15130f;
@@ -16,7 +24,8 @@ body {
     margin: 0;
     background: var(--bg);
     color: var(--fg);
-    font: 16px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font: 16px/1.5 "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-ligatures: none; /* game text, not code: "->" stays two characters */
 }
 
 .play {

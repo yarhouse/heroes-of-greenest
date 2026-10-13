@@ -7,6 +7,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/delve.php';
 
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
+const MAP_STEPS = ['north' => [0, -1], 'south' => [0, 1], 'east' => [1, 0], 'west' => [-1, 0]]; // up/down: marks only
+const MAP_REACH = 2; // the map shows rooms up to this many grid steps each way
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
 const START_ROOM = 1;
@@ -29,6 +31,7 @@ const COMMANDS = [
     'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
     'sleep' => 'long rest in a safe place (1 h): recover everything',
     'score' => 'your abilities, HP, AC and XP',
+    'map' => 'rooms near you (also under score on wide screens)',
     'inventory' => 'what you carry and wear (or i)',
     'get <item>' => 'pick something up',
     'drop <item>' => 'put something down',
@@ -108,6 +111,7 @@ function run_command(array $me, string $input): array
         $verb === 'rest' => cmd_rest($me, 'short'),
         $verb === 'sleep' => cmd_rest($me, 'long'),
         $verb === 'score' => cmd_score($me),
+        $verb === 'map' => cmd_map($me),
         $verb === 'i' || $verb === 'inventory' => cmd_inventory($me),
         $verb === 'get' => cmd_get($me, trim($arg)),
         $verb === 'drop' => cmd_drop($me, trim($arg)),
@@ -632,6 +636,83 @@ function cmd_score(array $me): array
         "XP {$me['xp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
             . "   Gold {$me['gold']}",
     ];
+}
+
+/**
+ * Rooms within MAP_REACH steps on this floor, placed on a grid by walking exits out from the hero. Shows the
+ * shape (rooms, links, stairs, safe rooms) everywhere, but what's inside only for the room you're in.
+ */
+function cmd_map(array $me): array
+{
+    $here = (int) $me['room_id'];
+    $at = [$here => [0, 0]]; // room id => [x, y]; north is -y
+    $taken = ['0,0' => true];
+    $exits = [];
+    for ($todo = [$here]; $todo;) {
+        $rows = q(
+            'SELECT room_id, dir, to_room FROM exits WHERE room_id IN ('
+                . implode(',', array_fill(0, count($todo), '?')) . ')',
+            $todo
+        )->fetchAll();
+        $todo = [];
+        foreach ($rows as $e) {
+            $exits[$e['room_id']][] = $e['dir'];
+            if (!isset(MAP_STEPS[$e['dir']]) || isset($at[$e['to_room']])) {
+                continue;
+            }
+            $x = $at[$e['room_id']][0] + MAP_STEPS[$e['dir']][0];
+            $y = $at[$e['room_id']][1] + MAP_STEPS[$e['dir']][1];
+            // shortcut: a room whose cell is already taken is left off (a few in koboldmines), fine while rare.
+            if (abs($x) <= MAP_REACH && abs($y) <= MAP_REACH && !isset($taken["$x,$y"])) {
+                $at[$e['to_room']] = [$x, $y];
+                $taken["$x,$y"] = true;
+                $todo[] = $e['to_room'];
+            }
+        }
+    }
+    $ids = array_keys($at);
+    $safe = q(
+        'SELECT id FROM rooms WHERE safe AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
+        $ids
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    // Rooms are 3 characters wide, 4 apart; links sit between them and poke past the edge for exits off the map.
+    $grid = array_fill(0, 4 * MAP_REACH + 3, array_fill(0, 8 * MAP_REACH + 5, ' '));
+    foreach ($at as $id => [$x, $y]) {
+        $row = 2 * ($y + MAP_REACH) + 1;
+        $col = 4 * ($x + MAP_REACH) + 2;
+        $dirs = $exits[$id] ?? [];
+        $up = in_array('up', $dirs, true);
+        $down = in_array('down', $dirs, true);
+        $grid[$row][$col] = match (true) {
+            $id === $here => '@',
+            $up && $down => '↕',
+            $up => '^',
+            $down => 'v',
+            default => ' ',
+        };
+        [$grid[$row][$col - 1], $grid[$row][$col + 1]] = in_array($id, $safe, true) ? ['(', ')'] : ['[', ']'];
+        foreach ($dirs as $dir) {
+            match ($dir) {
+                'north' => $grid[$row - 1][$col] = '│',
+                'south' => $grid[$row + 1][$col] = '│',
+                'east' => $grid[$row][$col + 2] = '─',
+                'west' => $grid[$row][$col - 2] = '─',
+                default => null,
+            };
+        }
+    }
+    $lines = array_map(fn ($chars) => rtrim(implode('', $chars)), $grid);
+
+    // Not room_monsters(): its respawn rolls HP, and drawing the map must not spend dice.
+    $foes = q(
+        'SELECT m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ?
+         AND (s.dead_since IS NULL OR s.dead_since < NOW() - INTERVAL s.respawn_secs SECOND) ORDER BY s.id',
+        [$here]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $lines[] = $foes ? 'Here: ' . implode(', ', $foes) : 'Here: no monsters';
+    $lines[] = '@ you  ^ v stairs  ( ) safe';
+    return $lines;
 }
 
 function cmd_say(array $me, string $text): array

@@ -5,7 +5,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 ## Layout
 
-- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI, `style.css`.
+- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI, `style.css`, `fonts/` (JetBrains Mono, self-hosted).
 - `src/boot.php` — config, `db()`/`q()`, `web_init()` (headers, session, Origin check), login/logout/`session_user()`/`save_hero()`.
 - `src/game.php` — `run_command()` parser and `cmd_*` handlers. Handlers take the `users` row and return lines of plain text.
 - `src/delve.php` — the Delve: a dungeon below the Mill Cellar, generated from a weekly seed (rooms 50001-50999) and rebuilt when a hero next reaches its stair (room 50000).
