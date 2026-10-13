@@ -135,7 +135,10 @@ function session_user(): ?array
     return $me;
 }
 
-/** Creates a hero, or resets their password (and unlocks them) if the name exists. Returns '' or an error. */
+/**
+ * Creates a hero, who chooses a class and abilities on first login, or resets their password (and unlocks them) if
+ * the name exists. Returns '' or an error.
+ */
 function save_hero(string $name, string $password): string
 {
     if (!preg_match('/^[A-Za-z]{3,16}$/', $name)) {
@@ -146,18 +149,10 @@ function save_hero(string $name, string $password): string
         return 'Password must be 8-72 characters.';
     }
     $hash = password_hash($password, PASSWORD_DEFAULT);
-    $created = q(
+    q(
         'INSERT INTO users (name, pass_hash, last_event_id) SELECT ?, ?, COALESCE(MAX(id), 0) FROM events
          ON DUPLICATE KEY UPDATE pass_hash = ?, failed_logins = 0, locked_until = NULL',
         [$name, $hash, $hash]
-    )->rowCount() === 1; // 2 when it updated an existing hero
-    if ($created) {
-        // The SRD Fighter's starting equipment A: Chain Mail and Greatsword worn, a Flail spare (and 4 gp, the gold
-        // column's default). Its Javelins and Dungeoneer's Pack are left out: there are no thrown attacks or gear.
-        q(
-            'INSERT INTO objects (item_id, user_id, worn) SELECT id, ?, id <> 12 FROM items WHERE id IN (40, 15, 12)',
-            [db()->lastInsertId()]
-        );
-    }
+    );
     return '';
 }

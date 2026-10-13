@@ -16,6 +16,56 @@ const SHORT_REST_SECS = 600;
 const LONG_REST_SECS = 3600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
 const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR: Potions of Healing from CR 1
+const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+/** Ends my fight, and what lasts only for one: Rage and saved Advantage. A SET clause for UPDATE users. */
+const END_FIGHT = 'fighting = NULL, raging = FALSE, advantage = FALSE';
+
+/**
+ * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
+ * level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con
+ * Int Wis Cha order, armor training, and starting equipment A as [item id, worn]. Kits leave out ranged weapons,
+ * packs, tools and focuses. Every class but the Rogue is trained with every weapon (the Fighter's Fighting Style is
+ * Defense, the Cleric's Divine Order is Protector).
+ */
+const CLASSES = [
+    'fighter' => [
+        'name' => 'Fighter', 'die' => 10, 'hp' => 10, 'per_level' => 6, 'scores' => [15, 14, 13, 8, 10, 12],
+        'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 4,
+        'kit' => [[40, true], [15, true], [12, false]], // Chain Mail, Greatsword, Flail
+        'about' => 'd10 HP, any armor. Second Wind heals you; more attacks as you level.',
+    ],
+    'barbarian' => [
+        'name' => 'Barbarian', 'die' => 12, 'hp' => 12, 'per_level' => 7, 'scores' => [15, 13, 14, 10, 12, 8],
+        'armor' => ['light', 'medium', 'shield'], 'gold' => 15,
+        'kit' => [[14, true], [4, false], [4, false], [4, false], [4, false]], // Greataxe, 4 Handaxes
+        'about' => 'd12 HP, tough even unarmored. Rage to hit harder and take half damage.',
+    ],
+    'rogue' => [
+        'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
+        'armor' => ['light'], 'gold' => 8,
+        'kit' => [[32, true], [24, true], [2, false], [2, false]], // Leather Armor, Shortsword, 2 Daggers
+        'about' => 'd8 HP, light armor. Sneak Attack with a finesse weapon when you have Advantage or help.',
+    ],
+    'cleric' => [
+        'name' => 'Cleric', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [14, 8, 13, 10, 15, 12],
+        'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
+        'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
+        'about' => 'd8 HP, armor and shield. Spells that burn foes and heal you.',
+    ],
+];
+
+/**
+ * The Cleric's spells (SRD 5.2.1 p.159, p.138, p.121, p.139), as name => [level, usage, what it does]. Clerics have
+ * them all prepared. A spell uses the lowest spell slot left of its level or higher; a higher slot makes it stronger.
+ */
+const SPELLS = [
+    'sacred flame' => [0, '<monster>', 'cantrip: Dex save or 1d8 radiant damage'],
+    'guiding bolt' => [1, '<monster>', 'spell attack, 4d6 radiant, and Advantage on your next attack'],
+    'cure wounds' => [1, '', 'heal 2d8 + Wis; takes your turn in a fight'],
+    'healing word' => [1, '', 'heal 2d4 + Wis; a bonus action, so it costs no turn'],
+];
+
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
@@ -27,7 +77,9 @@ const COMMANDS = [
     'down' => 'move down (or d)',
     'kill <monster>' => 'attack; one round per command (or k)',
     'flee' => 'try to escape a fight to a random exit',
-    'second' => 'Second Wind: regain 1d10 + your level in HP',
+    'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
+    'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
+    'cast <spell>' => 'Cleric: cast a spell (cast alone lists them)',
     'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
     'sleep' => 'long rest in a safe place (1 h): recover everything',
     'score' => 'your abilities, HP, AC and XP',
@@ -79,20 +131,38 @@ function mod(int $score): int
     return (int) floor(($score - 10) / 2);
 }
 
-/** Runs one command for $me (a users row) and returns the output lines. */
-/** Adds the stats derived from level and gear to a `users` row. */
+/**
+ * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind or Rage uses, and
+ * 'slots' the Cleric's spell slots by spell level.
+ */
 function with_stats(array $me): array
 {
-    $me += q('SELECT prof_bonus, second_wind, attacks FROM levels WHERE level = ?', [$me['level']])->fetch();
+    $lv = q('SELECT * FROM levels WHERE level = ?', [$me['level']])->fetch();
+    $class = $me['class'];
+    $me += [
+        'prof_bonus' => $lv['prof_bonus'],
+        'attacks' => match ($class) {
+            'fighter' => $lv['attacks'],
+            'barbarian' => $me['level'] >= 5 ? 2 : 1, // Extra Attack
+            default => 1,
+        },
+        'uses' => match ($class) { 'fighter' => $lv['second_wind'], 'barbarian' => $lv['rages'], default => 0 },
+        'rage_damage' => $lv['rage_damage'],
+        'slots' => $class === 'cleric' ? array_map('intval', explode(',', $lv['slots'])) : [],
+    ];
     return $me + gear($me);
 }
 
+/** Runs one command for $me (a users row) and returns the output lines. */
 function run_command(array $me, string $input): array
 {
     q('UPDATE users SET last_seen = NOW() WHERE id = ?', [$me['id']]);
+    $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
+    if ($me['setup'] !== null) {
+        return cmd_setup($me, $input);
+    }
     $me = with_stats($me);
     $rested = $me['resting'] !== null ? finish_rest($me) : [];
-    $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
     if (str_starts_with($input, "'")) {
         $input = 'say ' . substr($input, 1);
     }
@@ -108,6 +178,8 @@ function run_command(array $me, string $input): array
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
         $verb === 'second' => cmd_second($me),
+        $verb === 'rage' => cmd_rage($me),
+        $verb === 'cast' => cmd_cast($me, trim($arg)),
         $verb === 'rest' => cmd_rest($me, 'short'),
         $verb === 'sleep' => cmd_rest($me, 'long'),
         $verb === 'score' => cmd_score($me),
@@ -138,6 +210,90 @@ function heard_since_last_command(array $me): array
     )->fetchAll();
     q('UPDATE users SET last_event_id = ? WHERE id = ?', [$max, $me['id']]);
     return array_map(fn ($r) => "{$r['name']} says: {$r['text']}", $rows);
+}
+
+/**
+ * Character creation, one step per command until the hero sets out: choose a class, then assign the Standard Array
+ * (which gives the class's kit and a fresh level 1 hero, even one who was played before), then 'begin'.
+ */
+function cmd_setup(array $me, string $input): array
+{
+    $word = strtolower($input);
+    $word = $word === 'l' || $word === 'look' ? '' : $word; // the play page sends 'look' on load: show the step again
+    if ($word === 'back' || $me['setup'] === 'class') {
+        return setup_class($me, $word === 'back' ? '' : $word);
+    }
+    if ($me['setup'] === 'abilities') {
+        return setup_abilities($me, $word);
+    }
+    if ($word !== 'begin') {
+        return setup_summary($me);
+    }
+    q('UPDATE users SET setup = NULL WHERE id = ?', [$me['id']]);
+    return ["You set out, {$me['name']}. Type 'help' for commands.", '', ...cmd_look($me)];
+}
+
+function setup_class(array $me, string $word): array
+{
+    foreach (CLASSES as $class => $c) {
+        if ($word !== '' && str_starts_with($class, $word)) {
+            q("UPDATE users SET class = ?, setup = 'abilities' WHERE id = ?", [$class, $me['id']]);
+            return ["You will be a {$c['name']}.", ...ability_prompt($class)];
+        }
+    }
+    q("UPDATE users SET setup = 'class' WHERE id = ?", [$me['id']]);
+    $lines = $word === '' ? [] : ["There's no '$word' class here."];
+    $lines[] = "Welcome to Greenest, {$me['name']}! Choose your class by typing its name:";
+    foreach (CLASSES as $class => $c) {
+        $lines[] = sprintf('  %-10s %s', $class, $c['about']);
+    }
+    return $lines;
+}
+
+function ability_prompt(string $class): array
+{
+    $c = CLASSES[$class];
+    $suggested = array_map(fn ($a, $s) => ucfirst(substr($a, 0, 3)) . " $s", ABILITIES, $c['scores']);
+    return [
+        'Now give each ability one of the scores ' . implode(' ', STANDARD_ARRAY) . '.',
+        "Suggested for a {$c['name']}: " . implode('  ', $suggested),
+        "Type 'ok' for that, or six numbers in Str Dex Con Int Wis Cha order (like '" . implode(' ', $c['scores'])
+            . "'). 'back' chooses another class.",
+    ];
+}
+
+function setup_abilities(array $me, string $word): array
+{
+    $c = CLASSES[$me['class']];
+    $words = preg_split('/[\s,]+/', $word, -1, PREG_SPLIT_NO_EMPTY);
+    $scores = $word === 'ok' ? $c['scores'] : array_map('intval', array_filter($words, 'ctype_digit'));
+    $sorted = $scores;
+    rsort($sorted);
+    if ($sorted !== STANDARD_ARRAY) {
+        $error = $word === '' ? [] : ['Use each of ' . implode(' ', STANDARD_ARRAY) . ' exactly once.'];
+        return [...$error, ...ability_prompt($me['class'])];
+    }
+    $hp = $c['hp'] + mod($scores[2]);
+    q(
+        "UPDATE users SET setup = 'confirm', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
+         wisdom = ?, charisma = ?, level = 1, xp = 0, hp = ?, max_hp = ?, hit_dice_spent = 0, uses_spent = 0,
+         slots_spent = '', gold = ?, room_id = ?, resting = NULL, rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
+        [...$scores, $hp, $hp, $c['gold'], START_ROOM, $me['id']]
+    );
+    q('DELETE FROM objects WHERE user_id = ?', [$me['id']]);
+    foreach ($c['kit'] as [$item, $worn]) {
+        q('INSERT INTO objects (item_id, user_id, worn) VALUES (?, ?, ?)', [$item, $me['id'], (int) $worn]);
+    }
+    return setup_summary(q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch());
+}
+
+function setup_summary(array $me): array
+{
+    return [
+        ...cmd_score(with_stats($me)),
+        ...cmd_inventory($me),
+        "Type 'begin' to set out, or 'back' to start over.",
+    ];
 }
 
 function cmd_look(array $me): array
@@ -204,8 +360,8 @@ function room_monsters(int $room_id): array
         ]);
     }
     return q(
-        'SELECT s.id, s.hp, m.name, m.ac, m.initiative, m.attack, m.attacks, m.to_hit, m.damage, m.cr, m.xp
-         FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL
+        'SELECT s.id, s.hp, m.name, m.ac, m.initiative, m.attack, m.attacks, m.to_hit, m.damage, m.cr, m.xp,
+         m.dex_save FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ? AND s.dead_since IS NULL
          ORDER BY s.id',
         [$room_id]
     )->fetchAll();
@@ -220,7 +376,7 @@ function find_foe(array $me, string $target): ?array
         }
     }
     if ($me['fighting'] !== null) { // never expected (a kill clears everyone fighting it), but don't strand the hero
-        q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
     }
     return null;
 }
@@ -241,9 +397,18 @@ function a_an(string $name): string
 
 function cmd_kill(array $me, string $target): array
 {
+    return fight($me, $target, 'hero_turn');
+}
+
+/**
+ * One round against $target (or the monster I'm fighting), starting the fight if need be, with $act as my action:
+ * a function (array &$me, array &$foe, array &$lines): bool that returns true if the monster died.
+ */
+function fight(array $me, string $target, callable $act, string $what = 'Kill what?'): array
+{
     $foe = find_foe($me, $target);
     if (!$foe) {
-        return [$target === '' || $me['fighting'] !== null ? 'Kill what?' : "You don't see a $target here."];
+        return [$target === '' || $me['fighting'] !== null ? $what : "You don't see a $target here."];
     }
     $lines = [];
     if ($me['fighting'] === null) {
@@ -257,31 +422,36 @@ function cmd_kill(array $me, string $target): array
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
     }
     $over = $me['foe_first']
-        ? monster_turn($me, $foe, $lines) || hero_turn($me, $foe, $lines)
-        : hero_turn($me, $foe, $lines) || monster_turn($me, $foe, $lines);
+        ? monster_turn($me, $foe, $lines) || $act($me, $foe, $lines)
+        : $act($me, $foe, $lines) || monster_turn($me, $foe, $lines);
     if (!$over) {
         $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
     }
     return $lines;
 }
 
-/** Fleeing is a contest: d20 + Dex modifier against the monster's d20 + initiative. Failing draws an attack. */
+/**
+ * Fleeing is a contest: d20 + Dex modifier against the monster's d20 + initiative. Failing draws an attack. A Rogue
+ * from level 2 always gets away, with Cunning Action's Disengage.
+ */
 function cmd_flee(array $me): array
 {
     $foe = $me['fighting'] === null ? null : find_foe($me, '');
     if (!$foe) {
         return ["You aren't fighting anything."];
     }
-    $mine = roll('1d20') + mod($me['dexterity']);
-    $theirs = roll('1d20') + $foe['initiative'];
-    if ($mine < $theirs) {
-        $lines = ["You try to break away, but the {$foe['name']} cuts you off ($mine vs $theirs)!"];
-        if (!monster_turn($me, $foe, $lines, 1)) {
-            $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.";
+    if ($me['class'] !== 'rogue' || $me['level'] < 2) {
+        $mine = roll('1d20') + mod($me['dexterity']);
+        $theirs = roll('1d20') + $foe['initiative'];
+        if ($mine < $theirs) {
+            $lines = ["You try to break away, but the {$foe['name']} cuts you off ($mine vs $theirs)!"];
+            if (!monster_turn($me, $foe, $lines, 1)) {
+                $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.";
+            }
+            return $lines;
         }
-        return $lines;
     }
-    q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
+    q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
     $dir = q('SELECT dir FROM exits WHERE room_id = ? ORDER BY RAND() LIMIT 1', [$me['room_id']])->fetchColumn();
     if ($dir === false) {
         return ["You break away from the {$foe['name']}, but there's nowhere to run."];
@@ -289,46 +459,86 @@ function cmd_flee(array $me): array
     return ["You flee $dir from the {$foe['name']}!", ...cmd_move(['fighting' => null] + $me, $dir)];
 }
 
-/** My attacks on $foe this round (more than one with Extra Attack). Returns true if it died. */
+/**
+ * My weapon attacks on $foe this round (more than one with Extra Attack). Returns true if it died. Rage adds damage to
+ * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse weapon, needs Advantage or another hero on the
+ * same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit gives
+ * Advantage on the next attack (shortcut: Vex is the only Weapon Mastery modeled, and for any weapon you wield).
+ */
 function hero_turn(array $me, array &$foe, array &$lines): bool
 {
+    $sneak = $me['class'] === 'rogue' && $me['finesse'];
+    $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     for ($i = 0; $i < $me['attacks']; $i++) {
-        $d20 = roll('1d20');
-        $total = $d20 + $me['attack_mod'] + $me['prof_bonus'];
+        [$d20, $adv] = attack_d20($me, $me['class'] === 'rogue' && $me['level'] >= 3);
+        $total = $d20 + $me['to_hit'];
+        $with = $adv ? ', with Advantage' : '';
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
-            $lines[] = "You miss the {$foe['name']} ($why).";
+            $lines[] = "You miss the {$foe['name']} ($why$with).";
             continue;
         }
-        $dmg = max(0, roll($me['damage'], $d20 === 20) + $me['attack_mod']);
-        $crit = $d20 === 20 ? 'Critical hit! ' : '';
-        $lines[] = "{$crit}You hit the {$foe['name']} ($total vs AC {$foe['ac']}) for $dmg damage.";
-        q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
-        $foe['hp'] -= $dmg;
-        if ($foe['hp'] <= 0) {
-            // The kill goes to whoever marks it dead first, in case two heroes land the last blow at once.
-            $won = q(
-                'UPDATE spawns SET dead_since = NOW() WHERE id = ? AND dead_since IS NULL AND hp <= 0',
-                [$foe['id']]
-            )->rowCount() === 1;
-            if ($won) {
-                win($me, $foe, $lines);
-            }
+        $crit = $d20 === 20;
+        $rage = $me['raging'] && $me['str_based'] ? $me['rage_damage'] : 0;
+        $dmg = roll($me['damage'], $crit) + $me['attack_mod'] + $rage;
+        $sneaking = $sneak && ($adv || $helped);
+        if ($sneaking) {
+            $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
+            $sneak = false;
+        }
+        $dmg = max(0, $dmg);
+        $lines[] = ($crit ? 'Critical hit! ' : '') . "You hit the {$foe['name']} ($total vs AC {$foe['ac']}$with) "
+            . "for $dmg damage" . ($sneaking ? ', with Sneak Attack.' : '.');
+        if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
+        }
+        if ($me['vex'] && !$me['advantage']) {
+            $me['advantage'] = true;
+            q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
         }
     }
     return false;
 }
 
+/** The d20 for my attack roll and whether it had Advantage (the higher of two), which $adv or my saved one gives. */
+function attack_d20(array &$me, bool $adv = false): array
+{
+    if ($me['advantage']) { // used up by this roll
+        $adv = true;
+        $me['advantage'] = false;
+        q('UPDATE users SET advantage = FALSE WHERE id = ?', [$me['id']]);
+    }
+    return [$adv ? max(roll('1d20'), roll('1d20')) : roll('1d20'), $adv];
+}
+
+/** Deals $dmg to $foe. Returns true if that killed it. */
+function hurt_foe(array $me, array &$foe, int $dmg, array &$lines): bool
+{
+    q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
+    $foe['hp'] -= $dmg;
+    if ($foe['hp'] > 0) {
+        return false;
+    }
+    // The kill goes to whoever marks it dead first, in case two heroes land the last blow at once.
+    $won = q(
+        'UPDATE spawns SET dead_since = NOW() WHERE id = ? AND dead_since IS NULL AND hp <= 0',
+        [$foe['id']]
+    )->rowCount() === 1;
+    if ($won) {
+        win($me, $foe, $lines);
+    }
+    return true;
+}
+
 /** The killer's reward: the stat block's full XP, a little gold by CR, levels, and maybe loot. */
 function win(array $me, array $foe, array &$lines): void
 {
-    q('UPDATE users SET fighting = NULL WHERE fighting = ?', [$foe['id']]);
+    q('UPDATE users SET ' . END_FIGHT . ' WHERE fighting = ?', [$foe['id']]);
     $cr = max(1, (int) ceil((float) $foe['cr']));
     $gold = roll($cr . 'd6');
     $xp = $me['xp'] + $foe['xp'];
     $level = (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn();
-    $gain = ($level - $me['level']) * (6 + mod($me['constitution'])); // the SRD's fixed Fighter HP per level
+    $gain = ($level - $me['level']) * (CLASSES[$me['class']]['per_level'] + mod($me['constitution'])); // fixed HP
     q(
         'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
         [$xp, $gold, $level, $gain, $gain, $me['id']]
@@ -354,13 +564,17 @@ function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bo
             continue;
         }
         $dmg = max(0, roll($foe['damage'], $d20 === 20));
+        // shortcut: Rage's Resistance halves all damage, though it's only for Bludgeoning, Piercing and Slashing;
+        // monsters' damage types aren't stored, and only a few add other types (the Hobgoblin Captain's poison).
+        $dmg = $me['raging'] ? intdiv($dmg, 2) : $dmg;
         $me['hp'] -= $dmg;
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}) for $dmg damage.";
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}) for $dmg damage"
+            . ($me['raging'] ? ' (halved by your Rage).' : '.');
         if ($me['hp'] <= 0) {
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
             $me['hp'] = (int) ceil($me['max_hp'] / 4);
             q(
-                'UPDATE users SET hp = ?, gold = gold - gold DIV 2, fighting = NULL, room_id = ? WHERE id = ?',
+                'UPDATE users SET hp = ?, gold = gold - gold DIV 2, ' . END_FIGHT . ', room_id = ? WHERE id = ?',
                 [$me['hp'], START_ROOM, $me['id']]
             );
             array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
@@ -375,7 +589,10 @@ function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bo
 /** Second Wind: a bonus action, so it costs no turn and the monster doesn't swing. */
 function cmd_second(array $me): array
 {
-    $left = $me['second_wind'] - $me['second_wind_spent'];
+    if ($me['class'] !== 'fighter') {
+        return ['Only Fighters have Second Wind.'];
+    }
+    $left = $me['uses'] - $me['uses_spent'];
     if ($left <= 0) {
         return ['You have no Second Wind left. Rest to recover it.'];
     }
@@ -383,11 +600,155 @@ function cmd_second(array $me): array
         return ["You're already at full health."];
     }
     $hp = min($me['max_hp'], $me['hp'] + roll('1d10') + $me['level']);
-    q('UPDATE users SET hp = ?, second_wind_spent = second_wind_spent + 1 WHERE id = ?', [$hp, $me['id']]);
+    q('UPDATE users SET hp = ?, uses_spent = uses_spent + 1 WHERE id = ?', [$hp, $me['id']]);
     return [
         'You catch your second wind and regain ' . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}, "
             . ($left - 1) . ' Second Wind left.',
     ];
+}
+
+/** Rage: a Bonus Action, so it costs no turn. It lasts until the fight ends (the SRD's limit is 10 minutes). */
+function cmd_rage(array $me): array
+{
+    if ($me['class'] !== 'barbarian') {
+        return ['Only Barbarians can Rage.'];
+    }
+    if ($me['fighting'] === null) {
+        return ['There is nothing here to rage at. Start a fight first.'];
+    }
+    if ($me['raging']) {
+        return ['You are already raging!'];
+    }
+    $left = $me['uses'] - $me['uses_spent'];
+    if ($left <= 0) {
+        return ['You have no Rage left. Rest to recover it.'];
+    }
+    q('UPDATE users SET raging = TRUE, uses_spent = uses_spent + 1 WHERE id = ?', [$me['id']]);
+    return [
+        "You fly into a Rage! +{$me['rage_damage']} damage with Strength attacks and half damage taken until the "
+            . 'fight ends. ' . ($left - 1) . ' Rage left.',
+    ];
+}
+
+/** Spell slots I've spent, one count per spell level I have slots for. */
+function slots_spent(array $me): array
+{
+    $spent = array_map('intval', array_filter(explode(',', $me['slots_spent']), 'strlen'));
+    return array_pad($spent, count($me['slots']), 0);
+}
+
+/** "2/2 1/3": spell slots left of each level. */
+function slots_left(array $me): string
+{
+    return implode(' ', array_map(fn ($max, $used) => ($max - $used) . "/$max", $me['slots'], slots_spent($me)));
+}
+
+/** cast <spell> [monster]: the spell's words can be shortened ("cast sac rat"). A Cleric's only. */
+function cmd_cast(array $me, string $arg): array
+{
+    if ($me['class'] !== 'cleric') {
+        return ["You don't know any spells."];
+    }
+    $words = preg_split('/\s+/', strtolower($arg), -1, PREG_SPLIT_NO_EMPTY);
+    $spell = null;
+    foreach (array_keys(SPELLS) as $name) {
+        [$first, $second] = explode(' ', $name);
+        if ($words && str_starts_with($first, $words[0])) {
+            $spell = $name;
+            array_shift($words);
+            if ($words && str_starts_with($second, $words[0])) {
+                array_shift($words);
+            }
+            break;
+        }
+    }
+    if ($spell === null) {
+        $dc = 8 + $me['prof_bonus'] + mod($me['wisdom']);
+        $lines = $arg === '' ? [] : ["You don't know a spell called '$arg'."];
+        $lines[] = "Your spells (save DC $dc, spell attack +" . ($dc - 8) . '; slots ' . slots_left($me) . '):';
+        foreach (SPELLS as $name => [, $usage, $what]) {
+            $lines[] = sprintf('  %-24s %s', trim("$name $usage"), $what);
+        }
+        return $lines;
+    }
+
+    // The lowest slot left of the spell's level or higher; cantrips need none.
+    $slot = 0;
+    if (SPELLS[$spell][0] > 0) {
+        foreach (slots_spent($me) as $i => $used) {
+            if ($i + 1 >= SPELLS[$spell][0] && $used < $me['slots'][$i]) {
+                $slot = $i + 1;
+                break;
+            }
+        }
+        if ($slot === 0) {
+            return ['You have no spell slots left for that. A long rest restores them.'];
+        }
+    }
+    $spend = function (array &$me) use ($slot): void {
+        $spent = slots_spent($me);
+        $spent[$slot - 1]++;
+        $me['slots_spent'] = implode(',', $spent);
+        q('UPDATE users SET slots_spent = ? WHERE id = ?', [$me['slots_spent'], $me['id']]);
+    };
+    $heal = function (array &$me, string $dice) use ($spell, $slot, $spend): string {
+        $spend($me);
+        $hp = min($me['max_hp'], $me['hp'] + max(0, roll($dice) + mod($me['wisdom'])));
+        q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+        $line = 'You cast ' . ucwords($spell) . ($slot > 1 ? " (level $slot)" : '') . ' and regain '
+            . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}. Slots " . slots_left($me) . '.';
+        $me['hp'] = $hp;
+        return $line;
+    };
+    $target = implode(' ', $words);
+    $at = 'Cast it at what?';
+
+    if ($spell === 'cure wounds' || $spell === 'healing word') {
+        if ($me['hp'] >= $me['max_hp']) {
+            return ["You're already at full health."];
+        }
+        $dice = 2 * $slot . ($spell === 'cure wounds' ? 'd8' : 'd4');
+        if ($spell === 'healing word' || $me['fighting'] === null) { // a Bonus Action costs no turn
+            return [$heal($me, $dice)];
+        }
+        return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($heal, $dice): bool {
+            $lines[] = $heal($me, $dice);
+            return false;
+        });
+    }
+    if ($spell === 'sacred flame') {
+        return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+            $dc = 8 + $me['prof_bonus'] + mod($me['wisdom']);
+            $save = roll('1d20') + $foe['dex_save'];
+            if ($save >= $dc) {
+                $lines[] = "The {$foe['name']} dodges your Sacred Flame (Dex save $save vs DC $dc).";
+                return false;
+            }
+            $dmg = roll(1 + ($me['level'] >= 5) + ($me['level'] >= 11) + ($me['level'] >= 17) . 'd8');
+            $lines[] = "Radiant flame descends on the {$foe['name']} (Dex save $save vs DC $dc) for $dmg damage.";
+            return hurt_foe($me, $foe, $dmg, $lines);
+        }, $at);
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($slot, $spend): bool {
+        $spend($me);
+        [$d20, $adv] = attack_d20($me);
+        $total = $d20 + $me['prof_bonus'] + mod($me['wisdom']);
+        $with = $adv ? ', with Advantage' : '';
+        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+            $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
+            $lines[] = "Your Guiding Bolt misses the {$foe['name']} ($why$with).";
+            return false;
+        }
+        $dmg = roll(3 + $slot . 'd6', $d20 === 20);
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your Guiding Bolt strikes the {$foe['name']} ($total vs AC "
+            . "{$foe['ac']}$with) for $dmg damage.";
+        if (hurt_foe($me, $foe, $dmg, $lines)) {
+            return true;
+        }
+        $me['advantage'] = true; // on the next attack roll against it (shortcut: only mine)
+        q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
+        return false;
+    }, $at);
 }
 
 /** Starts a short or long rest. It finishes on the first command after it's done, unless I leave the room. */
@@ -421,24 +782,27 @@ function finish_rest(array &$me): array
     if (!$done) {
         return [];
     }
+    $use = ['fighter' => 'Second Wind', 'barbarian' => 'Rage'][$me['class']] ?? null;
     if ($me['resting'] === 'long') {
-        [$me['hp'], $me['hit_dice_spent'], $me['second_wind_spent']] = [$me['max_hp'], 0, 0];
-        $line = 'You finish a long rest: full HP, all Hit Dice and Second Wind back.';
+        [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
+        $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
+            . ($me['slots'] ? ' and spell slots' : '') . ' back.';
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
-            $me['hp'] = min($me['max_hp'], $me['hp'] + max(0, roll('1d10') + mod($me['constitution'])));
+            $die = '1d' . CLASSES[$me['class']]['die'];
+            $me['hp'] = min($me['max_hp'], $me['hp'] + max(0, roll($die) + mod($me['constitution'])));
             $me['hit_dice_spent']++;
             $spent++;
         }
-        $me['second_wind_spent'] = max(0, $me['second_wind_spent'] - 1);
+        $me['uses_spent'] = max(0, $me['uses_spent'] - 1);
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice')
-            . " and regaining a Second Wind.";
+            . ($use ? " and regaining a $use." : '.');
     }
     $me['resting'] = null;
     q(
-        'UPDATE users SET hp = ?, hit_dice_spent = ?, second_wind_spent = ? WHERE id = ?',
-        [$me['hp'], $me['hit_dice_spent'], $me['second_wind_spent'], $me['id']]
+        'UPDATE users SET hp = ?, hit_dice_spent = ?, uses_spent = ?, slots_spent = ? WHERE id = ?',
+        [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent'], $me['id']]
     );
     return [$line . " HP {$me['hp']}/{$me['max_hp']}."];
 }
@@ -456,8 +820,9 @@ function loot(float $cr, int $room_id): ?string
 
 /**
  * My AC and attack from what I wear, by the SRD: armor's AC plus Dex (all for light, up to +2 for medium, none for
- * heavy) and +1 for the Defense fighting style, or 10 + Dex unarmored; +2 for a shield. A Versatile weapon does its
- * bigger die without a shield, Finesse uses the better of Str and Dex, and no weapon is an Unarmed Strike (1 + Str).
+ * heavy) and +1 for a Fighter's Defense fighting style; unarmored, 10 + Dex (+ Con for a Barbarian's Unarmored
+ * Defense); +2 for a shield. A Versatile weapon does its bigger die without a shield, Finesse uses the better of Str
+ * and Dex, and no weapon is an Unarmed Strike (1 + Str). The Proficiency Bonus is added only for a trained weapon.
  */
 function gear(array $me): array
 {
@@ -469,16 +834,37 @@ function gear(array $me): array
     }
     [$dex, $str] = [mod($me['dexterity']), mod($me['strength'])];
     $armor = $worn['armor'] ?? null;
-    $ac = $armor === null ? 10 + $dex
-        : $armor['ac'] + 1 + match ($armor['armor']) { 'light' => $dex, 'medium' => min($dex, 2), 'heavy' => 0 };
+    $ac = match (true) {
+        $armor !== null => $armor['ac'] + ($me['class'] === 'fighter' ? 1 : 0)
+            + match ($armor['armor']) { 'light' => $dex, 'medium' => min($dex, 2), 'heavy' => 0 },
+        $me['class'] === 'barbarian' => 10 + $dex + mod($me['constitution']),
+        default => 10 + $dex,
+    };
     $weapon = $worn['weapon'] ?? null;
+    $finesse = $weapon !== null && $weapon['finesse'];
+    $attack_mod = $finesse ? max($str, $dex) : $str;
     return [
         'ac' => $ac + ($worn['shield']['ac'] ?? 0),
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
         'damage' => $weapon === null ? '1'
             : (isset($worn['shield']) ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
-        'attack_mod' => $weapon !== null && $weapon['finesse'] ? max($str, $dex) : $str,
+        'attack_mod' => $attack_mod,
+        'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0),
+        'finesse' => $finesse,
+        'str_based' => !$finesse || $str >= $dex,
+        'vex' => $weapon !== null && $weapon['vex'] && $me['class'] !== 'cleric', // Clerics have no Weapon Mastery
     ];
+}
+
+/** If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons. */
+function trained(array $me, array $o): bool
+{
+    return match ($o['slot']) {
+        'armor' => in_array($o['armor'], CLASSES[$me['class']]['armor'], true),
+        'shield' => in_array('shield', CLASSES[$me['class']]['armor'], true),
+        'weapon' => $me['class'] !== 'rogue' || !$o['martial'] || $o['finesse'] || $o['light'],
+        'potion' => true,
+    };
 }
 
 /** An item's stats in a few words, for the inventory. */
@@ -486,7 +872,8 @@ function describe(array $o): string
 {
     return match ($o['slot']) {
         'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
-            . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : ''),
+            . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : '')
+            . ($o['light'] ? ', light' : '') . ($o['vex'] ? ', vex' : ''),
         'armor' => "{$o['armor']} armor, AC {$o['ac']}"
             . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],
         'shield' => "shield, +{$o['ac']} AC",
@@ -499,8 +886,8 @@ function objects_here(string $where, int $id): array
 {
     $col = match ($where) { 'room_id' => 'room_id', 'user_id' => 'user_id' }; // the only two allowed in SQL
     return q(
-        "SELECT o.id, o.worn, i.name, i.slot, i.dice, i.versatile, i.finesse, i.two_handed, i.ac, i.armor
-         FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ? ORDER BY i.name, o.id",
+        "SELECT o.id, o.worn, i.name, i.slot, i.dice, i.versatile, i.martial, i.finesse, i.light, i.vex, i.two_handed,
+         i.ac, i.armor FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ? ORDER BY i.name, o.id",
         [$id]
     )->fetchAll();
 }
@@ -576,6 +963,10 @@ function cmd_equip(array $me, string $target): array
     if ($o['worn']) {
         return ["You already have the {$o['name']} equipped."];
     }
+    $trained = trained($me, $o);
+    if (!$trained && $o['slot'] !== 'weapon') {
+        return ["A " . CLASSES[$me['class']]['name'] . " isn't trained to use the {$o['name']}."];
+    }
     if ($o['slot'] === 'armor' && $me['fighting'] !== null) { // the SRD's quickest armor takes a minute to don
         return ["You can't change armor in the middle of a fight!"];
     }
@@ -589,7 +980,7 @@ function cmd_equip(array $me, string $target): array
         $lines[] = "You put away the {$old['name']}.";
     }
     q('UPDATE objects SET worn = TRUE WHERE id = ?', [$o['id']]);
-    $lines[] = "You equip the {$o['name']}.";
+    $lines[] = "You equip the {$o['name']}." . ($trained ? '' : " You aren't trained with it: no Proficiency Bonus.");
     return $lines;
 }
 
@@ -619,20 +1010,24 @@ function cmd_drink(array $me, string $target): array
 function cmd_score(array $me): array
 {
     $abilities = [];
-    foreach (['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as $ability) {
+    foreach (ABILITIES as $ability) {
         $abilities[] = sprintf('%s %d (%+d)', ucfirst(substr($ability, 0, 3)), $me[$ability], mod($me[$ability]));
     }
     $next = q('SELECT xp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
+    $c = CLASSES[$me['class']];
+    $uses = fn ($what) => "   $what " . max(0, $me['uses'] - $me['uses_spent']) . "/{$me['uses']}";
     return [
-        "{$me['name']}, level {$me['level']} Fighter",
+        "{$me['name']}, level {$me['level']} {$c['name']}",
         implode('  ', $abilities),
         "HP {$me['hp']}/{$me['max_hp']}   AC {$me['ac']}   Proficiency Bonus +{$me['prof_bonus']}",
-        sprintf('%s %+d to hit, %s%+d damage', $me['weapon'], $me['attack_mod'] + $me['prof_bonus'], $me['damage'],
-            $me['attack_mod'])
+        sprintf('%s %+d to hit, %s%+d damage', $me['weapon'], $me['to_hit'], $me['damage'], $me['attack_mod'])
             . ($me['attacks'] > 1 ? ", {$me['attacks']} attacks a round" : ''),
-        'Hit Dice ' . ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d10   Second Wind "
-            . max(0, $me['second_wind'] - $me['second_wind_spent']) . "/{$me['second_wind']}"
-            . ($me['resting'] !== null ? "   Taking a {$me['resting']} rest" : ''),
+        'Hit Dice ' . ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d{$c['die']}" . match ($me['class']) {
+            'fighter' => $uses('Second Wind'),
+            'barbarian' => $uses('Rage') . ($me['raging'] ? ' (raging)' : ''),
+            'rogue' => '   Sneak Attack ' . intdiv($me['level'] + 1, 2) . 'd6',
+            'cleric' => '   Spell slots ' . slots_left($me),
+        } . ($me['resting'] !== null ? "   Taking a {$me['resting']} rest" : ''),
         "XP {$me['xp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
             . "   Gold {$me['gold']}",
     ];

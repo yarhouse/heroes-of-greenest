@@ -23,6 +23,13 @@ function says(array $lines, string $text): bool
 {
     return (bool) array_filter($lines, fn ($l) => str_contains($l, $text));
 }
+/** Takes a new hero through character creation: class, ability scores ('ok' for the suggested ones), begin. */
+function create(string $name, string $class, string $scores = 'ok'): array
+{
+    run_command(hero($name), $class);
+    run_command(hero($name), $scores);
+    return run_command(hero($name), 'begin');
+}
 /** The first line containing $text, or ''. */
 function line(array $lines, string $text): string
 {
@@ -35,6 +42,8 @@ try {
     check(save_hero('Te5t', 'long enough') !== '', 'rejects a bad name');
     check(save_hero('Testa', 'correct horse') === '', 'creates a hero');
     save_hero('Testb', 'battery staple');
+    create('Testa', 'fighter');
+    create('Testb', 'fighter');
 
     check(login('Nobody', 'correct horse') === 'Wrong name or password.', 'unknown name fails like a wrong password');
     for ($i = 0; $i < MAX_FAILED_LOGINS; $i++) {
@@ -46,6 +55,36 @@ try {
     check((session_user()['name'] ?? '') === 'Testa', 'session resolves to the hero');
     save_hero('Testa', 'new password!');
     check(session_user() === null, 'password reset ends old sessions');
+
+    // Character creation: choose a class, assign the Standard Array, then begin. Nothing else runs until then.
+    save_hero('Testc', 'correct horse');
+    $out = run_command(hero('Testc'), 'look');
+    check(says($out, 'Choose your class') && says($out, 'barbarian') && !says($out, "There's no"),
+        'a new hero chooses a class');
+    check(says(run_command(hero('Testc'), 'wizard'), "There's no 'wizard' class"), 'an unknown class is refused');
+    check(says(run_command(hero('Testc'), 'n'), "no 'n' class") && hero('Testc')['room_id'] === START_ROOM,
+        'no game commands during creation');
+    $out = run_command(hero('Testc'), 'cle');
+    check(says($out, 'You will be a Cleric') && says($out, 'Str 14  Dex 8  Con 13  Int 10  Wis 15  Cha 12'),
+        'a class by prefix, and its suggested scores');
+    check(says(run_command(hero('Testc'), '15 15 13 12 10 8'), 'exactly once')
+        && hero('Testc')['setup'] === 'abilities', 'scores must be the Standard Array');
+    check(says(run_command(hero('Testc'), 'back'), 'Choose your class'), "'back' returns to the classes");
+    run_command(hero('Testc'), 'rogue');
+    $out = run_command(hero('Testc'), '8 15 14 12 13 10');
+    check(says($out, 'Testc, level 1 Rogue') && says($out, 'Str 8 (-1)  Dex 15 (+2)  Con 14 (+2)')
+        && says($out, 'HP 10/10   AC 13') && says($out, 'Shortsword +4 to hit, 1d6+2 damage')
+        && says($out, 'Dagger') && says($out, "Type 'begin'"), 'own scores in order, then a look at the hero and kit');
+    $out = run_command(hero('Testc'), 'begin');
+    check(says($out, 'You set out') && says($out, 'Greenest Town Square') && hero('Testc')['setup'] === null,
+        "'begin' enters the world");
+    check(count(objects_here('user_id', (int) hero('Testc')['id'])) === 4 && hero('Testc')['gold'] === 8,
+        "the Rogue's kit: Leather Armor, Shortsword, 2 Daggers and 8 gp");
+    q("UPDATE users SET setup = 'class', level = 3, xp = 1000 WHERE name = 'Testc'");
+    create('Testc', 'barb');
+    $t = hero('Testc');
+    check($t['class'] === 'barbarian' && $t['level'] === 1 && $t['xp'] === 0 && $t['max_hp'] === 14
+        && count(objects_here('user_id', (int) $t['id'])) === 5, 'a hero sent back to creation starts over at level 1');
 
     check(says(run_command(hero('Testa'), 'look'), 'Exits: north'), 'look shows exits');
     check(says(run_command(hero('Testa'), 'n'), 'Before the Keep'), 'n moves north');
@@ -167,7 +206,7 @@ try {
     q("UPDATE users SET dexterity = 14 WHERE name = 'Testa'");
     $inv = run_command(hero('Testa'), 'i');
     check(str_contains(line($inv, 'Longsword'), 'weapon, 1d8 (1d10 two-handed)')
-        && str_contains(line($inv, 'Rapier'), '1d8, finesse  (equipped)')
+        && str_contains(line($inv, 'Rapier'), '1d8, finesse, vex  (equipped)')
         && str_contains(line($inv, 'Leather Armor'), 'light armor, AC 11 + Dex')
         && str_contains(line($inv, 'Shield'), 'shield, +2 AC'), 'inventory describes gear');
     check(says(run_command(hero('Testa'), 'drop longsword'), 'You drop the Longsword.'), 'drop');
@@ -207,7 +246,7 @@ try {
     $out = run_command(hero('Testa'), 'second');
     check(says($out, 'regain 1 HP. HP 11/11, 1 Second Wind left'), 'Second Wind heals 1d10 + level, up to max HP');
     check(says(run_command(hero('Testa'), 'second'), 'already at full health'), 'no Second Wind at full HP');
-    q("UPDATE users SET hp = 2, second_wind_spent = 2, rest_until = NOW(), resting = 'short' WHERE name = 'Testa'");
+    q("UPDATE users SET hp = 2, uses_spent = 2, rest_until = NOW(), resting = 'short' WHERE name = 'Testa'");
     $out = run_command(hero('Testa'), 'score');
     check(says($out, 'spending 0 Hit Dice') && says($out, 'HP 2/11'), 'no Hit Dice left, no healing');
     check(says($out, 'Second Wind 1/2'), 'a short rest gives back one Second Wind');
@@ -216,7 +255,7 @@ try {
     $out = run_command(hero('Testa'), 'score');
     $t = hero('Testa');
     check(says($out, 'You finish a long rest') && $t['hp'] === 11 && $t['hit_dice_spent'] === 0
-        && $t['second_wind_spent'] === 0, 'a long rest restores HP, Hit Dice and Second Wind');
+        && $t['uses_spent'] === 0, 'a long rest restores HP, Hit Dice and Second Wind');
     run_command(hero('Testa'), 'rest');
     $out = run_command(hero('Testa'), 'n');
     check(says($out, 'You stop resting.') && hero('Testa')['resting'] === null, 'leaving the room cancels a rest');
@@ -224,8 +263,8 @@ try {
     run_command(hero('Testa'), 's');
 
     // Combat, with every roll queued. Testa wears Kit A: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
-    q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp)
-        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25)");
+    q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, dex_save)
+        VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25, 0)");
     q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9999, 2, 9999, NOW() - INTERVAL 1 DAY)');
     $dice_queue = [6, 6];
     check(says(run_command(hero('Testa'), 'n'), 'A Training Dummy is here.'), 'a dead monster respawns when read');
@@ -298,6 +337,105 @@ try {
     $score = run_command(hero('Testa'), 'score');
     check(says($score, 'Proficiency Bonus +3') && says($score, '+5 to hit, 2d6+2 damage, 2 attacks a round')
         && says($score, 'Second Wind 2/3'), 'level 5: Proficiency Bonus +3, Extra Attack, more Second Wind');
+
+    // Classes, each against the Training Dummy (AC 10, Slam +3 for 1d4, Dex save +0) in front of the keep.
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testc'");
+    $score = run_command(hero('Testc'), 'score');
+    check(says($score, 'level 1 Barbarian') && says($score, 'HP 14/14   AC 13')
+        && says($score, 'Greataxe +4 to hit, 1d12+2 damage') && says($score, 'Hit Dice 1/1 d12   Rage 2/2'),
+        'Barbarian: Unarmored Defense (10 + Dex + Con), d12 Hit Dice, 2 Rages');
+    q('INSERT INTO objects (item_id, user_id) VALUES (40, ?)', [hero('Testc')['id']]);
+    check(says(run_command(hero('Testc'), 'equip chain'), "A Barbarian isn't trained to use the Chain Mail"),
+        'armor training by class');
+    check(says(run_command(hero('Testc'), 'rage'), 'Start a fight first'), 'Rage needs a fight');
+    check(says(run_command(hero('Testa'), 'rage'), 'Only Barbarians'), 'only Barbarians Rage');
+    q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
+    $dice_queue = [10, 1, 1, 1]; // initiative 11 vs 1; both roll natural 1s
+    run_command(hero('Testc'), 'kill dummy');
+    $out = run_command(hero('Testc'), 'rage');
+    check(says($out, 'You fly into a Rage! +2 damage') && says($out, '1 Rage left') && !says($out, 'Slam'),
+        'Rage costs no turn');
+    $dice_queue = [15, 6, 15, 4]; // hit for 6 + 2 Str + 2 Rage; Slam hits for 4, halved
+    $out = run_command(hero('Testc'), 'kill');
+    check(says($out, 'for 10 damage.') && says($out, 'for 2 damage (halved by your Rage).')
+        && hero('Testc')['hp'] === 12,
+        'Rage: +2 damage on Strength attacks, half damage taken');
+    check(says(run_command(hero('Testc'), 'score'), 'Rage 1/2 (raging)'), 'score shows the Rage');
+    $dice_queue = [20, 1];
+    run_command(hero('Testc'), 'flee');
+    check(hero('Testc')['raging'] === 0 && hero('Testc')['fighting'] === null, 'the Rage ends with the fight');
+
+    save_hero('Testd', 'correct horse');
+    create('Testd', 'rogue');
+    $id = hero('Testd')['id'];
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testd'");
+    check(says(run_command(hero('Testd'), 'score'), 'd8   Sneak Attack 1d6'), 'Rogue: d8 Hit Dice, Sneak Attack 1d6');
+    q('INSERT INTO objects (item_id, user_id) VALUES (15, ?), (50, ?)', [$id, $id]);
+    check(says(run_command(hero('Testd'), 'equip shield'), "isn't trained"), 'Rogues have no shield training');
+    check(says(run_command(hero('Testd'), 'equip greatsword'), 'no Proficiency Bonus')
+        && says(run_command(hero('Testd'), 'score'), 'Greatsword +1 to hit'),
+        'an untrained weapon: no Proficiency Bonus');
+    run_command(hero('Testd'), 'equip shortsword');
+    q('UPDATE spawns SET hp = 30 WHERE id = 9999');
+    $dice_queue = [10, 1, 12, 3, 1]; // initiative 12 vs 1; hit for 3 + 2, no Sneak Attack; Slam misses
+    $out = run_command(hero('Testd'), 'kill dummy');
+    check(says($out, '(16 vs AC 10) for 5 damage.') && hero('Testd')['advantage'] === 1,
+        "a Vex weapon's hit gives Advantage on the next attack");
+    $dice_queue = [2, 9, 4, 5, 1]; // d20s 2 and 9; hit for 4 + 2 + Sneak Attack 5; Slam misses
+    check(says(run_command(hero('Testd'), 'kill'), '(13 vs AC 10, with Advantage) for 11 damage, with Sneak Attack.'),
+        'Advantage takes the higher d20, and lets a Rogue Sneak Attack');
+    q("UPDATE users SET advantage = FALSE WHERE name = 'Testd'");
+    q("UPDATE users SET fighting = 9999 WHERE name = 'Testa'");
+    $dice_queue = [12, 1, 3, 1]; // hit for 1 + 2 + Sneak Attack 3; Slam misses
+    check(says(run_command(hero('Testd'), 'kill'), '(16 vs AC 10) for 6 damage, with Sneak Attack.'),
+        'Sneak Attack without Advantage when another hero fights the same foe');
+    q("UPDATE users SET fighting = NULL WHERE name = 'Testa'");
+    q("UPDATE users SET level = 2 WHERE name = 'Testd'");
+    $dice_queue = [1];
+    check(says(run_command(hero('Testd'), 'flee'), 'You flee south') && $dice_queue === [1],
+        'Cunning Action: from level 2 a Rogue always gets away');
+    $dice_queue = [];
+
+    save_hero('Teste', 'correct horse');
+    create('Teste', 'cleric');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
+    $score = run_command(hero('Teste'), 'score');
+    check(says($score, 'HP 9/9   AC 14') && says($score, 'Mace +4 to hit, 1d6+2 damage')
+        && says($score, 'd8   Spell slots 2/2'), 'Cleric: Chain Shirt and Shield, a Mace, 2 spell slots');
+    $out = run_command(hero('Teste'), 'cast');
+    check(says($out, 'save DC 12, spell attack +4; slots 2/2') && says($out, 'sacred flame <monster>'),
+        'cast lists spells');
+    check(says(run_command(hero('Testa'), 'cast sacred flame dummy'), "don't know any spells"), 'only Clerics cast');
+    check(says(run_command(hero('Teste'), 'cast fireball'), "don't know a spell called 'fireball'"), 'unknown spell');
+    check(says(run_command(hero('Teste'), 'cast sacred'), 'Cast it at what?'), 'an attack spell needs a target');
+    q('UPDATE spawns SET hp = 30 WHERE id = 9999');
+    $dice_queue = [10, 1, 11, 5, 1]; // initiative 9 vs 1; save 11 fails, 1d8 = 5; Slam misses
+    $out = run_command(hero('Teste'), 'cast sac flame dum');
+    check(says($out, 'Radiant flame descends on the Training Dummy (Dex save 11 vs DC 12) for 5 damage.')
+        && hero('Teste')['slots_spent'] === '', 'Sacred Flame: 1d8 on a failed Dex save, and no slot');
+    $dice_queue = [12, 1];
+    check(says(run_command(hero('Teste'), 'cast sacred'), 'dodges your Sacred Flame (Dex save 12 vs DC 12)'),
+        'a made save takes nothing; in a fight a spell goes at your foe');
+    $dice_queue = [11, 2, 3, 4, 5, 1]; // 15 vs AC 10 for 2+3+4+5; Slam misses
+    $out = run_command(hero('Teste'), 'cast guiding');
+    check(says($out, 'Your Guiding Bolt strikes the Training Dummy (15 vs AC 10) for 14 damage.')
+        && hero('Teste')['advantage'] === 1 && hero('Teste')['slots_spent'] === '1',
+        'Guiding Bolt: 4d6 and Advantage on your next attack, for a slot');
+    q("UPDATE users SET hp = 2 WHERE name = 'Teste'");
+    $dice_queue = [3, 4];
+    $out = run_command(hero('Teste'), 'cast healing word');
+    check(says($out, 'You cast Healing Word and regain 7 HP. HP 9/9. Slots 0/2.') && !says($out, 'Slam'),
+        'Healing Word: 2d4 + Wis, and it costs no turn');
+    check(says(run_command(hero('Teste'), 'cast guiding'), 'no spell slots left'), 'no slots, no spell');
+    q("UPDATE users SET level = 3, hp = 1, slots_spent = '4' WHERE name = 'Teste'");
+    $dice_queue = [1, 1, 1, 1, 1]; // a level 2 slot: 4d8 + Wis; Slam misses
+    $out = run_command(hero('Teste'), 'cast cure');
+    check(says($out, 'You cast Cure Wounds (level 2) and regain 6 HP. HP 7/9. Slots 0/4 1/2.')
+        && says($out, 'Slam misses'), 'Cure Wounds takes your turn; with the low slots spent, a higher one heals more');
+    q("UPDATE users SET fighting = NULL, room_id = 1, resting = 'long', rest_until = NOW() WHERE name = 'Teste'");
+    check(says(run_command(hero('Teste'), 'score'), 'and spell slots back') && hero('Teste')['slots_spent'] === '',
+        'a long rest restores spell slots');
+    check($dice_queue === [], 'every queued die was used by the classes');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");

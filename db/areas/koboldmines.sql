@@ -787,26 +787,26 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 (24773, 'east', 24758)
 ;
 
-INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp) VALUES
-(24601, 'Goblin Child', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200) /* SRD Goblin Boss, Rift level 14 */,
-(24610, 'Sturdy Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 25 */,
-(24620, 'Old Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 24 */,
-(24622, 'Massive Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 30 */,
-(24630, 'Strong Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 27 */,
-(24660, 'Rat', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200) /* SRD Goblin Boss, Rift level 10 */,
-(24661, 'Large Rat', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200) /* SRD Goblin Boss, Rift level 14 */,
-(24700, 'Hobgoblin Guard', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 23 */,
-(24701, 'Scrawny Soldier', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 23 */,
-(24702, 'Bulky Soldier', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 26 */,
-(24703, 'Goblin Commander', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 30 */,
-(24704, 'Goblin Warlord', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700) /* SRD Hobgoblin Captain, Rift level 33 */,
-(24705, 'Goblin Shaman', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700) /* SRD Hobgoblin Captain, Rift level 33 */,
-(24706, 'Goblin Chieftain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700) /* SRD Hobgoblin Captain, Rift level 35 */,
-(24707, 'Turret Guard', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450) /* SRD Ogre, Rift level 28 */
+INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, dex_save) VALUES
+(24601, 'Goblin Child', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 2) /* SRD Goblin Boss, Rift level 14 */,
+(24610, 'Sturdy Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 25 */,
+(24620, 'Old Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 24 */,
+(24622, 'Massive Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 30 */,
+(24630, 'Strong Miner', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 27 */,
+(24660, 'Rat', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 2) /* SRD Goblin Boss, Rift level 10 */,
+(24661, 'Large Rat', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 2) /* SRD Goblin Boss, Rift level 14 */,
+(24700, 'Hobgoblin Guard', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 23 */,
+(24701, 'Scrawny Soldier', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 23 */,
+(24702, 'Bulky Soldier', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 26 */,
+(24703, 'Goblin Commander', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 30 */,
+(24704, 'Goblin Warlord', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2) /* SRD Hobgoblin Captain, Rift level 33 */,
+(24705, 'Goblin Shaman', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2) /* SRD Hobgoblin Captain, Rift level 33 */,
+(24706, 'Goblin Chieftain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+1d6+2', 3, 700, 2) /* SRD Hobgoblin Captain, Rift level 35 */,
+(24707, 'Turret Guard', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, -1) /* SRD Ogre, Rift level 28 */
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative,
     attack = new.attack, attacks = new.attacks, to_hit = new.to_hit, damage = new.damage,
-    cr = new.cr, xp = new.xp;
+    cr = new.cr, xp = new.xp, dex_save = new.dex_save;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES

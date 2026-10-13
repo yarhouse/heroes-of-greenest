@@ -236,7 +236,7 @@ function delve_build(int $seed): void
     $d = delve_layout($seed);
     $range = [DELVE_STAIR + 1, DELVE_LAST];
     q(
-        'UPDATE users SET room_id = ?, fighting = NULL, resting = NULL, rest_until = NULL
+        'UPDATE users SET room_id = ?, ' . END_FIGHT . ', resting = NULL, rest_until = NULL
          WHERE room_id BETWEEN ? AND ?',
         [DELVE_STAIR, ...$range]
     );

@@ -53,11 +53,15 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 
 ## Rules
 
-The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored): heroes are
-Fighters with the Standard Array, combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
-levels follow Character Advancement. Heroes start with the SRD Fighter's equipment A (Chain Mail, Greatsword, Flail);
-gear is the SRD's melee weapons, armor, Shield and Potion of Healing, and AC and attacks come from what you wear. Rest
-with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. The plan and what's left
+The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
+login a hero chooses a class (Fighter, Barbarian, Rogue or Cleric) and assigns the Standard Array, and starts with that
+class's equipment A (melee gear only). Combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
+levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage and Unarmored
+Defense; Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with
+`flee`; Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds and Healing Word. The Vex weapon mastery gives
+Advantage on your next attack. Gear is the SRD's melee weapons, armor, Shield and Potion of Healing; AC and attacks
+come from what you wear, and you can wear only the armor your class is trained in. Rest with `rest` (short) or `sleep`
+(long) in a safe room: the town square or the Swaying Lantern. The plan and what's left
 out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
@@ -69,4 +73,4 @@ The font is JetBrains Mono (https://github.com/JetBrains/JetBrainsMono), SIL Ope
 
 ## Accounts
 
-Invite only. `php bin/adduser.php <Name>` creates a hero, or resets the password of an existing one (which also logs them out everywhere and clears any lockout).
+Invite only. `php bin/adduser.php <Name>` creates a hero (who chooses a class on first login), or resets the password of an existing one (which also logs them out everywhere and clears any lockout).

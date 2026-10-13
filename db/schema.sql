@@ -31,7 +31,8 @@ CREATE TABLE monsters (
     to_hit TINYINT NOT NULL,
     damage VARCHAR(30) NOT NULL, -- dice, with any extra damage added in, e.g. '2d6+1d6+2'
     cr DECIMAL(5, 3) NOT NULL,
-    xp INT UNSIGNED NOT NULL
+    xp INT UNSIGNED NOT NULL,
+    dex_save TINYINT NOT NULL -- for Sacred Flame
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read
@@ -48,17 +49,20 @@ CREATE TABLE spawns (
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- SRD Character Advancement (XP, Proficiency Bonus) and Fighter Features (Second Wind uses, attacks per round).
+-- SRD Character Advancement (XP, Proficiency Bonus) and the class tables' columns that grow with level.
 CREATE TABLE levels (
     level TINYINT UNSIGNED PRIMARY KEY,
     xp INT UNSIGNED NOT NULL,
     prof_bonus TINYINT UNSIGNED NOT NULL,
-    second_wind TINYINT UNSIGNED NOT NULL,
-    attacks TINYINT UNSIGNED NOT NULL
+    second_wind TINYINT UNSIGNED NOT NULL, -- Fighter
+    attacks TINYINT UNSIGNED NOT NULL, -- Fighter; a Barbarian gets 2 from level 5
+    rages TINYINT UNSIGNED NOT NULL, -- Barbarian
+    rage_damage TINYINT UNSIGNED NOT NULL, -- Barbarian
+    slots VARCHAR(30) NOT NULL -- Cleric spell slots by spell level, e.g. '4,3,2'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Item templates: the SRD 5.2.1 melee weapons, armor, Shield and Potion of Healing. Fighters are trained with all of
--- them, so there's no proficiency column. Ranged weapons, Strength requirements and Stealth are left out.
+-- Item templates: the SRD 5.2.1 melee weapons, armor, Shield and Potion of Healing. Ranged weapons, Strength
+-- requirements and Stealth are left out. Which classes are trained with what is CLASSES in game.php.
 CREATE TABLE items (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -66,7 +70,10 @@ CREATE TABLE items (
     cost DECIMAL(7, 2) NOT NULL, -- in gp; a kill's loot costs at most LOOT_GP_PER_CR x the monster's CR
     dice VARCHAR(10) NULL, -- a weapon's damage, or what a potion heals
     versatile VARCHAR(10) NULL, -- a Versatile weapon's damage when no shield is worn
+    martial BOOLEAN NOT NULL DEFAULT FALSE, -- a Martial weapon, not Simple
     finesse BOOLEAN NOT NULL DEFAULT FALSE, -- attacks with the better of Str and Dex
+    light BOOLEAN NOT NULL DEFAULT FALSE,
+    vex BOOLEAN NOT NULL DEFAULT FALSE, -- the Vex mastery: a hit gives Advantage on your next attack
     two_handed BOOLEAN NOT NULL DEFAULT FALSE, -- can't be used with a shield
     ac TINYINT UNSIGNED NOT NULL DEFAULT 0, -- armor's base AC, or a shield's bonus
     armor ENUM('light', 'medium', 'heavy') NULL -- Dex adds all, up to +2, or nothing to the armor's AC
@@ -82,7 +89,10 @@ CREATE TABLE users (
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
-    -- A level 1 Fighter with the SRD's Standard Array for Fighters; max HP is 10 + Con modifier.
+    -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
+    -- a class and ability scores on their next login; the defaults below are overwritten then.
+    setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric') NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,
@@ -93,9 +103,12 @@ CREATE TABLE users (
     intelligence TINYINT UNSIGNED NOT NULL DEFAULT 8,
     wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
-    hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one d10 Hit Die per level
-    second_wind_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    gold INT UNSIGNED NOT NULL DEFAULT 4, -- and save_hero() gives the rest of the Fighter's starting equipment A
+    hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
+    uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- Second Wind or Rage
+    slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
+    raging BOOLEAN NOT NULL DEFAULT FALSE, -- until the fight ends
+    advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
+    gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
     resting ENUM('short', 'long') NULL, -- finishes on the first command after rest_until
