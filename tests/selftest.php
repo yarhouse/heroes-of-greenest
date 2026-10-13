@@ -74,6 +74,39 @@ try {
     q("UPDATE users SET hp = 5, hp_at = NOW() - INTERVAL 1 DAY WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'score'), 'HP 15/15'), 'regen stops at max HP');
 
+    // Items. Testa is in the square with strength 5, dexterity 5, 15 max HP and nothing carried.
+    q("INSERT INTO items VALUES (9991, 'Test Blade', 'weapon', 99, 10, 0, 0, 0, 0),
+        (9992, 'Test Club', 'weapon', 99, 3, 0, 0, 0, 0), (9993, 'Test Charm', 'trinket', 99, 0, 0, 10, 2, 0)");
+    q('INSERT INTO objects (item_id, room_id) VALUES (9991, 1), (9992, 1), (9993, 1), (9993, 1), (9993, 1),
+        (9993, 1)');
+    check(says(run_command(hero('Testa'), 'look'), 'A Test Blade lies here.'), 'look shows items on the floor');
+    check(says(run_command(hero('Testa'), 'i'), 'carrying nothing'), 'empty inventory');
+    check(says(run_command(hero('Testa'), 'get bla'), 'You pick up the Test Blade.'), 'get by word prefix');
+    check(!says(run_command(hero('Testa'), 'look'), 'Test Blade'), 'got items leave the floor');
+    check(says(run_command(hero('Testb'), 'get blade'), "don't see a blade"), 'only one hero can get an item');
+    check(says(run_command(hero('Testa'), 'equip club'), "aren't carrying"), "can't equip what you don't carry");
+    run_command(hero('Testa'), 'equip blade');
+    check(says(run_command(hero('Testa'), 'score'), 'Attack 15'), 'a weapon adds to attack');
+    check(says(run_command(hero('Testa'), 'inventory'), '+10 attack  (equipped)'), 'inventory shows gear');
+    run_command(hero('Testa'), 'get club');
+    $out = run_command(hero('Testa'), 'equip club');
+    check(says($out, 'put away the Test Blade') && says(run_command(hero('Testa'), 'score'), 'Attack 8'),
+        'equipping a weapon swaps out the old one');
+    foreach (range(1, 4) as $_) {
+        run_command(hero('Testa'), 'get charm');
+        run_command(hero('Testa'), 'equip charm');
+    }
+    $score = run_command(hero('Testa'), 'score');
+    check(says($score, 'HP 45/45') && says($score, 'Strength 11') && says($score, 'Attack 14'),
+        'trinkets add max HP and strength (and strength adds to attack), and regen fills the new max');
+    check(says(run_command(hero('Testa'), 'equip charm'), 'already wear 3 trinkets'), 'at most 3 trinkets');
+    check(says(run_command(hero('Testa'), 'drop club'), 'You drop the Test Club.'), 'drop');
+    check(says(run_command(hero('Testa'), 'look'), 'A Test Club lies here.')
+        && says(run_command(hero('Testa'), 'score'), 'Attack 11'), 'dropped gear is on the floor and no longer worn');
+    $name = loot(1, START_ROOM);
+    check(says(run_command(hero('Testa'), 'look'), a_an($name) . ' lies here.'), 'loot lands on the floor');
+    q('UPDATE objects SET user_id = NULL, room_id = 1, worn = FALSE WHERE user_id = ?', [hero('Testa')['id']]);
+
     // Combat. Stats are rigged so each outcome is certain: armor 0 and dexterity 0 never dodge,
     // dexterity 10000 always wins initiative and escapes, max_dam 10000 always blocks escape and kills.
     q("INSERT INTO monsters VALUES (9999, 'Training Dummy', 50, 1, 0, 1, 6, 6)");
@@ -89,7 +122,10 @@ try {
         says($round, 'You hit the Training Dummy') && says($round, 'hits you for 1 damage'),
         'k <word prefix> fights a round'
     );
-    check(hero('Testa')['hp'] === 14 && hero('Testa')['fighting'] === 9999, 'regen is banked when a fight starts, and the round is saved');
+    check(
+        hero('Testa')['hp'] === 14 && hero('Testa')['fighting'] === 9999,
+        'regen is banked when a fight starts, and the round is saved'
+    );
     q("UPDATE users SET hp_at = NOW() - INTERVAL 1 DAY WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'score'), 'HP 14/15'), 'no regen while fighting');
     check(says(run_command(hero('Testa'), 'look'), 'Training Dummy is here, fighting you.'), 'look shows your foe');

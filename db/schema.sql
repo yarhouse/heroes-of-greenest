@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS events, users, levels, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS objects, events, users, items, levels, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -52,6 +52,19 @@ CREATE TABLE levels (
     dexterity SMALLINT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Item templates: Dragon Knight's items and drops tables in one. Worn bonuses are added to the hero's stats when read.
+CREATE TABLE items (
+    id INT UNSIGNED PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    slot ENUM('weapon', 'armor', 'shield', 'trinket') NOT NULL,
+    level SMALLINT UNSIGNED NOT NULL, -- dropped as loot by monsters of this level or higher
+    attack SMALLINT NOT NULL DEFAULT 0,
+    defense SMALLINT NOT NULL DEFAULT 0,
+    max_hp SMALLINT NOT NULL DEFAULT 0,
+    strength SMALLINT NOT NULL DEFAULT 0,
+    dexterity SMALLINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".
 CREATE TABLE users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -84,6 +97,20 @@ CREATE TABLE events (
     text VARCHAR(500) NOT NULL,
     created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY room_recent (room_id, id),
+    FOREIGN KEY (room_id) REFERENCES rooms (id),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- An item in the world: on a room's floor (room_id) or carried by a hero (user_id), never both.
+CREATE TABLE objects (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    item_id INT UNSIGNED NOT NULL,
+    room_id INT UNSIGNED NULL,
+    user_id INT UNSIGNED NULL,
+    worn BOOLEAN NOT NULL DEFAULT FALSE,
+    KEY (room_id),
+    KEY (user_id),
+    FOREIGN KEY (item_id) REFERENCES items (id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

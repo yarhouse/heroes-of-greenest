@@ -1,4 +1,4 @@
--- seed.sql :: world content. Safe to re-run: updates rooms, monsters and levels in place and rebuilds exits and spawns
+-- seed.sql :: world content. Safe to re-run: updates rooms, monsters, levels and items in place and rebuilds exits and spawns
 -- (respawning every monster and ending fights in progress), never touches heroes.
 -- MySQL 8 syntax (the "AS new" row alias); MariaDB doesn't support it.
 SET NAMES utf8mb4;
@@ -302,3 +302,77 @@ INSERT INTO levels (level, exp, hp, strength, dexterity) VALUES
 (100, 16777215, 0, 0, 0)
 AS new
 ON DUPLICATE KEY UPDATE exp = new.exp, hp = new.hp, strength = new.strength, dexterity = new.dexterity;
+
+-- Items 1-33 are Dragon Knight's items table and 101-132 its drops table, minus the MP-only and exp/gold-bonus
+-- drops (MP and those bonuses don't exist here). Skivvies and Clothes are renamed so "A ... lies here" reads.
+-- Loot level is DK's drop level for trinkets, and ceil(power / 5) for gear, since DK sold gear in shops.
+INSERT INTO items (id, name, slot, level, attack, defense, max_hp, strength, dexterity) VALUES
+(1, 'Stick', 'weapon', 1, 2, 0, 0, 0, 0),
+(2, 'Branch', 'weapon', 1, 4, 0, 0, 0, 0),
+(3, 'Club', 'weapon', 1, 5, 0, 0, 0, 0),
+(4, 'Dagger', 'weapon', 2, 8, 0, 0, 0, 0),
+(5, 'Hatchet', 'weapon', 3, 12, 0, 0, 0, 0),
+(6, 'Axe', 'weapon', 4, 16, 0, 0, 0, 0),
+(7, 'Brand', 'weapon', 5, 25, 0, 0, 0, 0),
+(8, 'Poleaxe', 'weapon', 7, 35, 0, 0, 0, 0),
+(9, 'Broadsword', 'weapon', 9, 45, 0, 0, 0, 0),
+(10, 'Battle Axe', 'weapon', 10, 50, 0, 0, 0, 0),
+(11, 'Claymore', 'weapon', 12, 60, 0, 0, 0, 0),
+(12, 'Dark Axe', 'weapon', 20, 100, 0, 0, 0, 0),
+(13, 'Dark Sword', 'weapon', 25, 125, 0, 0, 0, 0),
+(14, 'Bright Sword', 'weapon', 20, 100, 0, 0, 0, 0),
+(15, 'Magic Sword', 'weapon', 30, 150, 0, 0, 0, 0),
+(16, 'Destiny Blade', 'weapon', 50, 250, 0, 0, 50, 0),
+(17, 'Loincloth', 'armor', 1, 0, 2, 0, 0, 0),
+(18, 'Tunic', 'armor', 1, 0, 5, 0, 0, 0),
+(19, 'Leather Armor', 'armor', 2, 0, 10, 0, 0, 0),
+(20, 'Hard Leather Armor', 'armor', 5, 0, 25, 0, 0, 0),
+(21, 'Chain Mail', 'armor', 6, 0, 30, 0, 0, 0),
+(22, 'Bronze Plate', 'armor', 10, 0, 50, 0, 0, 0),
+(23, 'Iron Plate', 'armor', 20, 0, 100, 0, 0, 0),
+(24, 'Magic Armor', 'armor', 25, 0, 125, 0, 0, 0),
+(25, 'Dark Armor', 'armor', 30, 0, 150, 0, 0, 0),
+(26, 'Bright Armor', 'armor', 35, 0, 175, 0, 0, 0),
+(27, 'Destiny Raiment', 'armor', 40, 0, 200, 0, 0, 50),
+(28, 'Reed Shield', 'shield', 1, 0, 2, 0, 0, 0),
+(29, 'Buckler', 'shield', 1, 0, 4, 0, 0, 0),
+(30, 'Small Shield', 'shield', 2, 0, 10, 0, 0, 0),
+(31, 'Large Shield', 'shield', 6, 0, 30, 0, 0, 0),
+(32, 'Silver Shield', 'shield', 12, 0, 60, 0, 0, 0),
+(33, 'Destiny Aegis', 'shield', 20, 0, 100, 50, 0, 0),
+(101, 'Life Pebble', 'trinket', 1, 0, 0, 10, 0, 0),
+(102, 'Life Stone', 'trinket', 10, 0, 0, 25, 0, 0),
+(103, 'Life Rock', 'trinket', 25, 0, 0, 50, 0, 0),
+(107, 'Dragon''s Scale', 'trinket', 10, 0, 25, 0, 0, 0),
+(108, 'Dragon''s Plate', 'trinket', 30, 0, 50, 0, 0, 0),
+(109, 'Dragon''s Claw', 'trinket', 10, 25, 0, 0, 0, 0),
+(110, 'Dragon''s Tooth', 'trinket', 30, 50, 0, 0, 0, 0),
+(111, 'Dragon''s Tear', 'trinket', 35, 0, 0, 0, 50, 0),
+(112, 'Dragon''s Wing', 'trinket', 35, 0, 0, 0, 0, 50),
+(113, 'Demon''s Sin', 'trinket', 35, 0, 0, -50, 50, 0),
+(114, 'Demon''s Fall', 'trinket', 35, 0, 0, 0, 50, 0),
+(115, 'Demon''s Lie', 'trinket', 45, 0, 0, -100, 100, 0),
+(116, 'Demon''s Hate', 'trinket', 45, 0, 0, 0, 100, 0),
+(117, 'Angel''s Joy', 'trinket', 25, 0, 0, 25, 25, 0),
+(118, 'Angel''s Rise', 'trinket', 30, 0, 0, 50, 50, 0),
+(119, 'Angel''s Truth', 'trinket', 35, 0, 0, 75, 75, 0),
+(120, 'Angel''s Love', 'trinket', 40, 0, 0, 100, 100, 0),
+(121, 'Seraph''s Joy', 'trinket', 25, 0, 0, 0, 0, 25),
+(122, 'Seraph''s Rise', 'trinket', 30, 0, 0, 0, 0, 50),
+(123, 'Seraph''s Truth', 'trinket', 35, 0, 0, 0, 0, 75),
+(124, 'Seraph''s Love', 'trinket', 40, 0, 0, 0, 0, 100),
+(125, 'Ruby', 'trinket', 50, 0, 0, 150, 0, 0),
+(127, 'Emerald', 'trinket', 50, 0, 0, 0, 150, 0),
+(128, 'Topaz', 'trinket', 50, 0, 0, 0, 0, 150),
+(129, 'Obsidian', 'trinket', 50, 150, 0, 0, 0, 0),
+(130, 'Diamond', 'trinket', 50, 0, 150, 0, 0, 0)
+AS new
+ON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, level = new.level, attack = new.attack,
+    defense = new.defense, max_hp = new.max_hp, strength = new.strength, dexterity = new.dexterity;
+
+-- One-time finds around Greenest. INSERT IGNORE leaves them wherever they are (or whoever has them) on re-runs.
+INSERT IGNORE INTO objects (id, item_id, room_id) VALUES
+(1, 1, 4),    -- Stick, Market Lane
+(2, 18, 3),   -- Tunic, The Swaying Lantern
+(3, 28, 2),   -- Reed Shield, Before the Keep
+(4, 101, 7);  -- Life Pebble, Mill Cellar
