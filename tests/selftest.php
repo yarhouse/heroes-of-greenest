@@ -163,6 +163,15 @@ try {
     check(!says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'no respawn before respawn_secs');
     q('UPDATE spawns SET dead_since = NOW() - INTERVAL 601 SECOND WHERE id = 9999');
     check(says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'respawn after respawn_secs');
+
+    // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
+    q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
+    check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');
+    check(says(run_command(hero('Testa'), 'd'), 'Exits: east west up down'), 'converted exits inside the area');
+    check(says(run_command(hero('Testa'), 'u'), 'Exits: north down'), 'exits leaving the area are dropped');
+    check(says(run_command(hero('Testa'), 'n'), 'Southern Fields'), 'the way back to Greenest');
+    q("UPDATE users SET room_id = 24609 WHERE name = 'Testa'");
+    check(says(run_command(hero('Testa'), 'look'), 'A Goblin Child is here.'), 'converted monsters spawn');
 } finally {
     db()->rollBack();
 }

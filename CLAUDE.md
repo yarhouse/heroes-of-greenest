@@ -9,7 +9,9 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - `src/boot.php` — config, `db()`/`q()`, `web_init()` (headers, session, Origin check), login/logout/`session_user()`/`save_hero()`.
 - `src/game.php` — `run_command()` parser and `cmd_*` handlers. Handlers take the `users` row and return lines of plain text.
 - `bin/adduser.php` — the only way to create a hero or reset a password (no public signup, no email).
+- `bin/convert-area.php` — turns a Riftshadow `.are` file into `db/areas/<name>.sql` (see README). Run locally only.
 - `db/schema.sql` — all tables, DESTRUCTIVE. `db/seed.sql` — world content, re-runnable, never touches heroes.
+- `db/areas/*.sql` — GENERATED dungeons; never hand-edit. Load after `seed.sql`, which clears all exits and spawns.
 - `tests/selftest.php` — end-to-end checks, run in a rolled-back transaction.
 - `config.php` (gitignored, from `config.php.example`), `var/sessions/` (gitignored, created on first request).
 

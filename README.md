@@ -16,6 +16,7 @@ mysql -u root -e "CREATE DATABASE greenest; CREATE USER 'greenest'@'localhost' I
 cp config.php.example config.php        # then edit the DB settings
 mysql -u greenest -p greenest < db/schema.sql   # DESTRUCTIVE: wipes all tables
 mysql -u greenest -p greenest < db/seed.sql     # world content; safe to re-run (respawns monsters)
+cat db/areas/*.sql | mysql -u greenest -p greenest   # converted dungeons; load after seed.sql, every time
 php bin/adduser.php Aaron               # prompts for a password
 php tests/selftest.php                  # should print all "ok"
 php -S localhost:8080 -t public         # play at http://localhost:8080
@@ -27,9 +28,20 @@ php -S localhost:8080 -t public         # play at http://localhost:8080
 2. SSH in and `git clone` this repo into your home directory, e.g. `~/greenest`.
 3. Panel > Websites > your domain: set the **web directory** to `greenest/public`, so `config.php`, `src/`, `bin/` and `var/` are not reachable from the web.
 4. Turn on the free Let's Encrypt certificate and force HTTPS.
-5. On the server: create `config.php` with the DreamHost MySQL hostname, load `db/schema.sql` and `db/seed.sql`, run `php tests/selftest.php`, then `php bin/adduser.php <Name>` for each friend.
+5. On the server: create `config.php` with the DreamHost MySQL hostname, load `db/schema.sql`, `db/seed.sql` and `db/areas/*.sql`, run `php tests/selftest.php`, then `php bin/adduser.php <Name>` for each friend.
 
-Update later with `git pull` (and re-run `db/seed.sql` if rooms changed).
+Update later with `git pull` (and re-run `db/seed.sql` then `db/areas/*.sql` if the world changed).
+
+## Dungeons from Riftshadow
+
+`db/areas/*.sql` are generated from Riftshadow area files (sibling checkout `../riftshadow`) and committed, so the
+server never needs Riftshadow. To add or regenerate one, name the Greenest room and direction that lead into it:
+
+```sh
+php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600 > db/areas/koboldmines.sql
+```
+
+That links Southern Fields (6) south to the mines' entrance (24600), and back north.
 
 ## Accounts
 
