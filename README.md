@@ -56,8 +56,8 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
 login a hero chooses a class (Fighter, Barbarian, Rogue or Cleric) and assigns the Standard Array, and starts with that
 class's equipment A (melee gear only). Combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
-levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage and Unarmored
-Defense; Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with
+levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage, Unarmored
+Defense and from level 2 Reckless Attack; Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with
 `flee`; Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds and Healing Word. The Vex weapon mastery gives
 Advantage on your next attack. Gear is the SRD's melee weapons, armor, Shield and Potion of Healing; AC and attacks
 come from what you wear, and you can wear only the armor your class is trained in. Rest with `rest` (short) or `sleep`

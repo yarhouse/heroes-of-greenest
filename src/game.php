@@ -18,8 +18,8 @@ const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Drago
 const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR: Potions of Healing from CR 1
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
-/** Ends my fight, and what lasts only for one: Rage and saved Advantage. A SET clause for UPDATE users. */
-const END_FIGHT = 'fighting = NULL, raging = FALSE, advantage = FALSE';
+/** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
+const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = ''";
 
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
@@ -76,6 +76,7 @@ const COMMANDS = [
     'up' => 'move up (or u)',
     'down' => 'move down (or d)',
     'kill <monster>' => 'attack; one round per command (or k)',
+    'reckless <monster>' => 'Barbarian 2: attack with Advantage, but attacks on you get it too',
     'flee' => 'try to escape a fight to a random exit',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
@@ -176,6 +177,7 @@ function run_command(array $me, string $input): array
         in_array($verb, DIRS, true) => cmd_move($me, $verb),
         $verb === 'l' || $verb === 'look' => cmd_look($me),
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
+        $verb === 'reckless' => cmd_reckless($me, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
@@ -421,13 +423,24 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         );
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
     }
-    $over = $me['foe_first']
-        ? monster_turn($me, $foe, $lines) || $act($me, $foe, $lines)
-        : $act($me, $foe, $lines) || monster_turn($me, $foe, $lines);
+    $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
+    if (!$over) {
+        start_turn($me);
+        $over = $act($me, $foe, $lines) || (!$me['foe_first'] && monster_turn($me, $foe, $lines));
+    }
     if (!$over) {
         $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
     }
     return $lines;
+}
+
+/** My turn starts: every condition modeled so far ends here. */
+function start_turn(array &$me): void
+{
+    if ($me['conditions'] !== '') {
+        $me['conditions'] = '';
+        q("UPDATE users SET conditions = '' WHERE id = ?", [$me['id']]);
+    }
 }
 
 /**
@@ -440,6 +453,7 @@ function cmd_flee(array $me): array
     if (!$foe) {
         return ["You aren't fighting anything."];
     }
+    start_turn($me);
     if ($me['class'] !== 'rogue' || $me['level'] < 2) {
         $mine = roll('1d20') + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
@@ -469,8 +483,9 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
 {
     $sneak = $me['class'] === 'rogue' && $me['finesse'];
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
+    $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $me['str_based']);
     for ($i = 0; $i < $me['attacks']; $i++) {
-        [$d20, $adv] = attack_d20($me, $me['class'] === 'rogue' && $me['level'] >= 3);
+        [$d20, $adv] = attack_d20($me, $aim);
         $total = $d20 + $me['to_hit'];
         $with = $adv ? ', with Advantage' : '';
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
@@ -508,7 +523,36 @@ function attack_d20(array &$me, bool $adv = false): array
         $me['advantage'] = false;
         q('UPDATE users SET advantage = FALSE WHERE id = ?', [$me['id']]);
     }
-    return [$adv ? max(roll('1d20'), roll('1d20')) : roll('1d20'), $adv];
+    return [d20($adv), $adv];
+}
+
+/** A d20 for a D20 Test: with Advantage, the higher of two. */
+function d20(bool $adv): int
+{
+    return $adv ? max(roll('1d20'), roll('1d20')) : roll('1d20');
+}
+
+/** True if $who (a users row) has $condition. */
+function has(array $who, string $condition): bool
+{
+    return in_array($condition, explode(',', $who['conditions']), true);
+}
+
+/**
+ * Reckless Attack (Barbarian 2): a round of attacks with Advantage on Strength attack rolls, but attack rolls against
+ * me have Advantage until the start of my next turn.
+ */
+function cmd_reckless(array $me, string $target): array
+{
+    if ($me['class'] !== 'barbarian' || $me['level'] < 2) {
+        return ['Only Barbarians of level 2 or more attack recklessly.'];
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        $me['conditions'] = 'reckless'; // fight() just cleared the others
+        q("UPDATE users SET conditions = 'reckless' WHERE id = ?", [$me['id']]);
+        $lines[] = 'You throw aside all concern for defense!';
+        return hero_turn($me, $foe, $lines);
+    });
 }
 
 /** Deals $dmg to $foe. Returns true if that killed it. */
@@ -556,11 +600,13 @@ function win(array $me, array $foe, array &$lines): void
 function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bool
 {
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
-        $d20 = roll('1d20');
+        $adv = has($me, 'reckless');
+        $d20 = d20($adv);
         $total = $d20 + $foe['to_hit'];
         $its = "The {$foe['name']}'s {$foe['attack']}";
+        $with = $adv ? ', with Advantage' : '';
         if ($d20 === 1 || ($d20 < 20 && $total < $me['ac'])) {
-            $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . ').';
+            $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . "$with).";
             continue;
         }
         $dmg = max(0, roll($foe['damage'], $d20 === 20));
@@ -568,7 +614,8 @@ function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bo
         // monsters' damage types aren't stored, and only a few add other types (the Hobgoblin Captain's poison).
         $dmg = $me['raging'] ? intdiv($dmg, 2) : $dmg;
         $me['hp'] -= $dmg;
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}) for $dmg damage"
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '')
+            . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg damage"
             . ($me['raging'] ? ' (halved by your Rage).' : '.');
         if ($me['hp'] <= 0) {
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
@@ -1041,6 +1088,7 @@ function hero_sheet(array $me): array
         ],
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
+            ...explode(',', $me['conditions']),
             $me['resting'] !== null ? "taking a {$me['resting']} rest" : null,
         ])),
         'xp' => $me['xp'],

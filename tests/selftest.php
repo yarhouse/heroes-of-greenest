@@ -368,6 +368,35 @@ try {
     run_command(hero('Testc'), 'flee');
     check(hero('Testc')['raging'] === 0 && hero('Testc')['fighting'] === null, 'the Rage ends with the fight');
 
+    // Reckless Attack, the first condition: Advantage both ways until the start of the Barbarian's next turn.
+    q("UPDATE users SET room_id = 2, hp = max_hp WHERE name = 'Testc'");
+    q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Testc'), 'reckless dummy'), 'level 2 or more'), 'Reckless Attack needs level 2');
+    q("UPDATE users SET level = 2 WHERE name = 'Testc'");
+    $dice_queue = [10, 1, 3, 15, 6, 2, 12, 3]; // initiative 11 vs 1; I roll 3 and 15, it rolls 2 and 12
+    $out = run_command(hero('Testc'), 'reckless dummy');
+    check(says($out, 'You throw aside') && says($out, '(19 vs AC 10, with Advantage) for 8 damage.')
+        && says($out, 'Slam hits you (15 vs AC 13, with Advantage) for 3 damage.') && $dice_queue === [],
+        'Reckless Attack: Advantage on my attacks and on attacks against me');
+    check(says(run_command(hero('Testc'), 'score'), 'reckless'), 'score shows the condition');
+    $dice_queue = [15, 6, 12, 3];
+    $out = run_command(hero('Testc'), 'kill');
+    check(says($out, '(19 vs AC 10) for 8') && says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === []
+        && hero('Testc')['conditions'] === '', 'it ends at the start of my next turn');
+    q("UPDATE users SET foe_first = TRUE, conditions = 'reckless' WHERE name = 'Testc'");
+    $dice_queue = [2, 12, 3, 15, 6];
+    $out = run_command(hero('Testc'), 'kill');
+    check(says($out, 'hits you (15 vs AC 13, with Advantage)') && says($out, '(19 vs AC 10) for 8')
+        && $dice_queue === [], 'a foe that acts first in the round still has Advantage');
+    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
+    $dice_queue = [1, 20, 12, 3]; // the flee fails; one d20 for the attack it draws
+    $out = run_command(hero('Testc'), 'flee');
+    check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [], 'fleeing is my turn, so it ends first');
+    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
+    $dice_queue = [20, 1];
+    run_command(hero('Testc'), 'flee');
+    check(hero('Testc')['conditions'] === '' && hero('Testc')['fighting'] === null, 'conditions end with the fight');
+
     save_hero('Testd', 'correct horse');
     create('Testd', 'rogue');
     $id = hero('Testd')['id'];

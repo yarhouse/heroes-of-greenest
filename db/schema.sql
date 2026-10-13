@@ -108,6 +108,8 @@ CREATE TABLE users (
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
     raging BOOLEAN NOT NULL DEFAULT FALSE, -- until the fight ends
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
+    -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
+    conditions SET('reckless') NOT NULL DEFAULT '',
     gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
