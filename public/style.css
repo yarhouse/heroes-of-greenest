@@ -1,0 +1,101 @@
+/* style.css :: one dark terminal look for both pages. */
+:root {
+    color-scheme: dark;
+    --bg: #15130f;
+    --panel: #1f1c17;
+    --line: #3d362b;
+    --fg: #e8dfca;
+    --dim: #9b907a;
+    --accent: #d9a441;
+    --error: #e47a63;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.play {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+#log {
+    flex: 1;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#log .echo { color: var(--dim); margin-top: 0.75rem; }
+.error { color: var(--error); }
+
+#prompt {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--accent);
+}
+
+#cmd {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid transparent;
+    color: var(--fg);
+    font: inherit;
+    outline: none;
+}
+
+#cmd:focus-visible { border-bottom-color: var(--accent); }
+
+.login {
+    max-width: 22rem;
+    margin: 15vh auto 0;
+    padding: 0 1rem;
+}
+
+.login h1 { color: var(--accent); font-size: 1.5rem; font-weight: normal; }
+.login label { display: block; margin: 0.75rem 0; }
+
+.login input {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.5rem;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    font: inherit;
+}
+
+.login input:focus-visible, .login button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.login button {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    background: var(--accent);
+    color: var(--bg);
+    border: 0;
+    font: inherit;
+    cursor: pointer;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}

@@ -1,0 +1,7 @@
+<?php
+// config.php :: copy to config.php (gitignored) and fill in. DreamHost's panel lists the MySQL hostname.
+return [
+    'dsn' => 'mysql:host=localhost;dbname=greenest;charset=utf8mb4',
+    'db_user' => 'greenest',
+    'db_pass' => 'change-me',
+];
