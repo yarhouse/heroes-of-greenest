@@ -38,6 +38,18 @@ body {
 #log .echo { color: var(--dim); margin-top: 0.75rem; }
 .error { color: var(--error); }
 
+#hints {
+    margin: 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    border-top: 1px solid var(--line);
+    color: var(--dim);
+}
+
+#hints li { cursor: pointer; }
+#hints li:hover { color: var(--fg); }
+#hints b { display: inline-block; min-width: 11ch; color: var(--accent); font-weight: normal; }
+
 #prompt {
     display: flex;
     gap: 0.5rem;

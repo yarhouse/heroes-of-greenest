@@ -7,6 +7,20 @@ declare(strict_types=1);
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
+/** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
+const COMMANDS = [
+    'look' => 'describe where you are (or l)',
+    'north' => 'move north (or n)',
+    'south' => 'move south (or s)',
+    'east' => 'move east (or e)',
+    'west' => 'move west (or w)',
+    'up' => 'move up (or u)',
+    'down' => 'move down (or d)',
+    'say <text>' => "speak to the room ('<text> works too)",
+    'who' => 'every hero, and when last seen',
+    'help' => 'this list',
+    'quit' => 'log out',
+];
 
 /** Runs one command for $me (a users row) and returns the output lines. */
 function run_command(array $me, string $input): array
@@ -109,14 +123,11 @@ function cmd_who(): array
 
 function cmd_help(): array
 {
-    return [
-        'Commands:',
-        '  look, l          describe where you are',
-        '  n s e w u d      move (or north, south, ...)',
-        "  say <text>       speak to the room ('<text> works too)",
-        '  who              every hero, and when last seen',
-        '  quit             log out',
-    ];
+    $lines = ['Commands (start typing for suggestions, Tab to complete):'];
+    foreach (COMMANDS as $usage => $what) {
+        $lines[] = sprintf('  %-12s %s', $usage, $what);
+    }
+    return $lines;
 }
 
 function ago(int $mins): string

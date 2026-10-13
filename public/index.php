@@ -5,6 +5,7 @@ declare(strict_types=1);
 // index.php :: the login form, or the play page once logged in.
 
 require __DIR__ . '/../src/boot.php';
+require __DIR__ . '/../src/game.php';
 
 web_init();
 
@@ -34,10 +35,13 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <?php if ($me) : ?>
 <main class="play">
     <div id="log" role="log" aria-live="polite"></div>
+    <ul id="hints" role="listbox" aria-label="Matching commands" hidden></ul>
     <form id="prompt" autocomplete="off">
         <label for="cmd" class="sr-only">Command</label>
         <span aria-hidden="true">&gt;</span>
-        <input id="cmd" autofocus autocapitalize="off" spellcheck="false" maxlength="300">
+        <input id="cmd" autofocus autocapitalize="off" spellcheck="false" maxlength="300"
+            role="combobox" aria-autocomplete="list" aria-controls="hints" aria-expanded="false"
+            data-commands="<?= $e(json_encode(COMMANDS)) ?>">
     </form>
 </main>
 <script src="play.js"></script>

@@ -58,6 +58,15 @@ try {
     check(says($look, 'Testa said here just now: meet at the inn'), 'look shows recent speech');
     check(says($look, 'Testa is here.'), 'look shows heroes online here');
     check(!says(run_command(hero('Testb'), "say <b>x</b>\nfake line"), "\n"), 'control characters are stripped');
+
+    // Autocomplete offers COMMANDS, so each must reach a handler. quit is handled by api.php, not run_command.
+    foreach (array_keys(COMMANDS) as $usage) {
+        $verb = explode(' ', $usage)[0];
+        if ($verb !== 'quit') {
+            check(!says(run_command(hero('Testa'), $verb), 'Huh?'), "help lists '$verb' and it runs");
+        }
+    }
+    check(says(run_command(hero('Testa'), 'help'), 'say <text>'), 'help lists commands');
 } finally {
     db()->rollBack();
 }
