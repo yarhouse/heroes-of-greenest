@@ -75,11 +75,17 @@ function mod(int $score): int
 }
 
 /** Runs one command for $me (a users row) and returns the output lines. */
+/** Adds the stats derived from level and gear to a `users` row. */
+function with_stats(array $me): array
+{
+    $me += q('SELECT prof_bonus, second_wind, attacks FROM levels WHERE level = ?', [$me['level']])->fetch();
+    return $me + gear($me);
+}
+
 function run_command(array $me, string $input): array
 {
     q('UPDATE users SET last_seen = NOW() WHERE id = ?', [$me['id']]);
-    $me += q('SELECT prof_bonus, second_wind, attacks FROM levels WHERE level = ?', [$me['level']])->fetch();
-    $me += gear($me);
+    $me = with_stats($me);
     $rested = $me['resting'] !== null ? finish_rest($me) : [];
     $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
     if (str_starts_with($input, "'")) {

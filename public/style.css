@@ -71,6 +71,35 @@ body {
 
 #cmd:focus-visible { border-bottom-color: var(--accent); }
 
+/* The always-on score panel: desktop only, phones have no room beside the log and can still type `score`. */
+#score { display: none; }
+
+@media (min-width: 64rem) {
+    .play {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 34ch;
+        grid-template-rows: 1fr auto auto;
+        column-gap: 1.5rem;
+        max-width: 80rem;
+    }
+
+    .play > :not(#score) { grid-column: 1; }
+
+    #score {
+        display: block;
+        grid-column: 2;
+        grid-row: 1 / -1;
+        align-self: start;
+        padding: 0.75rem 1rem;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        white-space: pre-wrap;
+        color: var(--dim);
+    }
+
+    #score::first-line { color: var(--accent); }
+}
+
 .login {
     max-width: 22rem;
     margin: 15vh auto 0;

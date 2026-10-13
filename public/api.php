@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// api.php :: runs one player command and returns { lines: string[], logout?: true } as JSON.
+// api.php :: runs one player command and returns { lines: string[], score?: string[], logout?: true } as JSON.
 
 require __DIR__ . '/../src/boot.php';
 require __DIR__ . '/../src/game.php';
@@ -35,4 +35,6 @@ if (strtolower(trim($cmd)) === 'quit') {
     logout();
     reply(['lines' => ['Farewell, hero.'], 'logout' => true]);
 }
-reply(['lines' => run_command($me, $cmd)]);
+$lines = run_command($me, $cmd);
+$me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
+reply(['lines' => $lines, 'score' => cmd_score(with_stats($me))]);

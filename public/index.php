@@ -43,6 +43,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
             role="combobox" aria-autocomplete="list" aria-controls="hints" aria-expanded="false"
             data-commands="<?= $e(json_encode(COMMANDS)) ?>">
     </form>
+    <aside id="score" aria-label="Your hero"></aside>
 </main>
 <script src="play.js"></script>
 <?php else : ?>

@@ -5,6 +5,7 @@ const log = /** @type {HTMLElement} */ (document.getElementById('log'));
 const form = /** @type {HTMLFormElement} */ (document.getElementById('prompt'));
 const input = /** @type {HTMLInputElement} */ (document.getElementById('cmd'));
 const hints = /** @type {HTMLUListElement} */ (document.getElementById('hints'));
+const score = /** @type {HTMLElement} */ (document.getElementById('score'));
 /** @type {Record<string, string>} usage => what it does, from COMMANDS in game.php */
 const commands = JSON.parse(input.dataset.commands ?? '{}');
 
@@ -30,9 +31,10 @@ async function send(cmd) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cmd }),
         });
-        /** @type {{ lines?: string[], logout?: boolean }} */
+        /** @type {{ lines?: string[], score?: string[], logout?: boolean }} */
         const data = await res.json();
         for (const line of data.lines ?? []) print(line);
+        if (data.score) score.textContent = data.score.join('\n');
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
         print('The connection falters. Try again.', 'error');
