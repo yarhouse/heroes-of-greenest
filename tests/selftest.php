@@ -292,6 +292,58 @@ try {
     check(says(run_command(hero('Testa'), 'n'), 'Southern Fields'), 'the way back to Greenest');
     q("UPDATE users SET room_id = 24609 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'look'), 'A Goblin Child is here.'), 'converted monsters spawn');
+
+    // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
+    $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
+    foreach ([1, 2, 3, 202642, 202701] as $seed) {
+        $d = delve_layout($seed);
+        $links = [];
+        foreach ($d['exits'] as [$from, $dir, $to]) {
+            $links[$from][$dir] = $to;
+        }
+        $two_way = true;
+        foreach ($d['exits'] as [$from, $dir, $to]) {
+            $two_way = $two_way && ($links[$to][$back[$dir]] ?? null) === $from;
+        }
+        $dist = [DELVE_STAIR + 1 => 0];
+        for ($queue = [DELVE_STAIR + 1]; $queue; ) {
+            $id = array_shift($queue);
+            foreach ($links[$id] as $to) {
+                if (!isset($dist[$to])) {
+                    $dist[$to] = $dist[$id] + 1;
+                    $queue[] = $to;
+                }
+            }
+        }
+        $n = count($d['rooms']);
+        check($n >= DELVE_MIN_ROOMS && $n <= DELVE_MAX_ROOMS && max(array_keys($d['rooms'])) <= DELVE_LAST
+            && $two_way && count($dist) === $n && $dist[$d['boss']] === max($dist) && isset($d['spawns'][$d['boss']])
+            && !isset($d['spawns'][DELVE_STAIR + 1]) && max($d['spawns']) <= 16,
+            "Delve seed $seed: $n rooms, all reachable, exits two-way, boss in the farthest room, SRD monsters");
+    }
+    check(delve_layout(7) === delve_layout(7) && delve_layout(7) !== delve_layout(8), 'same seed, same Delve');
+
+    // Real heroes online inside would block a rebuild, so mark them offline (rolled back with everything else).
+    q("UPDATE users SET last_seen = NULL WHERE name NOT IN ('Testa', 'Testb')");
+    q('UPDATE delve SET seed = 0');
+    q("UPDATE users SET room_id = 7 WHERE name IN ('Testa', 'Testb')");
+    $out = run_command(hero('Testa'), 'd');
+    check(says($out, 'The Delve Stair') && says($out, 'Exits: up down')
+        && q('SELECT seed FROM delve')->fetchColumn() === delve_week(),
+        "arriving at the stair builds this week's Delve");
+    $d = delve_layout(delve_week());
+    check(says(run_command(hero('Testa'), 'd'), $d['rooms'][DELVE_STAIR + 1][0]), 'down into its first room');
+    check(q('SELECT COUNT(*) FROM objects WHERE room_id = ?', [$d['boss']])->fetchColumn() === 1,
+        'the boss guards a treasure');
+    q('UPDATE delve SET seed = 1');
+    run_command(hero('Testb'), 'd');
+    check(q('SELECT seed FROM delve')->fetchColumn() === 1 && hero('Testa')['room_id'] === DELVE_STAIR + 1,
+        "a stale Delve isn't rebuilt while a hero online is inside");
+    q("UPDATE users SET last_seen = NOW() - INTERVAL 1 HOUR WHERE name = 'Testa'");
+    run_command(hero('Testb'), 'u');
+    run_command(hero('Testb'), 'd');
+    check(q('SELECT seed FROM delve')->fetchColumn() === delve_week() && hero('Testa')['room_id'] === DELVE_STAIR,
+        'once they are offline it is rebuilt, and heroes left inside wake at the stair');
 } finally {
     db()->rollBack();
 }

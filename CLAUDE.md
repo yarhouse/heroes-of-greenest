@@ -8,6 +8,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI, `style.css`.
 - `src/boot.php` — config, `db()`/`q()`, `web_init()` (headers, session, Origin check), login/logout/`session_user()`/`save_hero()`.
 - `src/game.php` — `run_command()` parser and `cmd_*` handlers. Handlers take the `users` row and return lines of plain text.
+- `src/delve.php` — the Delve: a dungeon below the Mill Cellar, generated from a weekly seed (rooms 50001-50999) and rebuilt when a hero next reaches its stair (room 50000).
 - `bin/adduser.php` — the only way to create a hero or reset a password (no public signup, no email).
 - `bin/convert-area.php` — turns a Riftshadow `.are` file into `db/areas/<name>.sql` (see README). Run locally only.
 - `db/schema.sql` — all tables, DESTRUCTIVE. `db/seed.sql` — world content, re-runnable, never touches heroes.
@@ -19,7 +20,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 - No background ticks. The world changes only when someone sends a command; anything time-based (respawn, rests) is computed from timestamps when read.
 - Rules are SRD 5.2.1 (5e), from `ref/SRD_CC_v5.2.1.pdf`; monster stats always come from an SRD stat block, never invented. Keep the SRD attribution (README, `seed.sql`, generated areas, login page).
-- Every random number goes through `roll()` in `game.php`; tests queue exact die faces in `$dice_queue`.
+- Every random number goes through `roll()` in `game.php`; tests queue exact die faces in `$dice_queue`. The one exception is the Delve's layout, which uses `mt_rand` seeded with the week so the same seed always builds the same dungeon.
 - Combat and other multi-step actions resolve one round per command.
 - Group play is asynchronous: shared world, `say` echoes persist in rooms, `who` shows last seen.
 - Borrow freely from `../riftshadow/area/*.are` (rooms, mobs, objects; ROM/Diku license: keep credits, non-commercial) and ideas from `../dragon-knight`. Their code is reference only.

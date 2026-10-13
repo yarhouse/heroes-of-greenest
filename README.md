@@ -43,6 +43,14 @@ php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600 > db/a
 
 That links Southern Fields (6) south to the mines' entrance (24600), and back north.
 
+## The Delve
+
+Below the Mill Cellar, a stair leads down into the Delve, a dungeon that is generated anew each week: a goblin warren,
+a crypt or a flooded cave of 15-20 rooms, with harder monsters the deeper you go and a boss guarding a treasure in the
+farthest room. It is rebuilt when a hero next reaches the stair in a new week, but never while someone online is inside;
+heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebuilds it. The generator is
+`src/delve.php`.
+
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored): heroes are

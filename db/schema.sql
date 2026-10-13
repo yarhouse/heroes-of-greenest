@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS objects, events, users, items, levels, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -128,4 +128,9 @@ CREATE TABLE objects (
     FOREIGN KEY (item_id) REFERENCES items (id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- One row: the seed the Delve (src/delve.php) was last generated from. seed.sql sets it to 0 to force a rebuild.
+CREATE TABLE delve (
+    seed INT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

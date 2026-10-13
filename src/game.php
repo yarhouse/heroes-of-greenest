@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 // game.php :: command parser and handlers. Handlers return lines of plain text; the client never renders HTML.
 
+require_once __DIR__ . '/delve.php';
+
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
@@ -174,6 +176,9 @@ function cmd_move(array $me, string $dir): array
     $to = q('SELECT to_room FROM exits WHERE room_id = ? AND dir = ?', [$me['room_id'], $dir])->fetchColumn();
     if ($to === false) {
         return ["You can't go $dir."];
+    }
+    if ((int) $to === DELVE_STAIR) {
+        delve_refresh();
     }
     q('UPDATE users SET room_id = ?, resting = NULL, rest_until = NULL WHERE id = ?', [$to, $me['id']]);
     $stop = $me['resting'] !== null ? ['You stop resting.'] : [];
