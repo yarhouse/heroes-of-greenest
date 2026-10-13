@@ -57,18 +57,19 @@ CREATE TABLE levels (
     attacks TINYINT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Item templates: Dragon Knight's items and drops tables in one. Until SRD gear (d20 plan milestone 2), worn items
--- have no effect: every hero fights with STARTER_KIT.
+-- Item templates: the SRD 5.2.1 melee weapons, armor, Shield and Potion of Healing. Fighters are trained with all of
+-- them, so there's no proficiency column. Ranged weapons, Strength requirements and Stealth are left out.
 CREATE TABLE items (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
-    slot ENUM('weapon', 'armor', 'shield', 'trinket') NOT NULL,
-    level SMALLINT UNSIGNED NOT NULL, -- dropped as loot by monsters of this level or higher
-    attack SMALLINT NOT NULL DEFAULT 0,
-    defense SMALLINT NOT NULL DEFAULT 0,
-    max_hp SMALLINT NOT NULL DEFAULT 0,
-    strength SMALLINT NOT NULL DEFAULT 0,
-    dexterity SMALLINT NOT NULL DEFAULT 0
+    slot ENUM('weapon', 'armor', 'shield', 'potion') NOT NULL,
+    cost DECIMAL(7, 2) NOT NULL, -- in gp; a kill's loot costs at most LOOT_GP_PER_CR x the monster's CR
+    dice VARCHAR(10) NULL, -- a weapon's damage, or what a potion heals
+    versatile VARCHAR(10) NULL, -- a Versatile weapon's damage when no shield is worn
+    finesse BOOLEAN NOT NULL DEFAULT FALSE, -- attacks with the better of Str and Dex
+    two_handed BOOLEAN NOT NULL DEFAULT FALSE, -- can't be used with a shield
+    ac TINYINT UNSIGNED NOT NULL DEFAULT 0, -- armor's base AC, or a shield's bonus
+    armor ENUM('light', 'medium', 'heavy') NULL -- Dex adds all, up to +2, or nothing to the armor's AC
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".
@@ -94,7 +95,7 @@ CREATE TABLE users (
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one d10 Hit Die per level
     second_wind_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
-    gold INT UNSIGNED NOT NULL DEFAULT 100,
+    gold INT UNSIGNED NOT NULL DEFAULT 4, -- and save_hero() gives the rest of the Fighter's starting equipment A
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
     resting ENUM('short', 'long') NULL, -- finishes on the first command after rest_until

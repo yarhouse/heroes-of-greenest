@@ -91,76 +91,59 @@ INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks) VALUES
 AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks;
 
--- Items 1-33 are Dragon Knight's items table and 101-132 its drops table, minus the MP-only and exp/gold-bonus
--- drops (MP and those bonuses don't exist here). Skivvies and Clothes are renamed so "A ... lies here" reads.
--- Loot level is DK's drop level for trinkets, and ceil(power / 5) for gear, since DK sold gear in shops.
-INSERT INTO items (id, name, slot, level, attack, defense, max_hp, strength, dexterity) VALUES
-(1, 'Stick', 'weapon', 1, 2, 0, 0, 0, 0),
-(2, 'Branch', 'weapon', 1, 4, 0, 0, 0, 0),
-(3, 'Club', 'weapon', 1, 5, 0, 0, 0, 0),
-(4, 'Dagger', 'weapon', 2, 8, 0, 0, 0, 0),
-(5, 'Hatchet', 'weapon', 3, 12, 0, 0, 0, 0),
-(6, 'Axe', 'weapon', 4, 16, 0, 0, 0, 0),
-(7, 'Brand', 'weapon', 5, 25, 0, 0, 0, 0),
-(8, 'Poleaxe', 'weapon', 7, 35, 0, 0, 0, 0),
-(9, 'Broadsword', 'weapon', 9, 45, 0, 0, 0, 0),
-(10, 'Battle Axe', 'weapon', 10, 50, 0, 0, 0, 0),
-(11, 'Claymore', 'weapon', 12, 60, 0, 0, 0, 0),
-(12, 'Dark Axe', 'weapon', 20, 100, 0, 0, 0, 0),
-(13, 'Dark Sword', 'weapon', 25, 125, 0, 0, 0, 0),
-(14, 'Bright Sword', 'weapon', 20, 100, 0, 0, 0, 0),
-(15, 'Magic Sword', 'weapon', 30, 150, 0, 0, 0, 0),
-(16, 'Destiny Blade', 'weapon', 50, 250, 0, 0, 50, 0),
-(17, 'Loincloth', 'armor', 1, 0, 2, 0, 0, 0),
-(18, 'Tunic', 'armor', 1, 0, 5, 0, 0, 0),
-(19, 'Leather Armor', 'armor', 2, 0, 10, 0, 0, 0),
-(20, 'Hard Leather Armor', 'armor', 5, 0, 25, 0, 0, 0),
-(21, 'Chain Mail', 'armor', 6, 0, 30, 0, 0, 0),
-(22, 'Bronze Plate', 'armor', 10, 0, 50, 0, 0, 0),
-(23, 'Iron Plate', 'armor', 20, 0, 100, 0, 0, 0),
-(24, 'Magic Armor', 'armor', 25, 0, 125, 0, 0, 0),
-(25, 'Dark Armor', 'armor', 30, 0, 150, 0, 0, 0),
-(26, 'Bright Armor', 'armor', 35, 0, 175, 0, 0, 0),
-(27, 'Destiny Raiment', 'armor', 40, 0, 200, 0, 0, 50),
-(28, 'Reed Shield', 'shield', 1, 0, 2, 0, 0, 0),
-(29, 'Buckler', 'shield', 1, 0, 4, 0, 0, 0),
-(30, 'Small Shield', 'shield', 2, 0, 10, 0, 0, 0),
-(31, 'Large Shield', 'shield', 6, 0, 30, 0, 0, 0),
-(32, 'Silver Shield', 'shield', 12, 0, 60, 0, 0, 0),
-(33, 'Destiny Aegis', 'shield', 20, 0, 100, 50, 0, 0),
-(101, 'Life Pebble', 'trinket', 1, 0, 0, 10, 0, 0),
-(102, 'Life Stone', 'trinket', 10, 0, 0, 25, 0, 0),
-(103, 'Life Rock', 'trinket', 25, 0, 0, 50, 0, 0),
-(107, 'Dragon''s Scale', 'trinket', 10, 0, 25, 0, 0, 0),
-(108, 'Dragon''s Plate', 'trinket', 30, 0, 50, 0, 0, 0),
-(109, 'Dragon''s Claw', 'trinket', 10, 25, 0, 0, 0, 0),
-(110, 'Dragon''s Tooth', 'trinket', 30, 50, 0, 0, 0, 0),
-(111, 'Dragon''s Tear', 'trinket', 35, 0, 0, 0, 50, 0),
-(112, 'Dragon''s Wing', 'trinket', 35, 0, 0, 0, 0, 50),
-(113, 'Demon''s Sin', 'trinket', 35, 0, 0, -50, 50, 0),
-(114, 'Demon''s Fall', 'trinket', 35, 0, 0, 0, 50, 0),
-(115, 'Demon''s Lie', 'trinket', 45, 0, 0, -100, 100, 0),
-(116, 'Demon''s Hate', 'trinket', 45, 0, 0, 0, 100, 0),
-(117, 'Angel''s Joy', 'trinket', 25, 0, 0, 25, 25, 0),
-(118, 'Angel''s Rise', 'trinket', 30, 0, 0, 50, 50, 0),
-(119, 'Angel''s Truth', 'trinket', 35, 0, 0, 75, 75, 0),
-(120, 'Angel''s Love', 'trinket', 40, 0, 0, 100, 100, 0),
-(121, 'Seraph''s Joy', 'trinket', 25, 0, 0, 0, 0, 25),
-(122, 'Seraph''s Rise', 'trinket', 30, 0, 0, 0, 0, 50),
-(123, 'Seraph''s Truth', 'trinket', 35, 0, 0, 0, 0, 75),
-(124, 'Seraph''s Love', 'trinket', 40, 0, 0, 0, 0, 100),
-(125, 'Ruby', 'trinket', 50, 0, 0, 150, 0, 0),
-(127, 'Emerald', 'trinket', 50, 0, 0, 0, 150, 0),
-(128, 'Topaz', 'trinket', 50, 0, 0, 0, 0, 150),
-(129, 'Obsidian', 'trinket', 50, 150, 0, 0, 0, 0),
-(130, 'Diamond', 'trinket', 50, 0, 150, 0, 0, 0)
+-- SRD 5.2.1 Weapons (p.91: melee only, as there are no ranged attacks), Armor (p.92) and Potion of Healing (p.99).
+-- Ids are fixed: save_hero() hands out 12, 15 and 40, and the finds below use 1, 31, 50 and 60.
+INSERT INTO items (id, name, slot, cost, dice, versatile, finesse, two_handed, ac, armor) VALUES
+(1, 'Club', 'weapon', 0.1, '1d4', NULL, FALSE, FALSE, 0, NULL),
+(2, 'Dagger', 'weapon', 2, '1d4', NULL, TRUE, FALSE, 0, NULL),
+(3, 'Greatclub', 'weapon', 0.2, '1d8', NULL, FALSE, TRUE, 0, NULL),
+(4, 'Handaxe', 'weapon', 5, '1d6', NULL, FALSE, FALSE, 0, NULL),
+(5, 'Javelin', 'weapon', 0.5, '1d6', NULL, FALSE, FALSE, 0, NULL),
+(6, 'Light Hammer', 'weapon', 2, '1d4', NULL, FALSE, FALSE, 0, NULL),
+(7, 'Mace', 'weapon', 5, '1d6', NULL, FALSE, FALSE, 0, NULL),
+(8, 'Quarterstaff', 'weapon', 0.2, '1d6', '1d8', FALSE, FALSE, 0, NULL),
+(9, 'Sickle', 'weapon', 1, '1d4', NULL, FALSE, FALSE, 0, NULL),
+(10, 'Spear', 'weapon', 1, '1d6', '1d8', FALSE, FALSE, 0, NULL),
+(11, 'Battleaxe', 'weapon', 10, '1d8', '1d10', FALSE, FALSE, 0, NULL),
+(12, 'Flail', 'weapon', 10, '1d8', NULL, FALSE, FALSE, 0, NULL),
+(13, 'Glaive', 'weapon', 20, '1d10', NULL, FALSE, TRUE, 0, NULL),
+(14, 'Greataxe', 'weapon', 30, '1d12', NULL, FALSE, TRUE, 0, NULL),
+(15, 'Greatsword', 'weapon', 50, '2d6', NULL, FALSE, TRUE, 0, NULL),
+(16, 'Halberd', 'weapon', 20, '1d10', NULL, FALSE, TRUE, 0, NULL),
+(17, 'Lance', 'weapon', 10, '1d10', NULL, FALSE, TRUE, 0, NULL),
+(18, 'Longsword', 'weapon', 15, '1d8', '1d10', FALSE, FALSE, 0, NULL),
+(19, 'Maul', 'weapon', 10, '2d6', NULL, FALSE, TRUE, 0, NULL),
+(20, 'Morningstar', 'weapon', 15, '1d8', NULL, FALSE, FALSE, 0, NULL),
+(21, 'Pike', 'weapon', 5, '1d10', NULL, FALSE, TRUE, 0, NULL),
+(22, 'Rapier', 'weapon', 25, '1d8', NULL, TRUE, FALSE, 0, NULL),
+(23, 'Scimitar', 'weapon', 25, '1d6', NULL, TRUE, FALSE, 0, NULL),
+(24, 'Shortsword', 'weapon', 10, '1d6', NULL, TRUE, FALSE, 0, NULL),
+(25, 'Trident', 'weapon', 5, '1d8', '1d10', FALSE, FALSE, 0, NULL),
+(26, 'Warhammer', 'weapon', 15, '1d8', '1d10', FALSE, FALSE, 0, NULL),
+(27, 'War Pick', 'weapon', 5, '1d8', '1d10', FALSE, FALSE, 0, NULL),
+(28, 'Whip', 'weapon', 2, '1d4', NULL, TRUE, FALSE, 0, NULL),
+(31, 'Padded Armor', 'armor', 5, NULL, NULL, FALSE, FALSE, 11, 'light'),
+(32, 'Leather Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, 11, 'light'),
+(33, 'Studded Leather Armor', 'armor', 45, NULL, NULL, FALSE, FALSE, 12, 'light'),
+(34, 'Hide Armor', 'armor', 10, NULL, NULL, FALSE, FALSE, 12, 'medium'),
+(35, 'Chain Shirt', 'armor', 50, NULL, NULL, FALSE, FALSE, 13, 'medium'),
+(36, 'Scale Mail', 'armor', 50, NULL, NULL, FALSE, FALSE, 14, 'medium'),
+(37, 'Breastplate', 'armor', 400, NULL, NULL, FALSE, FALSE, 14, 'medium'),
+(38, 'Half Plate Armor', 'armor', 750, NULL, NULL, FALSE, FALSE, 15, 'medium'),
+(39, 'Ring Mail', 'armor', 30, NULL, NULL, FALSE, FALSE, 14, 'heavy'),
+(40, 'Chain Mail', 'armor', 75, NULL, NULL, FALSE, FALSE, 16, 'heavy'),
+(41, 'Splint Armor', 'armor', 200, NULL, NULL, FALSE, FALSE, 17, 'heavy'),
+(42, 'Plate Armor', 'armor', 1500, NULL, NULL, FALSE, FALSE, 18, 'heavy'),
+(50, 'Shield', 'shield', 10, NULL, NULL, FALSE, FALSE, 2, NULL),
+(60, 'Potion of Healing', 'potion', 50, '2d4+2', NULL, FALSE, FALSE, 0, NULL)
 AS new
-ON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, level = new.level, attack = new.attack,
-    defense = new.defense, max_hp = new.max_hp, strength = new.strength, dexterity = new.dexterity;
+ON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, cost = new.cost, dice = new.dice, versatile = new.versatile,
+    finesse = new.finesse, two_handed = new.two_handed, ac = new.ac, armor = new.armor;
 
--- One-time finds around Greenest. INSERT IGNORE leaves them wherever they are (or whoever has them) on re-runs.
+-- Finds around Greenest. INSERT IGNORE leaves them wherever they are (or whoever has them) on re-runs, but brings
+-- back the potion if it was drunk.
 INSERT IGNORE INTO objects (id, item_id, room_id) VALUES
-(1, 1, 4),    -- Stick, Market Lane
-(2, 18, 3),   -- Tunic, The Swaying Lantern
-(3, 28, 2),   -- Reed Shield, Before the Keep
-(4, 101, 7);  -- Life Pebble, Mill Cellar
+(1, 1, 4),    -- Club, Market Lane
+(2, 31, 3),   -- Padded Armor, The Swaying Lantern
+(3, 50, 2),   -- Shield, Before the Keep
+(4, 60, 7);   -- Potion of Healing, Mill Cellar

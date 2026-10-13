@@ -47,8 +47,10 @@ That links Southern Fields (6) south to the mines' entrance (24600), and back no
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored): heroes are
 Fighters with the Standard Array, combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
-levels follow Character Advancement. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the
-Swaying Lantern. The plan and what's left out are in the project's `d20-plan.md`. "5E compatible."
+levels follow Character Advancement. Heroes start with the SRD Fighter's equipment A (Chain Mail, Greatsword, Flail);
+gear is the SRD's melee weapons, armor, Shield and Potion of Healing, and AC and attacks come from what you wear. Rest
+with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. The plan and what's left
+out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
 available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0

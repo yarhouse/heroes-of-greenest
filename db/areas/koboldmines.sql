@@ -6,7 +6,7 @@
 -- International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
--- Monster stats are the SRD stat block nearest CR = Riftshadow level / 12; gear power is level x 5, like seed.sql.
+-- Monster stats are the SRD stat block nearest CR = Riftshadow level / 12.
 SET NAMES utf8mb4;
 
 DELETE FROM spawns WHERE room_id BETWEEN 24600 AND 24799;
@@ -960,32 +960,4 @@ INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
 (246147, 24772, 24701, '2000-01-01'),
 (246148, 24773, 24705, '2000-01-01')
 ;
-
--- Gear the area's monsters wear or carry, added to the loot pool (no floor finds).
-INSERT INTO items (id, name, slot, level, attack, defense) VALUES
-(24610, 'Shiny Pickaxe', 'weapon', 23, 115, 0),
-(24620, 'Granite Mining Hammer', 'weapon', 20, 100, 0),
-(24621, 'Sharp Chisel', 'weapon', 20, 100, 0),
-(24701, 'Leather Cuirass', 'armor', 20, 0, 100),
-(24703, 'Stone Polearm', 'weapon', 20, 100, 0),
-(24704, 'Dark Leather Cape', 'armor', 28, 0, 140),
-(24707, 'Long Granite Spear', 'weapon', 28, 140, 0),
-(24708, 'Curved Scimitar', 'weapon', 28, 140, 0),
-(24709, 'Dark Leather Shield', 'shield', 27, 0, 135),
-(24710, 'Short Javelin', 'weapon', 22, 110, 0),
-(24713, 'Short Curved Blade', 'weapon', 21, 105, 0),
-(24714, 'Short Curved Dagger', 'weapon', 20, 100, 0),
-(24715, 'Long Wooden Staff', 'weapon', 25, 125, 0),
-(24716, 'Dull Battle-axe', 'weapon', 25, 125, 0),
-(24717, 'Small Granite Shield', 'shield', 25, 0, 125),
-(24723, 'Small Basalt Shield', 'shield', 25, 0, 125),
-(24724, 'Curved Scimitar', 'weapon', 26, 130, 0),
-(24730, 'Tattered Dark Robe', 'armor', 30, 0, 150),
-(24733, 'Studded Leather Buckler', 'shield', 30, 0, 150),
-(24742, 'Spiked Club', 'weapon', 32, 160, 0),
-(24750, 'Sceptre Of The Goblin King', 'weapon', 33, 165, 0),
-(24755, 'Large Basalt Shield', 'shield', 32, 0, 160)
-AS new
-ON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, level = new.level, attack = new.attack,
-    defense = new.defense;
 

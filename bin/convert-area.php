@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-// convert-area.php :: turn a Riftshadow area file into seed SQL: rooms, exits, monsters, spawns and gear.
+// convert-area.php :: turn a Riftshadow area file into seed SQL: rooms, exits, monsters and spawns.
 // Usage: php bin/convert-area.php <file.are> <greenest room> <dir> <area room> > db/areas/<name>.sql
 // e.g.   php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600
 // links Greenest room 6 south to area room 24600, and 24600 back the opposite way.
 //
-// Kept: room text, exits inside the area, the monsters each reset places, and the gear they wear or carry
-// (added to the loot pool). Dropped: doors and keys, traps, extra descriptions, scripts and flags, floor objects.
+// Kept: room text, exits inside the area and the monsters each reset places. Dropped: doors and keys, traps, extra
+// descriptions, scripts and flags, and all objects (d20 plan milestone 3 maps Rift gear to SRD items).
 // Riftshadow ids (vnums) are kept as ids; Greenest's own content stays below 1001 and 24000 isn't used.
 
 if (PHP_SAPI !== 'cli') {
@@ -21,7 +21,6 @@ const BACK = [
 // shortcut: a monster's stats are the SRD stat block nearest CR = Rift level / this, whatever the monster is.
 // d20 plan milestone 3 maps Rift races to fitting stat blocks instead.
 const RIFT_LEVELS_PER_CR = 12; // Rift 10-35 lands at CR 1-3, fair fights for one hero of level 3-8
-const GEAR_POWER = 5; // attack or defense per item level, the inverse of seed.sql's loot level ceil(power / 5)
 
 function fail(string $why): never
 {
@@ -80,7 +79,7 @@ $sec = [];
 for ($i = 1; $i < count($parts); $i += 2) {
     $sec[$parts[$i]] = $parts[$i + 1];
 }
-foreach (['AREA', 'MOBS', 'OBJS', 'ROOMS', 'RESETS'] as $name) {
+foreach (['AREA', 'MOBS', 'ROOMS', 'RESETS'] as $name) {
     $sec[$name] ?? fail("$file has no #$name section.");
 }
 
@@ -94,23 +93,6 @@ $mobs = [];
 foreach (records($sec['MOBS']) as $vnum => $body) {
     $s = explode('~', $body);
     $mobs[$vnum] = ['name' => title($s[1]), 'level' => (int) $s[5]];
-}
-
-// Objects: name~ short~ long~ "type material~", a values line, "level weight cost condition", then flag lines.
-$objs = [];
-foreach (records($sec['OBJS']) as $vnum => $body) {
-    $s = explode('~', $body, 5);
-    preg_match_all('/^WEAR (\w+)/m', $s[4], $wear);
-    $objs[$vnum] = [
-        'name' => title($s[1]),
-        'level' => (int) explode("\n", trim($s[4]))[1],
-        'slot' => match (true) { // by item type first: some shields are also flagged wieldable
-            strtok(trim($s[3]), " \n") === 'weapon' => 'weapon',
-            in_array('SHIELD', $wear[1], true) => 'shield',
-            in_array('BODY', $wear[1], true) => 'armor',
-            default => null, // rings, helms and the rest have no slot here
-        },
-    ];
 }
 
 // Rooms: name~ description~ sector, then flag lines; exits are "D <DIR> <to vnum> <flags> <key>".
@@ -136,10 +118,8 @@ foreach ($exits as $vnum => $list) {
 isset($rooms[$entrance]) || fail("Room $entrance isn't in $file.");
 $exits[$entrance][BACK[$link_dir]] = $link_room;
 
-// Resets: "MOB <vnum> TO <room> ..." places a monster; EQUIP/GIVE lines that follow hand it gear.
+// Resets: "MOB <vnum> TO <room> ..." places a monster.
 preg_match_all('/^M\w* (\d+) TO (\d+)/m', $sec['RESETS'], $placed, PREG_SET_ORDER);
-preg_match_all('/^[EG]\w* (\d+)/m', $sec['RESETS'], $carried);
-$floor_objects = preg_match_all('/^[OP]\w* \d+/m', $sec['RESETS']);
 
 // The SRD stat blocks (monsters below Greenest's own 1001) from seed.sql, to borrow stats from by CR.
 preg_match_all(
@@ -194,16 +174,6 @@ foreach (array_keys($used_mobs) as $vnum) {
     $sql_mobs[] = "($vnum, " . str($m['name']) . ", $ac, '$hp', $init, '$attack', $attacks, $to_hit, '$damage', $cr, "
         . "$xp) /* SRD $srd_name, Rift level {$m['level']} */";
 }
-$sql_items = [];
-foreach (array_unique(array_map('intval', $carried[1])) as $vnum) {
-    $o = $objs[$vnum] ?? null;
-    if ($o !== null && $o['slot'] !== null && $o['level'] > 0) {
-        $power = $o['level'] * GEAR_POWER;
-        [$attack, $defense] = $o['slot'] === 'weapon' ? [$power, 0] : [0, $power];
-        $sql_items[] = "($vnum, " . str($o['name']) . ", '{$o['slot']}', {$o['level']}, $attack, $defense)";
-    }
-}
-sort($sql_items);
 
 $base = basename($file, ".are");
 $builders = clean($builders);
@@ -217,7 +187,7 @@ echo <<<SQL
 -- International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
--- Monster stats are the SRD stat block nearest CR = Riftshadow level / 12; gear power is level x 5, like seed.sql.
+-- Monster stats are the SRD stat block nearest CR = Riftshadow level / 12.
 SET NAMES utf8mb4;
 
 DELETE FROM spawns WHERE room_id BETWEEN $lo AND $hi;
@@ -234,11 +204,6 @@ echo insert('INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks
     . "    cr = new.cr, xp = new.xp");
 echo "-- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.\n";
 echo insert('INSERT INTO spawns (id, room_id, monster_id, dead_since)', $sql_spawns, '');
-echo "-- Gear the area's monsters wear or carry, added to the loot pool (no floor finds).\n";
-echo insert('INSERT INTO items (id, name, slot, level, attack, defense)', $sql_items,
-    "AS new\nON DUPLICATE KEY UPDATE name = new.name, slot = new.slot, level = new.level, attack = new.attack,\n"
-    . '    defense = new.defense');
 
-fprintf(STDERR, "%s: %d rooms, %d exits, %d monsters, %d spawns, %d items. Dropped %d exits leaving the area and %d "
-    . "floor-object resets.\n", $base, count($sql_rooms), count($sql_exits), count($sql_mobs), count($sql_spawns),
-    count($sql_items), $left_area, $floor_objects);
+fprintf(STDERR, "%s: %d rooms, %d exits, %d monsters, %d spawns. Dropped %d exits leaving the area.\n", $base,
+    count($sql_rooms), count($sql_exits), count($sql_mobs), count($sql_spawns), $left_area);

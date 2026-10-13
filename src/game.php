@@ -11,10 +11,7 @@ const START_ROOM = 1;
 const SHORT_REST_SECS = 600;
 const LONG_REST_SECS = 3600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
-const MAX_TRINKETS = 3; // Dragon Knight's three drop slots
-// shortcut: every hero fights with the SRD Fighter's starting Chain Mail and Greatsword (option A) and the Defense
-// fighting style, and worn items do nothing, until SRD gear (d20 plan milestone 2) replaces Dragon Knight's items.
-const STARTER_KIT = ['weapon' => 'Greatsword', 'damage' => '2d6', 'ac' => 17]; // Chain Mail 16 + Defense 1
+const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR: Potions of Healing from CR 1
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
@@ -34,6 +31,7 @@ const COMMANDS = [
     'get <item>' => 'pick something up',
     'drop <item>' => 'put something down',
     'equip <item>' => 'wield or wear something you carry',
+    'drink <potion>' => 'drink a potion; like Second Wind, it costs no turn',
     'say <text>' => "speak to the room ('<text> works too)",
     'who' => 'every hero, and when last seen',
     'help' => 'this list',
@@ -81,7 +79,7 @@ function run_command(array $me, string $input): array
 {
     q('UPDATE users SET last_seen = NOW() WHERE id = ?', [$me['id']]);
     $me += q('SELECT prof_bonus, second_wind, attacks FROM levels WHERE level = ?', [$me['level']])->fetch();
-    $me['ac'] = STARTER_KIT['ac'];
+    $me += gear($me);
     $rested = $me['resting'] !== null ? finish_rest($me) : [];
     $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
     if (str_starts_with($input, "'")) {
@@ -106,6 +104,7 @@ function run_command(array $me, string $input): array
         $verb === 'get' => cmd_get($me, trim($arg)),
         $verb === 'drop' => cmd_drop($me, trim($arg)),
         $verb === 'equip' => cmd_equip($me, trim($arg)),
+        $verb === 'drink' => cmd_drink($me, trim($arg)),
         $verb === 'say' => cmd_say($me, trim($arg)),
         $verb === 'who' => cmd_who(),
         $verb === 'help' => cmd_help(),
@@ -278,16 +277,15 @@ function cmd_flee(array $me): array
 /** My attacks on $foe this round (more than one with Extra Attack). Returns true if it died. */
 function hero_turn(array $me, array &$foe, array &$lines): bool
 {
-    $str = mod($me['strength']);
     for ($i = 0; $i < $me['attacks']; $i++) {
         $d20 = roll('1d20');
-        $total = $d20 + $str + $me['prof_bonus'];
+        $total = $d20 + $me['attack_mod'] + $me['prof_bonus'];
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "You miss the {$foe['name']} ($why).";
             continue;
         }
-        $dmg = max(0, roll(STARTER_KIT['damage'], $d20 === 20) + $str);
+        $dmg = max(0, roll($me['damage'], $d20 === 20) + $me['attack_mod']);
         $crit = $d20 === 20 ? 'Critical hit! ' : '';
         $lines[] = "{$crit}You hit the {$foe['name']} ($total vs AC {$foe['ac']}) for $dmg damage.";
         q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
@@ -324,8 +322,8 @@ function win(array $me, array $foe, array &$lines): void
     if ($level > $me['level']) {
         $lines[] = "You reach level $level! +$gain max HP.";
     }
-    if (roll('1d' . LOOT_CHANCE) === 1) {
-        $lines[] = "The {$foe['name']} drops " . lcfirst(a_an(loot($cr, (int) $me['room_id']))) . '.';
+    if (roll('1d' . LOOT_CHANCE) === 1 && ($item = loot((float) $foe['cr'], (int) $me['room_id'])) !== null) {
+        $lines[] = "The {$foe['name']} drops " . lcfirst(a_an($item)) . '.';
     }
 }
 
@@ -430,12 +428,55 @@ function finish_rest(array &$me): array
     return [$line . " HP {$me['hp']}/{$me['max_hp']}."];
 }
 
-/** Drops a random item of up to $level on $room_id's floor and returns its name. */
-function loot(int $level, int $room_id): string
+/** Drops a random item a monster of $cr could have on $room_id's floor and returns its name (null if none can). */
+function loot(float $cr, int $room_id): ?string
 {
-    $item = q('SELECT id, name FROM items WHERE level <= ? ORDER BY RAND() LIMIT 1', [$level])->fetch();
+    $item = q('SELECT id, name FROM items WHERE cost <= ? ORDER BY RAND() LIMIT 1', [$cr * LOOT_GP_PER_CR])->fetch();
+    if (!$item) {
+        return null;
+    }
     q('INSERT INTO objects (item_id, room_id) VALUES (?, ?)', [$item['id'], $room_id]);
     return $item['name'];
+}
+
+/**
+ * My AC and attack from what I wear, by the SRD: armor's AC plus Dex (all for light, up to +2 for medium, none for
+ * heavy) and +1 for the Defense fighting style, or 10 + Dex unarmored; +2 for a shield. A Versatile weapon does its
+ * bigger die without a shield, Finesse uses the better of Str and Dex, and no weapon is an Unarmed Strike (1 + Str).
+ */
+function gear(array $me): array
+{
+    $worn = [];
+    foreach (objects_here('user_id', (int) $me['id']) as $o) {
+        if ($o['worn']) {
+            $worn[$o['slot']] = $o;
+        }
+    }
+    [$dex, $str] = [mod($me['dexterity']), mod($me['strength'])];
+    $armor = $worn['armor'] ?? null;
+    $ac = $armor === null ? 10 + $dex
+        : $armor['ac'] + 1 + match ($armor['armor']) { 'light' => $dex, 'medium' => min($dex, 2), 'heavy' => 0 };
+    $weapon = $worn['weapon'] ?? null;
+    return [
+        'ac' => $ac + ($worn['shield']['ac'] ?? 0),
+        'weapon' => $weapon['name'] ?? 'Unarmed Strike',
+        'damage' => $weapon === null ? '1'
+            : (isset($worn['shield']) ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
+        'attack_mod' => $weapon !== null && $weapon['finesse'] ? max($str, $dex) : $str,
+    ];
+}
+
+/** An item's stats in a few words, for the inventory. */
+function describe(array $o): string
+{
+    return match ($o['slot']) {
+        'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
+            . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : ''),
+        'armor' => "{$o['armor']} armor, AC {$o['ac']}"
+            . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],
+        'shield' => "shield, +{$o['ac']} AC",
+        'potion' => "potion, heals {$o['dice']}",
+    };
 }
 
 /** Objects on a room's floor ('room_id') or carried by a hero ('user_id'), with their item's columns. */
@@ -443,7 +484,7 @@ function objects_here(string $where, int $id): array
 {
     $col = match ($where) { 'room_id' => 'room_id', 'user_id' => 'user_id' }; // the only two allowed in SQL
     return q(
-        "SELECT o.id, o.worn, i.name, i.slot
+        "SELECT o.id, o.worn, i.name, i.slot, i.dice, i.versatile, i.finesse, i.two_handed, i.ac, i.armor
          FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ? ORDER BY i.name, o.id",
         [$id]
     )->fetchAll();
@@ -469,7 +510,7 @@ function cmd_inventory(array $me): array
     $lines = ['You are carrying:'];
     foreach ($carried as $o) {
         $worn = $o['worn'] ? '  (equipped)' : '';
-        $lines[] = sprintf('  %-20s %-8s', $o['name'], $o['slot']) . $worn;
+        $lines[] = sprintf('  %-22s %s', $o['name'], describe($o)) . $worn;
     }
     return $lines;
 }
@@ -509,29 +550,55 @@ function cmd_equip(array $me, string $target): array
         return ['Equip what?'];
     }
     $carried = objects_here('user_id', (int) $me['id']);
-    // Prefer one not already worn, so "equip charm" works with several charms.
+    // Prefer one not already worn, so "equip dagger" works with two daggers.
     $o = find_object(array_filter($carried, fn ($c) => !$c['worn']), $target) ?? find_object($carried, $target);
     if (!$o) {
         return ["You aren't carrying a $target."];
     }
+    if ($o['slot'] === 'potion') {
+        return ["You can't equip the {$o['name']}. Drink it instead."];
+    }
     if ($o['worn']) {
         return ["You already have the {$o['name']} equipped."];
     }
-    $same_slot = array_filter($carried, fn ($c) => $c['worn'] && $c['slot'] === $o['slot']);
+    if ($o['slot'] === 'armor' && $me['fighting'] !== null) { // the SRD's quickest armor takes a minute to don
+        return ["You can't change armor in the middle of a fight!"];
+    }
+    // One of each slot, and a Two-Handed weapon leaves no hand for a shield.
+    $two_hands = fn ($c) => $c['slot'] === 'weapon' && $c['two_handed'];
+    $clashes = fn ($c) => $c['worn'] && ($c['slot'] === $o['slot']
+        || ($o['slot'] === 'shield' && $two_hands($c)) || ($c['slot'] === 'shield' && $two_hands($o)));
     $lines = [];
-    if ($o['slot'] === 'trinket') {
-        if (count($same_slot) >= MAX_TRINKETS) {
-            return ['You already wear ' . MAX_TRINKETS . ' trinkets. Drop one first.'];
-        }
-    } else {
-        foreach ($same_slot as $old) {
-            q('UPDATE objects SET worn = FALSE WHERE id = ?', [$old['id']]);
-            $lines[] = "You put away the {$old['name']}.";
-        }
+    foreach (array_filter($carried, $clashes) as $old) {
+        q('UPDATE objects SET worn = FALSE WHERE id = ?', [$old['id']]);
+        $lines[] = "You put away the {$old['name']}.";
     }
     q('UPDATE objects SET worn = TRUE WHERE id = ?', [$o['id']]);
     $lines[] = "You equip the {$o['name']}.";
     return $lines;
+}
+
+/** Drinking a potion is a Bonus Action, so like Second Wind it costs no turn. */
+function cmd_drink(array $me, string $target): array
+{
+    if ($target === '') {
+        return ['Drink what?'];
+    }
+    $potions = array_filter(objects_here('user_id', (int) $me['id']), fn ($o) => $o['slot'] === 'potion');
+    $o = find_object($potions, $target);
+    if (!$o) {
+        return ["You aren't carrying a $target to drink."];
+    }
+    if ($me['hp'] >= $me['max_hp']) {
+        return ["You're already at full health."];
+    }
+    // Deleting by owner first means two requests at once can't both drink it.
+    if (q('DELETE FROM objects WHERE id = ? AND user_id = ?', [$o['id'], $me['id']])->rowCount() === 0) {
+        return ["You aren't carrying a $target to drink."];
+    }
+    $hp = min($me['max_hp'], $me['hp'] + roll($o['dice']));
+    q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+    return ["You drink the {$o['name']} and regain " . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}."];
 }
 
 function cmd_score(array $me): array
@@ -540,14 +607,13 @@ function cmd_score(array $me): array
     foreach (['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as $ability) {
         $abilities[] = sprintf('%s %d (%+d)', ucfirst(substr($ability, 0, 3)), $me[$ability], mod($me[$ability]));
     }
-    $str = mod($me['strength']);
     $next = q('SELECT xp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
     return [
         "{$me['name']}, level {$me['level']} Fighter",
         implode('  ', $abilities),
         "HP {$me['hp']}/{$me['max_hp']}   AC {$me['ac']}   Proficiency Bonus +{$me['prof_bonus']}",
-        sprintf('%s %+d to hit, %s%+d damage', STARTER_KIT['weapon'], $str + $me['prof_bonus'], STARTER_KIT['damage'],
-            $str)
+        sprintf('%s %+d to hit, %s%+d damage', $me['weapon'], $me['attack_mod'] + $me['prof_bonus'], $me['damage'],
+            $me['attack_mod'])
             . ($me['attacks'] > 1 ? ", {$me['attacks']} attacks a round" : ''),
         'Hit Dice ' . ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d10   Second Wind "
             . max(0, $me['second_wind'] - $me['second_wind_spent']) . "/{$me['second_wind']}"

@@ -23,6 +23,11 @@ function says(array $lines, string $text): bool
 {
     return (bool) array_filter($lines, fn ($l) => str_contains($l, $text));
 }
+/** The first line containing $text, or ''. */
+function line(array $lines, string $text): string
+{
+    return array_values(array_filter($lines, fn ($l) => str_contains($l, $text)))[0] ?? '';
+}
 
 db()->beginTransaction();
 try {
@@ -101,31 +106,75 @@ try {
     $dice_queue = [];
     check(mod(8) === -1 && mod(9) === -1 && mod(10) === 0 && mod(15) === 2 && mod(20) === 5, 'ability modifiers');
 
-    // Items. Until SRD gear they have no effect, but can be carried and worn.
-    q("INSERT INTO items (id, name, slot, level) VALUES (9991, 'Test Blade', 'weapon', 99),
-        (9992, 'Test Club', 'weapon', 99), (9993, 'Test Charm', 'trinket', 99)");
-    q('INSERT INTO objects (item_id, room_id) VALUES (9991, 1), (9992, 1), (9993, 1), (9993, 1), (9993, 1),
-        (9993, 1)');
-    check(says(run_command(hero('Testa'), 'look'), 'A Test Blade lies here.'), 'look shows items on the floor');
-    check(says(run_command(hero('Testa'), 'i'), 'carrying nothing'), 'empty inventory');
-    check(says(run_command(hero('Testa'), 'get bla'), 'You pick up the Test Blade.'), 'get by word prefix');
-    check(!says(run_command(hero('Testa'), 'look'), 'Test Blade'), 'got items leave the floor');
-    check(says(run_command(hero('Testb'), 'get blade'), "don't see a blade"), 'only one hero can get an item');
-    check(says(run_command(hero('Testa'), 'equip club'), "aren't carrying"), "can't equip what you don't carry");
-    run_command(hero('Testa'), 'equip blade');
-    check(says(run_command(hero('Testa'), 'inventory'), '(equipped)'), 'inventory shows worn gear');
-    run_command(hero('Testa'), 'get club');
-    check(says(run_command(hero('Testa'), 'equip club'), 'put away the Test Blade'), 'a new weapon swaps out the old');
-    foreach (range(1, 4) as $_) {
-        run_command(hero('Testa'), 'get charm');
-        run_command(hero('Testa'), 'equip charm');
-    }
-    check(says(run_command(hero('Testa'), 'equip charm'), 'already wear 3 trinkets'), 'at most 3 trinkets');
-    check(says(run_command(hero('Testa'), 'drop club'), 'You drop the Test Club.'), 'drop');
-    check(says(run_command(hero('Testa'), 'look'), 'A Test Club lies here.'), 'dropped gear is on the floor');
-    $name = loot(1, START_ROOM);
+    // Gear. New heroes carry the SRD Fighter's starting equipment A.
+    $inv = run_command(hero('Testa'), 'i');
+    check(str_contains(line($inv, 'Chain Mail'), 'heavy armor, AC 16  (equipped)')
+        && str_contains(line($inv, 'Greatsword'), 'weapon, 2d6, two-handed  (equipped)')
+        && str_contains(line($inv, 'Flail'), 'weapon, 1d8') && !str_contains(line($inv, 'Flail'), 'equipped')
+        && hero('Testa')['gold'] === 4, 'a new hero has Kit A: Chain Mail and Greatsword worn, a Flail, 4 gp');
+    check(count(objects_here('user_id', (int) hero('Testa')['id'])) === 3, 'a password reset gives no second kit');
+    q('INSERT INTO objects (item_id, room_id) VALUES (50, 1), (18, 1), (22, 1), (32, 1), (36, 1), (60, 1)');
+    check(says(run_command(hero('Testa'), 'look'), 'A Longsword lies here.'), 'look shows items on the floor');
+    check(says(run_command(hero('Testa'), 'get long'), 'You pick up the Longsword.'), 'get by word prefix');
+    check(!says(run_command(hero('Testa'), 'look'), 'Longsword'), 'got items leave the floor');
+    check(says(run_command(hero('Testb'), 'get longsword'), "don't see a longsword"), 'only one hero can get an item');
+    check(says(run_command(hero('Testa'), 'equip rapier'), "aren't carrying"), "can't equip what you don't carry");
+    run_command(hero('Testa'), 'get shield');
+    $out = run_command(hero('Testa'), 'equip shield');
+    $score = run_command(hero('Testa'), 'score');
+    check(says($out, 'You put away the Greatsword.') && says($score, 'AC 19')
+        && says($score, 'Unarmed Strike +4 to hit, 1+2 damage'),
+        'a shield puts away a two-handed weapon: +2 AC, and no weapon is an Unarmed Strike (1 + Str)');
+    run_command(hero('Testa'), 'equip longsword');
+    check(says(run_command(hero('Testa'), 'score'), 'Longsword +4 to hit, 1d8+2 damage'),
+        'a Versatile weapon with a shield does its one-handed die');
+    $out = run_command(hero('Testa'), 'equip greatsword');
+    check(says($out, 'put away the Longsword') && says($out, 'put away the Shield'),
+        'a two-handed weapon puts away the weapon and the shield');
+    run_command(hero('Testa'), 'equip longsword');
+    $score = run_command(hero('Testa'), 'score');
+    check(says($score, 'Longsword +4 to hit, 1d10+2 damage') && says($score, 'AC 17'),
+        'a Versatile weapon without a shield does its two-handed die');
+    check(says(run_command(hero('Testa'), 'equip long'), 'already have the Longsword equipped'), 'equip twice');
+    q("UPDATE users SET dexterity = 18 WHERE name = 'Testa'");
+    run_command(hero('Testa'), 'get rapier');
+    run_command(hero('Testa'), 'equip rapier');
+    check(says(run_command(hero('Testa'), 'score'), 'Rapier +6 to hit, 1d8+4 damage'),
+        'Finesse uses the better of Str and Dex');
+    run_command(hero('Testa'), 'get leather');
+    check(says(run_command(hero('Testa'), 'equip leather'), 'put away the Chain Mail')
+        && says(run_command(hero('Testa'), 'score'), 'AC 16'), 'light armor: AC + all of Dex, +1 Defense');
+    run_command(hero('Testa'), 'get scale');
+    run_command(hero('Testa'), 'equip scale');
+    check(says(run_command(hero('Testa'), 'score'), 'AC 17'), 'medium armor: AC + Dex up to +2, +1 Defense');
+    run_command(hero('Testa'), 'drop scale');
+    check(says(run_command(hero('Testa'), 'score'), 'AC 14'), 'unarmored: 10 + Dex, no Defense');
+    q("UPDATE users SET dexterity = 14 WHERE name = 'Testa'");
+    $inv = run_command(hero('Testa'), 'i');
+    check(str_contains(line($inv, 'Longsword'), 'weapon, 1d8 (1d10 two-handed)')
+        && str_contains(line($inv, 'Rapier'), '1d8, finesse  (equipped)')
+        && str_contains(line($inv, 'Leather Armor'), 'light armor, AC 11 + Dex')
+        && str_contains(line($inv, 'Shield'), 'shield, +2 AC'), 'inventory describes gear');
+    check(says(run_command(hero('Testa'), 'drop longsword'), 'You drop the Longsword.'), 'drop');
+    check(says(run_command(hero('Testa'), 'look'), 'A Longsword lies here.'), 'dropped gear is on the floor');
+    run_command(hero('Testa'), 'equip chain');
+    run_command(hero('Testa'), 'equip greatsword');
+    check(says(run_command(hero('Testa'), 'score'), 'AC 17   Proficiency'), 'back in Chain Mail with a Greatsword');
+
+    // Potions. Drinking is a Bonus Action, like Second Wind.
+    run_command(hero('Testa'), 'get potion');
+    check(says(run_command(hero('Testa'), 'equip potion'), 'Drink it instead'), "potions can't be equipped");
+    check(says(run_command(hero('Testa'), 'drink potion'), 'already at full health'), 'no potion at full HP');
+    check(says(run_command(hero('Testa'), 'drink flail'), "aren't carrying a flail to drink"), 'drink only potions');
+    q("UPDATE users SET hp = 3 WHERE name = 'Testa'");
+    $dice_queue = [4, 1];
+    check(says(run_command(hero('Testa'), 'drink pot'), 'regain 7 HP. HP 10/11.'), 'a Potion of Healing heals 2d4+2');
+    check(!says(run_command(hero('Testa'), 'i'), 'Potion'), 'a drunk potion is gone');
+
+    $name = loot(0.125, START_ROOM);
     check(says(run_command(hero('Testa'), 'look'), a_an($name) . ' lies here.'), 'loot lands on the floor');
-    q('UPDATE objects SET user_id = NULL, room_id = 1, worn = FALSE WHERE user_id = ?', [hero('Testa')['id']]);
+    check(q('SELECT cost FROM items WHERE name = ?', [$name])->fetchColumn() <= 0.125 * LOOT_GP_PER_CR
+        && loot(0, START_ROOM) === null, 'loot costs at most LOOT_GP_PER_CR x CR');
 
     // Rests and Second Wind. Testa is in the town square, a safe room.
     q("UPDATE users SET hp = 3 WHERE name = 'Testa'");
@@ -159,7 +208,7 @@ try {
     check(says(run_command(hero('Testa'), 'rest'), "isn't safe to rest here"), 'rest only in safe rooms');
     run_command(hero('Testa'), 's');
 
-    // Combat, with every roll queued. Testa: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
+    // Combat, with every roll queued. Testa wears Kit A: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
     q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp)
         VALUES (9999, 'Training Dummy', 10, '2d6', 0, 'Slam', 1, 3, '1d4', 0.125, 25)");
     q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9999, 2, 9999, NOW() - INTERVAL 1 DAY)');
@@ -181,6 +230,8 @@ try {
     check(says(run_command(hero('Testa'), 'look'), 'Training Dummy is here, fighting you.'), 'look shows your foe');
     check(says(run_command(hero('Testa'), 's'), 'Flee first'), "can't walk out of a fight");
     check(says(run_command(hero('Testa'), 'rest'), 'middle of a fight'), "can't rest in a fight");
+    q('INSERT INTO objects (item_id, user_id) VALUES (32, ?)', [hero('Testa')['id']]);
+    check(says(run_command(hero('Testa'), 'equip leather'), "can't change armor"), "can't change armor in a fight");
     $dice_queue = [4];
     $out = run_command(hero('Testa'), 'second');
     check(says($out, 'regain 5 HP') && !says($out, 'Slam'), 'Second Wind in a fight costs no turn');
