@@ -8,6 +8,7 @@ const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' 
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
 const START_ROOM = 1;
+const REGEN_SECS = 600; // out of combat, a hero heals from 0 to full HP in this long
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
@@ -19,6 +20,7 @@ const COMMANDS = [
     'down' => 'move down (or d)',
     'kill <monster>' => 'attack; one round per command (or k)',
     'flee' => 'try to escape a fight to a random exit',
+    'score' => 'your level, HP and stats',
     'say <text>' => "speak to the room ('<text> works too)",
     'who' => 'every hero, and when last seen',
     'help' => 'this list',
@@ -29,6 +31,12 @@ const COMMANDS = [
 function run_command(array $me, string $input): array
 {
     q('UPDATE users SET last_seen = NOW() WHERE id = ?', [$me['id']]);
+    // Regen since HP last changed, frozen while fighting. Every write of hp or fighting resets hp_at.
+    $me['hp'] = (int) q(
+        'SELECT IF(fighting IS NULL, LEAST(max_hp, hp + FLOOR(TIMESTAMPDIFF(SECOND, hp_at, NOW()) * max_hp / ?)), hp)
+         FROM users WHERE id = ?',
+        [REGEN_SECS, $me['id']]
+    )->fetchColumn();
     $input = trim(mb_substr(preg_replace('/[\x00-\x1F\x7F]/u', '', $input) ?? '', 0, 300));
     if (str_starts_with($input, "'")) {
         $input = 'say ' . substr($input, 1);
@@ -44,6 +52,7 @@ function run_command(array $me, string $input): array
         $verb === 'l' || $verb === 'look' => cmd_look($me),
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
+        $verb === 'score' => cmd_score($me),
         $verb === 'say' => cmd_say($me, trim($arg)),
         $verb === 'who' => cmd_who(),
         $verb === 'help' => cmd_help(),
@@ -139,7 +148,7 @@ function find_foe(array $me, string $target): ?array
         }
     }
     if ($me['fighting'] !== null) { // never expected (a kill clears everyone fighting it), but don't strand the hero
-        q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE id = ?', [$me['id']]);
     }
     return null;
 }
@@ -156,7 +165,7 @@ function cmd_kill(array $me, string $target): array
     $lines = [];
     $hero_first = true;
     if ($me['fighting'] === null) {
-        q('UPDATE users SET fighting = ? WHERE id = ?', [$foe['id'], $me['id']]);
+        q('UPDATE users SET fighting = ?, hp = ?, hp_at = NOW() WHERE id = ?', [$foe['id'], $me['hp'], $me['id']]);
         $lines[] = "You attack the {$foe['name']}!";
         $hero_first = beats(random_int(1, 10), $me['dexterity'], random_int(1, 7), $foe['max_dam']);
         if (!$hero_first) {
@@ -186,7 +195,7 @@ function cmd_flee(array $me): array
         }
         return $lines;
     }
-    q('UPDATE users SET fighting = NULL WHERE id = ?', [$me['id']]);
+    q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE id = ?', [$me['id']]);
     $dir = q('SELECT dir FROM exits WHERE room_id = ? ORDER BY RAND() LIMIT 1', [$me['room_id']])->fetchColumn();
     if ($dir === false) {
         return ["You break away from the {$foe['name']}, but there's nowhere to run."];
@@ -226,11 +235,22 @@ function hero_attacks(array $me, array &$foe, array &$lines): bool
     if (!$won) {
         return $foe['hp'] <= 0;
     }
-    q('UPDATE users SET fighting = NULL WHERE fighting = ?', [$foe['id']]);
+    q('UPDATE users SET fighting = NULL, hp_at = NOW() WHERE fighting = ?', [$foe['id']]);
     $exp = max(1, random_int(intdiv($foe['max_exp'] * 5, 6), $foe['max_exp']));
     $gold = max(1, random_int(intdiv($foe['max_gold'] * 5, 6), $foe['max_gold']));
     q('UPDATE users SET exp = exp + ?, gold = gold + ? WHERE id = ?', [$exp, $gold, $me['id']]);
     $lines[] = "The {$foe['name']} dies! You gain $exp experience and $gold gold.";
+    // Like Dragon Knight: at most one level per kill, and no heal on levelling.
+    $up = q('SELECT * FROM levels WHERE level = ? AND exp <= ?', [$me['level'] + 1, $me['exp'] + $exp])->fetch();
+    if ($up) {
+        q(
+            'UPDATE users SET level = ?, max_hp = max_hp + ?, strength = strength + ?, dexterity = dexterity + ?
+             WHERE id = ?',
+            [$up['level'], $up['hp'], $up['strength'], $up['dexterity'], $me['id']]
+        );
+        $lines[] = "You reach level {$up['level']}! +{$up['hp']} max HP, +{$up['strength']} strength, "
+            . "+{$up['dexterity']} dexterity.";
+    }
     return true;
 }
 
@@ -247,18 +267,29 @@ function monster_attacks(array &$me, array $foe, array &$lines): bool
     $me['hp'] -= $dmg;
     $lines[] = "The {$foe['name']} hits you for $dmg damage.";
     if ($me['hp'] > 0) {
-        q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
+        q('UPDATE users SET hp = ?, hp_at = NOW() WHERE id = ?', [$me['hp'], $me['id']]);
         return false;
     }
     // Dragon Knight's death: back to town with a quarter of your HP and half your gold.
     $me['hp'] = (int) ceil($me['max_hp'] / 4);
     q(
-        'UPDATE users SET hp = ?, gold = gold - gold DIV 2, fighting = NULL, room_id = ? WHERE id = ?',
+        'UPDATE users SET hp = ?, hp_at = NOW(), gold = gold - gold DIV 2, fighting = NULL, room_id = ? WHERE id = ?',
         [$me['hp'], START_ROOM, $me['id']]
     );
     array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
     array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
     return true;
+}
+
+function cmd_score(array $me): array
+{
+    $next = q('SELECT exp FROM levels WHERE level = ?', [$me['level'] + 1])->fetchColumn();
+    return [
+        "{$me['name']}, level {$me['level']}",
+        "HP {$me['hp']}/{$me['max_hp']}   Strength {$me['strength']}   Dexterity {$me['dexterity']}",
+        "Experience {$me['exp']}" . ($next === false ? ' (max level)' : " ($next for level " . ($me['level'] + 1) . ')')
+            . "   Gold {$me['gold']}",
+    ];
 }
 
 function cmd_say(array $me, string $text): array

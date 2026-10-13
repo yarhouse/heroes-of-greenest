@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS events, users, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS events, users, levels, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -43,6 +43,15 @@ CREATE TABLE spawns (
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Experience needed for each level and the stats gained on reaching it (Dragon Knight's levels table).
+CREATE TABLE levels (
+    level SMALLINT UNSIGNED PRIMARY KEY,
+    exp INT UNSIGNED NOT NULL,
+    hp SMALLINT UNSIGNED NOT NULL,
+    strength SMALLINT UNSIGNED NOT NULL,
+    dexterity SMALLINT UNSIGNED NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".
 CREATE TABLE users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -53,8 +62,10 @@ CREATE TABLE users (
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
-    -- Dragon Knight's starting stats.
+    -- Dragon Knight's starting stats. hp is as of hp_at; regen since then is worked out when read.
+    level SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     hp SMALLINT NOT NULL DEFAULT 15,
+    hp_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     max_hp SMALLINT UNSIGNED NOT NULL DEFAULT 15,
     strength SMALLINT UNSIGNED NOT NULL DEFAULT 5,
     dexterity SMALLINT UNSIGNED NOT NULL DEFAULT 5,
