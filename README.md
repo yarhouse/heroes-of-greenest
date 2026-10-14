@@ -54,15 +54,17 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
-login a hero chooses a class (Fighter, Barbarian, Rogue or Cleric) and assigns the Standard Array, and starts with that
-class's equipment A (melee gear only). Combat is d20 attack rolls against AC, monsters are SRD stat blocks, and XP and
-levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage, Unarmored
-Defense and from level 2 Reckless Attack; Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with
-`flee`; Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds and Healing Word. The Vex weapon mastery gives
-Advantage on your next attack. Gear is the SRD's melee weapons, armor, Shield and Potion of Healing; AC and attacks
-come from what you wear, and you can wear only the armor your class is trained in. Rest with `rest` (short) or `sleep`
-(long) in a safe room: the town square or the Swaying Lantern. The plan and what's left
-out are in the project's `d20-plan.md`. "5E compatible."
+login a hero chooses a class (Fighter, Barbarian, Rogue or Cleric) and assigns the Standard Array, and starts with
+that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
+blocks, and XP and levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage,
+Unarmored Defense and from level 2 Reckless Attack; Rogues Sneak Attack (with Advantage, or another hero on the same
+foe) and from level 2 always get away with `flee`; Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds and Healing
+Word. The Vex weapon mastery gives Advantage on your next attack. Damage has SRD types, and Resistance, Immunity and
+Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
+from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
+with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
+Disadvantage. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. The
+plan and what's left out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
 available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0

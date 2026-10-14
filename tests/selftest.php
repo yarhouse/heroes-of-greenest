@@ -78,8 +78,8 @@ try {
     $out = run_command(hero('Testc'), 'begin');
     check(says($out, 'You set out') && says($out, 'Greenest Town Square') && hero('Testc')['setup'] === null,
         "'begin' enters the world");
-    check(count(objects_here('user_id', (int) hero('Testc')['id'])) === 4 && hero('Testc')['gold'] === 8,
-        "the Rogue's kit: Leather Armor, Shortsword, 2 Daggers and 8 gp");
+    check(count(objects_here('user_id', (int) hero('Testc')['id'])) === 5 && hero('Testc')['gold'] === 8,
+        "the Rogue's kit: Leather Armor, Shortsword, 2 Daggers, Shortbow and 8 gp");
     q("UPDATE users SET setup = 'class', level = 3, xp = 1000 WHERE name = 'Testc'");
     create('Testc', 'barb');
     $t = hero('Testc');
@@ -169,7 +169,8 @@ try {
         && str_contains(line($inv, 'Greatsword'), 'weapon, 2d6, two-handed  (equipped)')
         && str_contains(line($inv, 'Flail'), 'weapon, 1d8') && !str_contains(line($inv, 'Flail'), 'equipped')
         && hero('Testa')['gold'] === 4, 'a new hero has Kit A: Chain Mail and Greatsword worn, a Flail, 4 gp');
-    check(count(objects_here('user_id', (int) hero('Testa')['id'])) === 3, 'a password reset gives no second kit');
+    check(count(objects_here('user_id', (int) hero('Testa')['id'])) === 11 && str_contains(line($inv, 'Javelin'),
+        'weapon, 1d6, thrown'), 'Kit A also has 8 Javelins; a password reset gives no second kit');
     q('INSERT INTO objects (item_id, room_id) VALUES (50, 1), (18, 1), (22, 1), (32, 1), (36, 1), (60, 1)');
     check(says(run_command(hero('Testa'), 'look'), 'A Longsword lies here.'), 'look shows items on the floor');
     check(says(run_command(hero('Testa'), 'get long'), 'You pick up the Longsword.'), 'get by word prefix');
@@ -450,6 +451,37 @@ try {
         'Cunning Action: from level 2 a Rogue always gets away');
     $dice_queue = [];
 
+    // Ranged weapons: an opening volley, then Disadvantage with the foe next to you (no distances yet).
+    q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
+    q("UPDATE users SET room_id = 2, level = 1, advantage = FALSE WHERE name = 'Testd'");
+    run_command(hero('Testd'), 'equip shortbow');
+    check(says(run_command(hero('Testd'), 'score'), 'Shortbow +4 to hit, 1d6+2 damage'), 'a ranged weapon uses Dex');
+    $dice_queue = [10, 1, 12, 3]; // initiative 12 vs 1, then one shot: 16 vs AC 10 for 3 + 2
+    $out = run_command(hero('Testd'), 'kill dummy');
+    check(says($out, '(16 vs AC 10) for 5 damage.') && says($out, 'The Training Dummy closes in!')
+        && !says($out, 'Slam') && $dice_queue === [], 'an opening volley goes unanswered, with no Disadvantage');
+    $dice_queue = [4, 1]; // Vex's Advantage and the close foe's Disadvantage cancel: one d20
+    check(says(run_command(hero('Testd'), 'kill'), 'You miss the Training Dummy (8 vs AC 10).') && $dice_queue === [],
+        'Advantage and Disadvantage cancel out');
+    $dice_queue = [15, 4, 1];
+    check(says(run_command(hero('Testd'), 'kill'), '(8 vs AC 10, with Disadvantage)') && $dice_queue === [],
+        'then ranged attacks have Disadvantage');
+    $dice_queue = [1];
+    run_command(hero('Testd'), 'flee');
+    q('INSERT INTO objects (item_id, user_id) VALUES (71, ?)', [hero('Testa')['id']]);
+    run_command(hero('Testa'), 'equip light crossbow');
+    $score = run_command(hero('Testa'), 'score');
+    check(says($score, 'Light Crossbow +5 to hit, 1d8+2 damage') && !says($score, 'attacks a round'),
+        'Loading: one shot a turn, even with Extra Attack');
+    run_command(hero('Testa'), 'equip javelin');
+    q("UPDATE users SET room_id = 2, fighting = NULL WHERE name = 'Testa'");
+    $dice_queue = [10, 1, 1, 1, 1]; // initiative, then a thrown Javelin (Extra Attack: two) misses twice
+    $out = run_command(hero('Testa'), 'kill dummy');
+    check(says($out, 'closes in!') && !says($out, 'Slam') && $dice_queue === [1], 'a thrown weapon can open a volley');
+    $dice_queue = [20, 1];
+    run_command(hero('Testa'), 'flee');
+    run_command(hero('Testa'), 'equip greatsword');
+
     save_hero('Teste', 'correct horse');
     create('Teste', 'cleric');
     q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
@@ -474,9 +506,9 @@ try {
     $dice_queue = [9, 9];
     check(save($ogre, 'con', 12) === [12, true] && save($ogre, 'wis', 8) === [7, false],
         'six saves per stat block (Ogre: Con +3, Wis -2)');
-    $dice_queue = [11, 2, 3, 4, 5, 1]; // 15 vs AC 10 for 2+3+4+5; Slam misses
+    $dice_queue = [11, 15, 2, 3, 4, 5, 1]; // a ranged spell attack next to a foe: the lower of 11 and 15; Slam misses
     $out = run_command(hero('Teste'), 'cast guiding');
-    check(says($out, 'Your Guiding Bolt strikes the Training Dummy (15 vs AC 10) for 14 damage.')
+    check(says($out, 'Your Guiding Bolt strikes the Training Dummy (15 vs AC 10, with Disadvantage) for 14 damage.')
         && hero('Teste')['advantage'] === 1 && hero('Teste')['slots_spent'] === '1',
         'Guiding Bolt: 4d6 and Advantage on your next attack, for a slot');
     q("UPDATE users SET hp = 2 WHERE name = 'Teste'");

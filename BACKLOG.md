@@ -43,7 +43,7 @@ Costs, most expensive first: room layout content (Kobold Mines' 174 rooms, the D
 
 ### Open questions
 
-- [ ] Ranged combat at all? Class kits leave out ranged weapons and `seed.sql` items are melee only.
+- [x] Ranged combat at all? Yes, before step 1: a ranged or thrown weapon opens a fight with a free volley while the foe closes in, then has Disadvantage. Rogue kit A has its Shortbow, Fighter kit A its 8 Javelins. Ammunition isn't tracked.
 - [ ] Start with step 1, or go straight to a grid?
 - [ ] How far apart does a fight start? Fixed, by room size, or by which side you entered from? Surprise or stealth?
 - [ ] Command vocabulary: bundled turns (`kill` paths and swings, `shoot` stays put, `back off`, `cover`) and/or chess-style `move c3`?

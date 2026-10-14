@@ -78,7 +78,7 @@ CREATE TABLE levels (
     slots VARCHAR(30) NOT NULL -- Cleric spell slots by spell level, e.g. '4,3,2'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Item templates: the SRD 5.2.1 melee weapons, armor, Shield and Potion of Healing. Ranged weapons, Strength
+-- Item templates: the SRD 5.2.1 weapons, armor, Shield and Potion of Healing. Ammunition, weapon ranges, Strength
 -- requirements and Stealth are left out. Which classes are trained with what is CLASSES in game.php.
 CREATE TABLE items (
     id INT UNSIGNED PRIMARY KEY,
@@ -95,7 +95,10 @@ CREATE TABLE items (
     ac TINYINT UNSIGNED NOT NULL DEFAULT 0, -- armor's base AC, or a shield's bonus
     armor ENUM('light', 'medium', 'heavy') NULL, -- Dex adds all, up to +2, or nothing to the armor's AC
     damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
-        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL -- a weapon's
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL, -- a weapon's
+    ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a Ranged weapon: Dex to hit, Disadvantage once a foe is next to you
+    thrown BOOLEAN NOT NULL DEFAULT FALSE, -- can be thrown, so it can open a fight from afar
+    loading BOOLEAN NOT NULL DEFAULT FALSE -- one shot a turn, however many attacks you have
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron".

@@ -24,7 +24,7 @@ const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, condition
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
  * level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con
- * Int Wis Cha order, armor training, and starting equipment A as [item id, worn]. Kits leave out ranged weapons,
+ * Int Wis Cha order, armor training, and starting equipment A as [item id, worn]. Kits leave out ammunition,
  * packs, tools and focuses. Every class but the Rogue is trained with every weapon (the Fighter's Fighting Style is
  * Defense, the Cleric's Divine Order is Protector).
  */
@@ -32,7 +32,10 @@ const CLASSES = [
     'fighter' => [
         'name' => 'Fighter', 'die' => 10, 'hp' => 10, 'per_level' => 6, 'scores' => [15, 14, 13, 8, 10, 12],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 4,
-        'kit' => [[40, true], [15, true], [12, false]], // Chain Mail, Greatsword, Flail
+        'kit' => [ // Chain Mail, Greatsword, Flail, 8 Javelins
+            [40, true], [15, true], [12, false], [5, false], [5, false], [5, false], [5, false], [5, false], [5, false],
+            [5, false], [5, false],
+        ],
         'about' => 'd10 HP, any armor. Second Wind heals you; more attacks as you level.',
     ],
     'barbarian' => [
@@ -44,8 +47,9 @@ const CLASSES = [
     'rogue' => [
         'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
         'armor' => ['light'], 'gold' => 8,
-        'kit' => [[32, true], [24, true], [2, false], [2, false]], // Leather Armor, Shortsword, 2 Daggers
-        'about' => 'd8 HP, light armor. Sneak Attack with a finesse weapon when you have Advantage or help.',
+        'kit' => [[32, true], [24, true], [2, false], [2, false], [72, false]], // Leather Armor, Shortsword, 2 Daggers,
+        // Shortbow
+        'about' => 'd8 HP, light armor. Sneak Attack with a finesse or ranged weapon when you have Advantage or help.',
     ],
     'cleric' => [
         'name' => 'Cleric', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [14, 8, 13, 10, 15, 12],
@@ -154,7 +158,9 @@ function with_stats(array $me): array
         'immunities' => '',
         'vulnerabilities' => '',
     ];
-    return $me + gear($me);
+    $me += gear($me);
+    $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
+    return $me;
 }
 
 /** Runs one command for $me (a users row) and returns the output lines. */
@@ -402,20 +408,23 @@ function a_an(string $name): string
 
 function cmd_kill(array $me, string $target): array
 {
-    return fight($me, $target, 'hero_turn');
+    return fight($me, $target, 'hero_turn', 'Kill what?', $me['ranged'] || $me['thrown']);
 }
 
 /**
  * One round against $target (or the monster I'm fighting), starting the fight if need be, with $act as my action:
- * a function (array &$me, array &$foe, array &$lines): bool that returns true if the monster died.
+ * a function (array &$me, array &$foe, array &$lines): bool that returns true if the monster died. A $ranged attack
+ * that starts a fight is an opening volley: the foe spends the round closing in, so it doesn't attack, and the shots
+ * have no Disadvantage. After that a foe is always next to you (shortcut: no distances, until tactical step 1).
  */
-function fight(array $me, string $target, callable $act, string $what = 'Kill what?'): array
+function fight(array $me, string $target, callable $act, string $what = 'Kill what?', bool $ranged = false): array
 {
     $foe = find_foe($me, $target);
     if (!$foe) {
         return [$target === '' || $me['fighting'] !== null ? $what : "You don't see a $target here."];
     }
     $lines = [];
+    $me['volley'] = $ranged && $me['fighting'] === null;
     if ($me['fighting'] === null) {
         $mine = roll('1d20') + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
@@ -426,10 +435,18 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         );
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
     }
-    $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
-    if (!$over) {
+    if ($me['volley']) { // the foe spends this round closing in, so my shots go unanswered
         start_turn($me);
-        $over = $act($me, $foe, $lines) || (!$me['foe_first'] && monster_turn($me, $foe, $lines));
+        $over = $act($me, $foe, $lines);
+        if (!$over) {
+            $lines[] = "The {$foe['name']} closes in!";
+        }
+    } else {
+        $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
+        if (!$over) {
+            start_turn($me);
+            $over = $act($me, $foe, $lines) || (!$me['foe_first'] && monster_turn($me, $foe, $lines));
+        }
     }
     if (!$over) {
         $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
@@ -478,19 +495,21 @@ function cmd_flee(array $me): array
 
 /**
  * My weapon attacks on $foe this round (more than one with Extra Attack). Returns true if it died. Rage adds damage to
- * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse weapon, needs Advantage or another hero on the
- * same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit gives
- * Advantage on the next attack (shortcut: Vex is the only Weapon Mastery modeled, and for any weapon you wield).
+ * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse or Ranged weapon, needs Advantage or another
+ * hero on the same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit
+ * gives Advantage on the next attack (shortcut: Vex is the only Weapon Mastery modeled, and for any weapon you wield).
+ * A Ranged weapon has Disadvantage except in an opening volley.
  */
 function hero_turn(array $me, array &$foe, array &$lines): bool
 {
-    $sneak = $me['class'] === 'rogue' && $me['finesse'];
+    $sneak = $me['class'] === 'rogue' && ($me['finesse'] || $me['ranged']);
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $me['str_based']);
     for ($i = 0; $i < $me['attacks']; $i++) {
-        [$d20, $adv] = attack_d20($me, $aim);
+        [$d20, $edge] = attack_d20($me, $aim, $me['ranged'] && !$me['volley']);
+        $adv = $edge > 0;
         $total = $d20 + $me['to_hit'];
-        $with = $adv ? ', with Advantage' : '';
+        $with = with($edge);
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "You miss the {$foe['name']} ($why$with).";
@@ -518,21 +537,35 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
     return false;
 }
 
-/** The d20 for my attack roll and whether it had Advantage (the higher of two), which $adv or my saved one gives. */
-function attack_d20(array &$me, bool $adv = false): array
+/**
+ * The d20 for my attack roll, and its edge: 1 with Advantage ($adv or my saved one), -1 with Disadvantage ($dis), 0
+ * with neither or both.
+ */
+function attack_d20(array &$me, bool $adv = false, bool $dis = false): array
 {
     if ($me['advantage']) { // used up by this roll
         $adv = true;
         $me['advantage'] = false;
         q('UPDATE users SET advantage = FALSE WHERE id = ?', [$me['id']]);
     }
-    return [d20($adv), $adv];
+    $edge = $adv <=> $dis;
+    return [d20($edge), $edge];
 }
 
-/** A d20 for a D20 Test: with Advantage, the higher of two. */
-function d20(bool $adv): int
+/** A d20 for a D20 Test: with Advantage (edge 1) the higher of two, with Disadvantage (-1) the lower. */
+function d20(int $edge): int
 {
-    return $adv ? max(roll('1d20'), roll('1d20')) : roll('1d20');
+    return match ($edge) {
+        1 => max(roll('1d20'), roll('1d20')),
+        -1 => min(roll('1d20'), roll('1d20')),
+        default => roll('1d20'),
+    };
+}
+
+/** How a combat line says a roll's edge. */
+function with(int $edge): string
+{
+    return [-1 => ', with Disadvantage', 0 => '', 1 => ', with Advantage'][$edge];
 }
 
 /** $foe's saving throw against $dc with its 'str' to 'cha' save: [the total, whether it saved]. No natural 1 or 20. */
@@ -562,7 +595,7 @@ function cmd_reckless(array $me, string $target): array
         q("UPDATE users SET conditions = 'reckless' WHERE id = ?", [$me['id']]);
         $lines[] = 'You throw aside all concern for defense!';
         return hero_turn($me, $foe, $lines);
-    });
+    }, 'Kill what?', $me['ranged'] || $me['thrown']);
 }
 
 /**
@@ -631,11 +664,11 @@ function win(array $me, array $foe, array &$lines): void
 function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bool
 {
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
-        $adv = has($me, 'reckless');
-        $d20 = d20($adv);
+        $edge = (int) has($me, 'reckless');
+        $d20 = d20($edge);
         $total = $d20 + $foe['to_hit'];
         $its = "The {$foe['name']}'s {$foe['attack']}";
-        $with = $adv ? ', with Advantage' : '';
+        $with = with($edge);
         if ($d20 === 1 || ($d20 < 20 && $total < $me['ac'])) {
             $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . "$with).";
             continue;
@@ -811,9 +844,9 @@ function cmd_cast(array $me, string $arg): array
     }
     return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($slot, $spend): bool {
         $spend($me);
-        [$d20, $adv] = attack_d20($me);
+        [$d20, $edge] = attack_d20($me, false, !$me['volley']); // a ranged spell attack
         $total = $d20 + $me['prof_bonus'] + mod($me['wisdom']);
-        $with = $adv ? ', with Advantage' : '';
+        $with = with($edge);
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "Your Guiding Bolt misses the {$foe['name']} ($why$with).";
@@ -828,7 +861,7 @@ function cmd_cast(array $me, string $arg): array
         $me['advantage'] = true; // on the next attack roll against it (shortcut: only mine)
         q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
         return false;
-    }, $at);
+    }, $at, true);
 }
 
 /** Starts a short or long rest. It finishes on the first command after it's done, unless I leave the room. */
@@ -922,7 +955,8 @@ function gear(array $me): array
     };
     $weapon = $worn['weapon'] ?? null;
     $finesse = $weapon !== null && $weapon['finesse'];
-    $attack_mod = $finesse ? max($str, $dex) : $str;
+    $ranged = $weapon !== null && $weapon['ranged'];
+    $attack_mod = $finesse ? max($str, $dex) : ($ranged ? $dex : $str);
     return [
         'ac' => $ac + ($worn['shield']['ac'] ?? 0),
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
@@ -932,7 +966,10 @@ function gear(array $me): array
         'attack_mod' => $attack_mod,
         'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0),
         'finesse' => $finesse,
-        'str_based' => !$finesse || $str >= $dex,
+        'str_based' => $finesse ? $str >= $dex : !$ranged,
+        'ranged' => $ranged,
+        'thrown' => $weapon !== null && $weapon['thrown'],
+        'loading' => $weapon !== null && $weapon['loading'],
         'vex' => $weapon !== null && $weapon['vex'] && $me['class'] !== 'cleric', // Clerics have no Weapon Mastery
     ];
 }
@@ -954,7 +991,8 @@ function describe(array $o): string
     return match ($o['slot']) {
         'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
             . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : '')
-            . ($o['light'] ? ', light' : '') . ($o['vex'] ? ', vex' : ''),
+            . ($o['light'] ? ', light' : '') . ($o['vex'] ? ', vex' : '') . ($o['ranged'] ? ', ranged' : '')
+            . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : ''),
         'armor' => "{$o['armor']} armor, AC {$o['ac']}"
             . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],
         'shield' => "shield, +{$o['ac']} AC",
