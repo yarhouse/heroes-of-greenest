@@ -101,35 +101,38 @@ INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
 
 -- SRD Character Advancement (p.23), and from the class Features tables: Fighter (p.47) Second Wind uses and attacks
 -- per round (Extra Attack at 5, Two Extra Attacks at 11, Three at 20), Barbarian (p.28) Rages and Rage Damage, Monk
--- (p.49) Martial Arts die, and Cleric (p.36) spell slots.
-INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, martial_arts, slots) VALUES
-(1, 0, 2, 2, 1, 2, 2, 6, '2'),
-(2, 300, 2, 2, 1, 2, 2, 6, '3'),
-(3, 900, 2, 2, 1, 3, 2, 6, '4,2'),
-(4, 2700, 2, 3, 1, 3, 2, 6, '4,3'),
-(5, 6500, 3, 3, 2, 3, 2, 8, '4,3,2'),
-(6, 14000, 3, 3, 2, 4, 2, 8, '4,3,3'),
-(7, 23000, 3, 3, 2, 4, 2, 8, '4,3,3,1'),
-(8, 34000, 3, 3, 2, 4, 2, 8, '4,3,3,2'),
-(9, 48000, 4, 3, 2, 4, 3, 8, '4,3,3,3,1'),
-(10, 64000, 4, 4, 2, 4, 3, 8, '4,3,3,3,2'),
-(11, 85000, 4, 4, 3, 4, 3, 10, '4,3,3,3,2,1'),
-(12, 100000, 4, 4, 3, 5, 3, 10, '4,3,3,3,2,1'),
-(13, 120000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1'),
-(14, 140000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1'),
-(15, 165000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1,1'),
-(16, 195000, 5, 4, 3, 5, 4, 10, '4,3,3,3,2,1,1,1'),
-(17, 225000, 6, 4, 3, 6, 4, 12, '4,3,3,3,2,1,1,1,1'),
-(18, 265000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,1,1,1,1'),
-(19, 305000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,2,1,1,1'),
-(20, 355000, 6, 4, 4, 6, 4, 12, '4,3,3,3,3,2,2,1,1')
+-- (p.49) Martial Arts die, and spell slots: Cleric (p.36) for full casters, Paladin (p.53) for half casters.
+INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, martial_arts, slots, half_slots)
+VALUES
+(1, 0, 2, 2, 1, 2, 2, 6, '2', '2'),
+(2, 300, 2, 2, 1, 2, 2, 6, '3', '2'),
+(3, 900, 2, 2, 1, 3, 2, 6, '4,2', '3'),
+(4, 2700, 2, 3, 1, 3, 2, 6, '4,3', '3'),
+(5, 6500, 3, 3, 2, 3, 2, 8, '4,3,2', '4,2'),
+(6, 14000, 3, 3, 2, 4, 2, 8, '4,3,3', '4,2'),
+(7, 23000, 3, 3, 2, 4, 2, 8, '4,3,3,1', '4,3'),
+(8, 34000, 3, 3, 2, 4, 2, 8, '4,3,3,2', '4,3'),
+(9, 48000, 4, 3, 2, 4, 3, 8, '4,3,3,3,1', '4,3,2'),
+(10, 64000, 4, 4, 2, 4, 3, 8, '4,3,3,3,2', '4,3,2'),
+(11, 85000, 4, 4, 3, 4, 3, 10, '4,3,3,3,2,1', '4,3,3'),
+(12, 100000, 4, 4, 3, 5, 3, 10, '4,3,3,3,2,1', '4,3,3'),
+(13, 120000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1'),
+(14, 140000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1'),
+(15, 165000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1,1', '4,3,3,2'),
+(16, 195000, 5, 4, 3, 5, 4, 10, '4,3,3,3,2,1,1,1', '4,3,3,2'),
+(17, 225000, 6, 4, 3, 6, 4, 12, '4,3,3,3,2,1,1,1,1', '4,3,3,3,1'),
+(18, 265000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,1,1,1,1', '4,3,3,3,1'),
+(19, 305000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,2,1,1,1', '4,3,3,3,2'),
+(20, 355000, 6, 4, 4, 6, 4, 12, '4,3,3,3,3,2,2,1,1', '4,3,3,3,2')
 AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks,
-    rages = new.rages, rage_damage = new.rage_damage, martial_arts = new.martial_arts, slots = new.slots;
+    rages = new.rages, rage_damage = new.rage_damage, martial_arts = new.martial_arts, slots = new.slots,
+    half_slots = new.half_slots;
 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
 -- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,
--- Blindness/Deafness p.113 (as Blindness), Mass Healing Word p.148, Spirit Guardians p.164. Only the spells a fight
+-- Blindness/Deafness p.113 (as Blindness), Mass Healing Word p.148, Spirit Guardians p.164, Divine Favor p.125,
+-- Divine Smite p.125, Shining Smite p.162. Only the spells a fight
 -- here can use. Second line: targets, count and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
     targets, count, upcast_targets, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
@@ -138,7 +141,7 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'spell attack, 4d6 Radiant, and Advantage on your next attack'),
-(3, 'Cure Wounds', 1, 'cleric', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
+(3, 'Cure Wounds', 1, 'cleric,paladin', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you or a hero here regain 2d8 + your modifier'),
 (4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
@@ -165,7 +168,15 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
     'allies', 6, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you and five heroes here regain 2d4 + your modifier'),
 (14, 'Spirit Guardians', 3, 'cleric', 'action', 'buff', FALSE, NULL, '1d8', 'radiant', 'wis', TRUE,
     'self', 1, 0, NULL, 'aura', '3d8', FALSE, TRUE, 10,
-    'spirits around you: a foe takes 3d8 Radiant after each of its turns, Wis save for half')
+    'spirits around you: a foe takes 3d8 Radiant after each of its turns, Wis save for half'),
+(15, 'Divine Favor', 1, 'paladin', 'bonus', 'buff', FALSE, NULL, NULL, 'radiant', NULL, FALSE,
+    'self', 1, 0, NULL, 'damage', '1d4', FALSE, FALSE, 1, 'your weapon hits deal an extra 1d4 Radiant; a Bonus Action'),
+(16, 'Divine Smite', 1, 'paladin', 'bonus', 'smite', FALSE, '2d8', '1d8', 'radiant', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
+    'attack; your first melee hit deals 2d8 Radiant more, 3d8 to a Fiend or Undead'),
+(17, 'Shining Smite', 2, 'paladin', 'bonus', 'smite', FALSE, '2d6', '1d6', 'radiant', NULL, FALSE,
+    'foe', 1, 0, NULL, 'condition', 'outlined', FALSE, TRUE, 1,
+    'attack; your first melee hit deals 2d6 Radiant more, and attacks on it have Advantage')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

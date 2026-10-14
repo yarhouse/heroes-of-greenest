@@ -823,7 +823,7 @@ try {
     $dice_queue = [10, 1, 4, 1]; // Uncanny Metabolism heals 4 + 2; the thrown Spear misses
     $out = run_command(hero('Testf'), 'kill dummy');
     check(says($out, 'Uncanny Metabolism: your Focus Points return, and HP 9/9.') && $dice_queue === []
-        && hero('Testf')['uses_spent'] === 0 && hero('Testf')['metabolized'] === 1,
+        && hero('Testf')['uses_spent'] === 0 && hero('Testf')['once_used'] === 1,
         'Uncanny Metabolism: rolling Initiative brings back Focus and some HP');
     $dice_queue = [12, 5, 15, 2]; // no Bonus Action strike; the Slam rolls twice and takes the 2
     $out = run_command(hero('Testf'), 'patient');
@@ -875,11 +875,87 @@ try {
         && hero('Testf')['uses_spent'] === 0, 'a short rest brings back every Focus Point');
     q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testf'");
     run_command(hero('Testf'), 'score');
-    check(hero('Testf')['metabolized'] === 0 && hero('Testf')['wholeness_spent'] === 0,
+    check(hero('Testf')['once_used'] === 0 && hero('Testf')['wholeness_spent'] === 0,
         'a long rest brings back Uncanny Metabolism and Wholeness of Body');
     q("UPDATE users SET level = 14 WHERE name = 'Testf'");
     check(says(run_command(hero('Testf'), 'score'), 'Saves  Str +6  Dex +7  Con +6  Int +5  Wis +7  Cha +4'),
         'Disciplined Survivor: proficient in every save at 14');
+
+    // Paladin (Testg: Str 15, Cha 14: spell save DC 12, spell attack +4). The dummy: AC 10.
+    q('UPDATE spawns SET hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testg', 'correct horse');
+    create('Testg', 'paladin');
+    q("UPDATE users SET room_id = 2 WHERE name IN ('Testg', 'Testf')");
+    $score = run_command(hero('Testg'), 'score');
+    check(says($score, 'level 1 Paladin') && says($score, 'HP 11/11   AC 18')
+        && says($score, 'Longsword +4 to hit, 1d8+2 damage')
+        && says($score, 'Hit Dice 1/1 d10   Lay On Hands 5/5   Spell slots 2/2')
+        && says($score, 'Saves  Str +2  Dex +0  Con +1  Int -1  Wis +3  Cha +4')
+        && count(objects_here('user_id', (int) hero('Testg')['id'])) === 9 && hero('Testg')['gold'] === 9,
+        'Paladin: Chain Mail, Shield, Longsword, 6 Javelins; Lay On Hands 5 x level; Wis and Cha saves');
+    $out = run_command(hero('Testg'), 'cast');
+    check(says($out, 'save DC 12, spell attack +4; slots 2/2') && says($out, 'divine favor')
+        && says($out, 'cure wounds')
+        && !says($out, 'divine smite'), 'a Paladin casts with Cha, and has no Divine Smite before level 2');
+    q("UPDATE users SET hp = 3 WHERE name = 'Testg'");
+    q("UPDATE users SET hp = 1 WHERE name = 'Testf'");
+    check(says(run_command(hero('Testg'), 'lay'), 'You regain 5 HP. HP 8/11, 0 left in your Lay On Hands pool.')
+        && says(run_command(hero('Testg'), 'lay testf'), 'pool is empty'), 'Lay On Hands heals from a pool');
+    q("UPDATE users SET uses_spent = 0 WHERE name = 'Testg'");
+    check(says(run_command(hero('Testg'), 'lay testf'), 'Testf regains 5 HP') && hero('Testf')['hp'] === 6,
+        'and can heal another hero here');
+    q("UPDATE users SET level = 2, hp = 19, max_hp = 19 WHERE name = 'Testg'");
+    check(says(run_command(hero('Testg'), 'score'), 'AC 19'), 'level 2: the Defense fighting style');
+    $dice_queue = [10, 1, 12, 5, 3, 4, 1]; // a hit for 5 + 2, the smite's 2d8 for 7, free once a long rest
+    $out = run_command(hero('Testg'), 'cast divine smite dummy');
+    check(says($out, '(16 vs AC 10) for 7 damage.')
+        && says($out, 'Your Divine Smite (free) sears the Training Dummy for 7 more damage. Slots 2/2.')
+        && q('SELECT hp FROM spawns WHERE id = 9999')->fetchColumn() === 186
+        && $dice_queue === [], "Paladin's Smite: Divine Smite on a melee hit, free once a long rest");
+    $type = q('SELECT type FROM monsters WHERE id = 9999')->fetchColumn();
+    q("UPDATE monsters SET type = 'undead' WHERE id = 9999");
+    $dice_queue = [12, 5, 3, 4, 5, 1];
+    $out = run_command(hero('Testg'), 'cast divine smite');
+    check(says($out, 'Your Divine Smite sears the Training Dummy for 12 more damage. Slots 1/2.')
+        && $dice_queue === [], 'then it spends a slot, and an Undead takes 1d8 more');
+    q('UPDATE monsters SET type = ? WHERE id = 9999', [$type]);
+    $dice_queue = [1, 1];
+    check(says(run_command(hero('Testg'), 'cast divine sm'), 'You miss') && hero('Testg')['slots_spent'] === '1'
+        && $dice_queue === [], 'a smite that never hits spends nothing');
+    $out = run_command(hero('Testg'), 'cast divine favor');
+    $dice_queue = [12, 5, 2, 1];
+    check(says($out, 'You cast Divine Favor on you. Slots 0/2.') && !says($out, 'Slam')
+        && says(run_command(hero('Testg'), 'kill'), '(16 vs AC 10) for 9 damage (+2 Divine Favor).')
+        && $dice_queue === [],
+        'Divine Favor: a Bonus Action, then 1d4 Radiant on each weapon hit');
+    q("UPDATE users SET level = 5, slots_spent = '' WHERE name = 'Testg'");
+    q('DELETE FROM effects');
+    check(says(run_command(hero('Testg'), 'prepare divine favor, cure wounds, shining smite'), 'You prepare'),
+        'a level 5 Paladin prepares a level 2 spell');
+    $dice_queue = [12, 5, 3, 3, 2, 12, 5, 1, 1]; // 2d6 Radiant; then the second attack has Advantage
+    $out = run_command(hero('Testg'), 'cast shining dummy');
+    check(says($out, 'Your Shining Smite sears the Training Dummy for 6 more damage. Slots 4/4 1/2.')
+        && says($out, '(17 vs AC 10, with Advantage)') && $dice_queue === [],
+        'Shining Smite: a level 2 smite, and attacks on the foe have Advantage');
+    q("UPDATE users SET level = 6 WHERE name = 'Testg'");
+    check(says(run_command(hero('Testg'), 'score'), 'Saves  Str +4  Dex +2  Con +3  Int +1  Wis +6  Cha +7'),
+        'Aura of Protection: + Cha to every save from level 6');
+    q("UPDATE users SET level = 11 WHERE name = 'Testg'");
+    q('DELETE FROM effects');
+    $dice_queue = [12, 5, 4, 1, 1, 1]; // the second attack misses; the Longsword's Sap gives the Slam Disadvantage
+    $out = run_command(hero('Testg'), 'kill');
+    check(says($out, '(18 vs AC 10) for 11 damage (+4 Radiant Strikes).')
+        && $dice_queue === [], 'Radiant Strikes: 1d8 Radiant on melee hits from level 11');
+    $dice_queue = [20, 1];
+    run_command(hero('Testg'), 'flee');
+    q("UPDATE users SET uses_spent = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testg'");
+    run_command(hero('Testg'), 'score');
+    check(hero('Testg')['uses_spent'] === 5, "a short rest doesn't refill Lay On Hands");
+    q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testg'");
+    run_command(hero('Testg'), 'score');
+    check(hero('Testg')['uses_spent'] === 0 && hero('Testg')['once_used'] === 0,
+        'a long rest refills it and the free Divine Smite');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
