@@ -54,12 +54,16 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
-login a hero chooses a class (Fighter, Barbarian, Rogue or Cleric) and assigns the Standard Array, and starts with
+login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric or Monk) and assigns the Standard Array, and starts with
 that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
 Advantage on Str saves), Unarmored Defense and from level 2 Reckless Attack and Danger Sense (Advantage on Dex saves);
 Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with `flee`;
+Monks fight unarmored with Martial Arts (Dex attacks, the Martial Arts die, an Unarmed Strike as a Bonus Action) and
+from level 2 spend Focus Points (back on a short rest) on `flurry`, `patient` and from 5 `stun`, always get away with
+`flee`, get Focus back with Uncanny Metabolism, Deflect Attacks (3), topple with Open Hand Technique and heal with
+`wholeness` (6);
 Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
 Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
 Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;

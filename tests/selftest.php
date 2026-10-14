@@ -773,6 +773,114 @@ try {
     run_command(hero('Teste'), 'flee');
     check($dice_queue === [], 'every queued die was used by the classes');
 
+    // Monk (Testf: Str 12, Dex 15, Con 13, Wis 14; Focus save DC 8 + Wis + PB). The dummy: AC 10, saves +0.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testf', 'correct horse');
+    create('Testf', 'monk');
+    $id = hero('Testf')['id'];
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testf'");
+    $score = run_command(hero('Testf'), 'score');
+    check(says($score, 'level 1 Monk') && says($score, 'HP 9/9   AC 14')
+        && says($score, 'Spear +4 to hit, 1d8+2 damage') && says($score, 'Hit Dice 1/1 d8   Martial Arts d6')
+        && !says($score, 'Focus')
+        && says($score, 'Saves  Str +3  Dex +4  Con +1  Int +0  Wis +2  Cha -1'),
+        'Monk: Unarmored Defense (10 + Dex + Wis), Dex attacks, Str and Dex saves, no Focus at level 1');
+    check(count(objects_here('user_id', (int) $id)) === 6 && hero('Testf')['gold'] === 11,
+        "the Monk's kit: a Spear, 5 Daggers and 11 gp");
+    q('INSERT INTO objects (item_id, user_id) VALUES (40, ?), (50, ?), (15, ?), (24, ?)', [$id, $id, $id, $id]);
+    check(says(run_command(hero('Testf'), 'equip chain'), "A Monk isn't trained")
+        && says(run_command(hero('Testf'), 'equip shield'), "A Monk isn't trained"), 'Monks have no armor training');
+    check(says(run_command(hero('Testf'), 'equip greatsword'), 'no Proficiency Bonus')
+        && says(run_command(hero('Testf'), 'score'), 'no Martial Arts')
+        && !says(run_command(hero('Testf'), 'equip shortsword'), 'no Proficiency')
+        && says(run_command(hero('Testf'), 'score'), 'Shortsword +4 to hit, 1d6+2'),
+        'Monk weapons: Simple or Light; anything else turns off Martial Arts');
+    run_command(hero('Testf'), 'equip spear');
+    $dice_queue = [10, 1, 12, 5]; // the Spear is thrown in an opening volley: no Unarmed Strike from afar
+    $out = run_command(hero('Testf'), 'kill dummy');
+    check(says($out, '(16 vs AC 10) for 7 damage.') && says($out, 'closes in!') && !says($out, 'Unarmed')
+        && $dice_queue === [], 'a thrown Spear opens a volley');
+    $dice_queue = [12, 5, 11, 3, 1]; // Spear hits for 5 + 2; the Bonus Action strike for 3 + 2
+    $out = run_command(hero('Testf'), 'kill');
+    check(says($out, '(16 vs AC 10) for 7 damage.')
+        && says($out, 'Your Unarmed Strike hits the Training Dummy (15 vs AC 10) for 5 damage.') && $dice_queue === []
+        && hero('Testf')['bonus_used'] === 0, 'Martial Arts: an Unarmed Strike as a Bonus Action, with the d6');
+    check(says(run_command(hero('Testf'), 'flurry'), 'level 2 or more'), 'Flurry of Blows needs level 2');
+    q("UPDATE users SET level = 2 WHERE name = 'Testf'");
+    $dice_queue = [1, 11, 3, 11, 3, 1]; // the Spear misses; two Unarmed Strikes hit
+    $out = run_command(hero('Testf'), 'flurry');
+    check(says($out, 'You unleash a Flurry of Blows!') && count(array_filter($out, fn ($l) => str_contains($l,
+        'Your Unarmed Strike hits'))) === 2 && $dice_queue === [] && hero('Testf')['uses_spent'] === 1,
+        'Flurry of Blows: two Unarmed Strikes for 1 Focus Point');
+    check(says(run_command(hero('Testf'), 'score'), 'Focus 1/2'), 'score shows Focus Points');
+    $dice_queue = [1];
+    check(says(run_command(hero('Testf'), 'flee'), 'You flee') && $dice_queue === [1],
+        'Step of the Wind: from level 2 a Monk always gets away');
+    q("UPDATE users SET room_id = 2, hp = 3, uses_spent = 2 WHERE name = 'Testf'");
+    check(says(run_command(hero('Testf'), 'patient dummy'), 'no Focus Points left'), 'techniques cost Focus');
+    $dice_queue = [10, 1, 4, 1]; // Uncanny Metabolism heals 4 + 2; the thrown Spear misses
+    $out = run_command(hero('Testf'), 'kill dummy');
+    check(says($out, 'Uncanny Metabolism: your Focus Points return, and HP 9/9.') && $dice_queue === []
+        && hero('Testf')['uses_spent'] === 0 && hero('Testf')['metabolized'] === 1,
+        'Uncanny Metabolism: rolling Initiative brings back Focus and some HP');
+    $dice_queue = [12, 5, 15, 2]; // no Bonus Action strike; the Slam rolls twice and takes the 2
+    $out = run_command(hero('Testf'), 'patient');
+    check(says($out, 'Patient Defense') && says($out, 'misses you (5 vs AC 14, with Disadvantage)')
+        && !says($out, 'Unarmed Strike') && $dice_queue === [], 'Patient Defense: Dodge as the Bonus Action');
+    q("UPDATE users SET level = 3 WHERE name = 'Testf'");
+    $dice_queue = [1, 1, 15, 4, 2, 5, 3, 4]; // misses; the Slam hits for 4, 2 + 2 + 3 deflected; Dex save 5 fails
+    $out = run_command(hero('Testf'), 'kill');
+    check(says($out, 'hits you (18 vs AC 14) for 0 damage, 4 deflected.')
+        && says($out, 'You turn the blow back on the Training Dummy (Dex save 5 vs DC 12) for 9 damage.')
+        && hero('Testf')['hp'] === 9 && hero('Testf')['uses_spent'] === 2 && $dice_queue === [],
+        'Deflect Attacks: 1d10 + Dex + level off a hit, and a Focus Point turns it back');
+    q("UPDATE users SET uses_spent = 0 WHERE name = 'Testf'");
+    $dice_queue = [1, 11, 3, 5, 2, 11, 3, 1]; // a strike topples it (Dex save 5); the next has Advantage; it gets up
+    $out = run_command(hero('Testf'), 'flurry');
+    check(says($out, 'Your open hand topples the Training Dummy, Prone (Dex save 5 vs DC 12).')
+        && says($out, '(15 vs AC 10, with Advantage)') && says($out, 'gets back up') && $dice_queue === [],
+        'Open Hand Technique: a Flurry hit can knock it Prone');
+    q("UPDATE users SET level = 5, uses_spent = 0 WHERE name = 'Testf'");
+    $dice_queue = [12, 5, 5, 2, 12, 5, 3, 11, 4]; // Con save 5 fails; then Advantage; the dummy loses its turn
+    $out = run_command(hero('Testf'), 'stun');
+    check(says($out, 'The Training Dummy is Stunned until your next turn (Con save 5 vs DC 13)!')
+        && says($out, "is Stunned and can't act.") && count(array_filter($out, fn ($l) => str_contains($l,
+        'with Advantage'))) === 2 && $dice_queue === [] && hero('Testf')['uses_spent'] === 1,
+        'Stunning Strike: a failed Con save Stuns until my next turn');
+    $dice_queue = [12, 5, 15, 2, 12, 5, 11, 4, 1]; // it saves: only the next attack has Advantage
+    $out = run_command(hero('Testf'), 'stun');
+    check(says($out, "reels but isn't Stunned (Con save 15 vs DC 13)")
+        && count(array_filter($out, fn ($l) => str_contains($l, 'with Advantage'))) === 1 && says($out, 'Slam misses')
+        && $dice_queue === [], 'a saved Stunning Strike leaves it reeling');
+    q("UPDATE users SET level = 6 WHERE name = 'Testf'");
+    q("UPDATE monsters SET resistances = 'bludgeoning' WHERE id = 9999");
+    $dice_queue = [1, 1, 11, 4, 1];
+    $out = run_command(hero('Testf'), 'kill');
+    check(says($out, 'Your Unarmed Strike hits the Training Dummy (16 vs AC 10) for 6 damage (force).')
+        && $dice_queue === [], 'Empowered Strikes: Force damage past a Bludgeoning resistance');
+    q("UPDATE monsters SET resistances = '' WHERE id = 9999");
+    $dice_queue = [1];
+    run_command(hero('Testf'), 'flee');
+    q("UPDATE users SET hp = 1 WHERE name = 'Testf'");
+    $dice_queue = [3];
+    check(says(run_command(hero('Testf'), 'wholeness'), 'regain 5 HP. HP 6/9, 1 Wholeness of Body left.'),
+        'Wholeness of Body: a Martial Arts die + Wis');
+    $score = run_command(hero('Testf'), 'score');
+    check(says($score, 'Martial Arts d8   Focus 4/6') && says($score, '2 attacks a round'),
+        'level 6: the d8, Extra Attack, 6 Focus Points');
+    q("UPDATE users SET resting = 'short', rest_until = NOW(), hit_dice_spent = 6 WHERE name = 'Testf'");
+    check(says(run_command(hero('Testf'), 'score'), 'and regaining your Focus Points.')
+        && hero('Testf')['uses_spent'] === 0, 'a short rest brings back every Focus Point');
+    q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testf'");
+    run_command(hero('Testf'), 'score');
+    check(hero('Testf')['metabolized'] === 0 && hero('Testf')['wholeness_spent'] === 0,
+        'a long rest brings back Uncanny Metabolism and Wholeness of Body');
+    q("UPDATE users SET level = 14 WHERE name = 'Testf'");
+    check(says(run_command(hero('Testf'), 'score'), 'Saves  Str +6  Dex +7  Con +6  Int +5  Wis +7  Cha +4'),
+        'Disciplined Survivor: proficient in every save at 14');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

@@ -64,8 +64,9 @@ CREATE TABLE spawns (
     respawn_secs INT UNSIGNED NOT NULL DEFAULT 600,
     hp SMALLINT NOT NULL DEFAULT 0,
     dead_since DATETIME NULL,
-    -- Prone ends at the start of its next turn, Sapped at its next attack roll or the start of my next turn.
-    conditions SET('prone', 'sapped') NOT NULL DEFAULT '',
+    -- Prone ends at the start of its next turn, Sapped at its next attack roll or the start of my next turn, Stunned
+    -- at the start of my next turn, and reeling (a Stunning Strike saved against) then or at the next attack on it.
+    conditions SET('prone', 'sapped', 'stunned', 'reeling') NOT NULL DEFAULT '',
     grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
     KEY (room_id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
@@ -81,6 +82,7 @@ CREATE TABLE levels (
     attacks TINYINT UNSIGNED NOT NULL, -- Fighter; a Barbarian gets 2 from level 5
     rages TINYINT UNSIGNED NOT NULL, -- Barbarian
     rage_damage TINYINT UNSIGNED NOT NULL, -- Barbarian
+    martial_arts TINYINT UNSIGNED NOT NULL, -- Monk: the Martial Arts die's sides
     slots VARCHAR(30) NOT NULL -- Cleric spell slots by spell level, e.g. '4,3,2'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -121,7 +123,7 @@ CREATE TABLE users (
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
-    class ENUM('fighter', 'barbarian', 'rogue', 'cleric') NOT NULL DEFAULT 'fighter',
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk') NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,
@@ -133,12 +135,14 @@ CREATE TABLE users (
     wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
-    uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- Second Wind or Rage
+    uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- Second Wind, Rage or Focus Points
+    metabolized BOOLEAN NOT NULL DEFAULT FALSE, -- a Monk's Uncanny Metabolism, used since the last long rest
+    wholeness_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
     raging BOOLEAN NOT NULL DEFAULT FALSE, -- until the fight ends
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
-    conditions SET('reckless') NOT NULL DEFAULT '',
+    conditions SET('reckless', 'dodging') NOT NULL DEFAULT '',
     bonus_used BOOLEAN NOT NULL DEFAULT FALSE, -- my Bonus Action this round of a fight; my turn's end clears it
     prepared VARCHAR(255) NOT NULL DEFAULT '', -- spell ids, e.g. '5,2'; empty means the class's defaults
     may_prepare BOOLEAN NOT NULL DEFAULT TRUE, -- a long rest lets me change them

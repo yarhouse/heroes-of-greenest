@@ -100,32 +100,32 @@ INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
 (3, 7, 1001, '2000-01-01'), (4, 7, 1001, '2000-01-01'), (5, 7, 1003, '2000-01-01');
 
 -- SRD Character Advancement (p.23), and from the class Features tables: Fighter (p.47) Second Wind uses and attacks
--- per round (Extra Attack at 5, Two Extra Attacks at 11, Three at 20), Barbarian (p.28) Rages and Rage Damage, and
--- Cleric (p.36) spell slots.
-INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, slots) VALUES
-(1, 0, 2, 2, 1, 2, 2, '2'),
-(2, 300, 2, 2, 1, 2, 2, '3'),
-(3, 900, 2, 2, 1, 3, 2, '4,2'),
-(4, 2700, 2, 3, 1, 3, 2, '4,3'),
-(5, 6500, 3, 3, 2, 3, 2, '4,3,2'),
-(6, 14000, 3, 3, 2, 4, 2, '4,3,3'),
-(7, 23000, 3, 3, 2, 4, 2, '4,3,3,1'),
-(8, 34000, 3, 3, 2, 4, 2, '4,3,3,2'),
-(9, 48000, 4, 3, 2, 4, 3, '4,3,3,3,1'),
-(10, 64000, 4, 4, 2, 4, 3, '4,3,3,3,2'),
-(11, 85000, 4, 4, 3, 4, 3, '4,3,3,3,2,1'),
-(12, 100000, 4, 4, 3, 5, 3, '4,3,3,3,2,1'),
-(13, 120000, 5, 4, 3, 5, 3, '4,3,3,3,2,1,1'),
-(14, 140000, 5, 4, 3, 5, 3, '4,3,3,3,2,1,1'),
-(15, 165000, 5, 4, 3, 5, 3, '4,3,3,3,2,1,1,1'),
-(16, 195000, 5, 4, 3, 5, 4, '4,3,3,3,2,1,1,1'),
-(17, 225000, 6, 4, 3, 6, 4, '4,3,3,3,2,1,1,1,1'),
-(18, 265000, 6, 4, 3, 6, 4, '4,3,3,3,3,1,1,1,1'),
-(19, 305000, 6, 4, 3, 6, 4, '4,3,3,3,3,2,1,1,1'),
-(20, 355000, 6, 4, 4, 6, 4, '4,3,3,3,3,2,2,1,1')
+-- per round (Extra Attack at 5, Two Extra Attacks at 11, Three at 20), Barbarian (p.28) Rages and Rage Damage, Monk
+-- (p.49) Martial Arts die, and Cleric (p.36) spell slots.
+INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, martial_arts, slots) VALUES
+(1, 0, 2, 2, 1, 2, 2, 6, '2'),
+(2, 300, 2, 2, 1, 2, 2, 6, '3'),
+(3, 900, 2, 2, 1, 3, 2, 6, '4,2'),
+(4, 2700, 2, 3, 1, 3, 2, 6, '4,3'),
+(5, 6500, 3, 3, 2, 3, 2, 8, '4,3,2'),
+(6, 14000, 3, 3, 2, 4, 2, 8, '4,3,3'),
+(7, 23000, 3, 3, 2, 4, 2, 8, '4,3,3,1'),
+(8, 34000, 3, 3, 2, 4, 2, 8, '4,3,3,2'),
+(9, 48000, 4, 3, 2, 4, 3, 8, '4,3,3,3,1'),
+(10, 64000, 4, 4, 2, 4, 3, 8, '4,3,3,3,2'),
+(11, 85000, 4, 4, 3, 4, 3, 10, '4,3,3,3,2,1'),
+(12, 100000, 4, 4, 3, 5, 3, 10, '4,3,3,3,2,1'),
+(13, 120000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1'),
+(14, 140000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1'),
+(15, 165000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1,1'),
+(16, 195000, 5, 4, 3, 5, 4, 10, '4,3,3,3,2,1,1,1'),
+(17, 225000, 6, 4, 3, 6, 4, 12, '4,3,3,3,2,1,1,1,1'),
+(18, 265000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,1,1,1,1'),
+(19, 305000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,2,1,1,1'),
+(20, 355000, 6, 4, 4, 6, 4, 12, '4,3,3,3,3,2,2,1,1')
 AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks,
-    rages = new.rages, rage_damage = new.rage_damage, slots = new.slots;
+    rages = new.rages, rage_damage = new.rage_damage, martial_arts = new.martial_arts, slots = new.slots;
 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
 -- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,

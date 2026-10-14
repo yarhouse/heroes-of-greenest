@@ -28,17 +28,17 @@ const LIVE_EFFECT = '(e.until > NOW() OR (e.during IS NOT NULL AND c.fighting = 
 const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
 
 /**
- * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
- * level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con
- * Int Wis Cha order, saving throw proficiencies, a caster's spellcasting ability, prepared spells by level and the
- * ones a new hero starts with, armor training, and starting equipment A as [item id, worn]. Kits
- * leave out ammunition, packs, tools and focuses. Every class but the Rogue is trained with every weapon (the
- * Fighter's Fighting Style is Defense, the Cleric's Divine Order is Protector).
+ * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Monk p.49, Rogue p.61):
+ * Hit Die, level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str
+ * Dex Con Int Wis Cha order, saving throw proficiencies, Weapon Mastery, a caster's spellcasting ability, prepared
+ * spells by level and the ones a new hero starts with, armor training, and starting equipment A as [item id, worn].
+ * Kits leave out ammunition, packs, tools and focuses. Weapon training is trained()'s (the Fighter's Fighting Style is
+ * Defense, the Cleric's Divine Order is Protector, the Monk's subclass is Warrior of the Open Hand).
  */
 const CLASSES = [
     'fighter' => [
         'name' => 'Fighter', 'die' => 10, 'hp' => 10, 'per_level' => 6, 'scores' => [15, 14, 13, 8, 10, 12],
-        'saves' => ['strength', 'constitution'],
+        'saves' => ['strength', 'constitution'], 'mastery' => true,
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 4,
         'kit' => [ // Chain Mail, Greatsword, Flail, 8 Javelins
             [40, true], [15, true], [12, false], [5, false], [5, false], [5, false], [5, false], [5, false], [5, false],
@@ -48,14 +48,14 @@ const CLASSES = [
     ],
     'barbarian' => [
         'name' => 'Barbarian', 'die' => 12, 'hp' => 12, 'per_level' => 7, 'scores' => [15, 13, 14, 10, 12, 8],
-        'saves' => ['strength', 'constitution'],
+        'saves' => ['strength', 'constitution'], 'mastery' => true,
         'armor' => ['light', 'medium', 'shield'], 'gold' => 15,
         'kit' => [[14, true], [4, false], [4, false], [4, false], [4, false]], // Greataxe, 4 Handaxes
         'about' => 'd12 HP, tough even unarmored. Rage to hit harder and shrug off weapon blows.',
     ],
     'rogue' => [
         'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
-        'saves' => ['dexterity', 'intelligence'],
+        'saves' => ['dexterity', 'intelligence'], 'mastery' => true,
         'armor' => ['light'], 'gold' => 8,
         'kit' => [[32, true], [24, true], [2, false], [2, false], [72, false]], // Leather Armor, Shortsword, 2 Daggers,
         // Shortbow
@@ -69,6 +69,13 @@ const CLASSES = [
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
         'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
         'about' => 'd8 HP, armor and shield. Spells that burn foes and heal you.',
+    ],
+    'monk' => [
+        'name' => 'Monk', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 10, 14, 8],
+        'saves' => ['strength', 'dexterity'],
+        'armor' => [], 'gold' => 11,
+        'kit' => [[10, true], [2, false], [2, false], [2, false], [2, false], [2, false]], // Spear, 5 Daggers
+        'about' => 'd8 HP, no armor. Fast fists and Focus: Flurry of Blows, Patient Defense, Stunning Strike.',
     ],
 ];
 
@@ -86,8 +93,12 @@ const COMMANDS = [
     'shove <monster>' => 'knock a foe Prone, in place of one attack: attacks on it get Advantage',
     'grapple <monster>' => 'hold a foe, in place of one attack: it has Disadvantage against other heroes',
     'flee' => 'try to escape a fight to a random exit',
+    'flurry <monster>' => 'Monk 2: attack, then two Unarmed Strikes as your Bonus Action (1 Focus)',
+    'patient <monster>' => 'Monk 2: attack, and Dodge as your Bonus Action: attacks on you have Disadvantage (1 Focus)',
+    'stun <monster>' => 'Monk 5: attack; your first hit tries a Stunning Strike (1 Focus)',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
+    'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
     'cast <spell>' => 'cast a spell, at a monster or a hero if it needs one (cast alone lists them)',
     'prepare <spells>' => 'after a long rest, choose your spells, with commas (prepare alone lists them)',
     'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
@@ -142,8 +153,8 @@ function mod(int $score): int
 }
 
 /**
- * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind or Rage uses, and
- * 'slots' the Cleric's spell slots by spell level.
+ * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind, Rage or Focus Points,
+ * and 'slots' the Cleric's spell slots by spell level.
  */
 function with_stats(array $me): array
 {
@@ -153,18 +164,24 @@ function with_stats(array $me): array
         'prof_bonus' => $lv['prof_bonus'],
         'attacks' => match ($class) {
             'fighter' => $lv['attacks'],
-            'barbarian' => $me['level'] >= 5 ? 2 : 1, // Extra Attack
+            'barbarian', 'monk' => $me['level'] >= 5 ? 2 : 1, // Extra Attack
             default => 1,
         },
-        'uses' => match ($class) { 'fighter' => $lv['second_wind'], 'barbarian' => $lv['rages'], default => 0 },
+        'uses' => match ($class) {
+            'fighter' => $lv['second_wind'],
+            'barbarian' => $lv['rages'],
+            'monk' => $me['level'] >= 2 ? $me['level'] : 0, // Focus Points
+            default => 0,
+        },
         'rage_damage' => $lv['rage_damage'],
+        'martial_arts' => $lv['martial_arts'],
         'slots' => isset(CLASSES[$class]['casting']) ? array_map('intval', explode(',', $lv['slots'])) : [],
         'resistances' => $me['raging'] ? 'bludgeoning,piercing,slashing' : '',
         'immunities' => '',
         'vulnerabilities' => '',
     ];
     foreach (ABILITIES as $a) { // str_save to cha_save, as on a monster, so save() takes either
-        $proficient = in_array($a, CLASSES[$class]['saves'], true);
+        $proficient = in_array($a, CLASSES[$class]['saves'], true) || ($class === 'monk' && $me['level'] >= 14);
         $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0);
     }
     $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
@@ -202,6 +219,8 @@ function run_command(array $me, string $input): array
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
+        in_array($verb, ['flurry', 'patient', 'stun'], true) => cmd_technique($me, $verb, trim($arg)),
+        $verb === 'wholeness' => cmd_wholeness($me),
         $verb === 'flee' => cmd_flee($me),
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
@@ -304,7 +323,8 @@ function setup_abilities(array $me, string $word): array
     q(
         "UPDATE users SET setup = 'confirm', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
          wisdom = ?, charisma = ?, level = 1, xp = 0, hp = ?, max_hp = ?, hit_dice_spent = 0, uses_spent = 0,
-         slots_spent = '', prepared = '', may_prepare = TRUE, gold = ?, room_id = ?, resting = NULL,
+         slots_spent = '', prepared = '', may_prepare = TRUE, metabolized = FALSE, wholeness_spent = 0, gold = ?,
+         room_id = ?, resting = NULL,
          rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
         [...$scores, $hp, $hp, $c['gold'], START_ROOM, $me['id']]
     );
@@ -449,11 +469,15 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         $mine = roll('1d20') + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
         $me['foe_first'] = $theirs > $mine; // ties go to the hero
+        $me['fighting'] = $foe['id'];
         q(
             'UPDATE users SET fighting = ?, foe_first = ?, resting = NULL, rest_until = NULL WHERE id = ?',
             [$foe['id'], (int) $me['foe_first'], $me['id']]
         );
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
+        if ($me['class'] === 'monk' && $me['level'] >= 2) {
+            focus_on_initiative($me, $lines);
+        }
         // My effects from earlier fights now last only their own time, even if I'm back against the same spawn.
         q('UPDATE effects SET during = NULL WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
         $foe['effects'] = effects_on('spawn_id', $foe['id']);
@@ -470,8 +494,11 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
     $over = !$me['volley'] && $me['foe_first'] && monster_turn($me, $foe, $lines);
     if (!$over) {
         start_turn($me);
-        if (has($foe, 'sapped')) { // shortcut: Sap ends at the start of my turn, though another hero may have sapped it
-            set_condition($foe, 'sapped', false);
+        // shortcut: these end at the start of my turn, though another hero may have caused them
+        foreach (['sapped', 'stunned', 'reeling'] as $c) {
+            if (has($foe, $c)) {
+                set_condition($foe, $c, false);
+            }
         }
         $over = $act($me, $foe, $lines);
         if ($me['bonus_used'] && !$over) { // my turn is over; a Bonus Action before my next one counts for that one
@@ -500,7 +527,7 @@ function start_turn(array &$me): void
 
 /**
  * Fleeing is a contest: d20 + Dex modifier against the monster's d20 + initiative. Failing draws an attack. A Rogue
- * from level 2 always gets away, with Cunning Action's Disengage.
+ * or Monk from level 2 always gets away, with Cunning Action's or Step of the Wind's Disengage.
  */
 function cmd_flee(array $me): array
 {
@@ -509,7 +536,8 @@ function cmd_flee(array $me): array
         return ["You aren't fighting anything."];
     }
     start_turn($me);
-    if (($me['class'] !== 'rogue' || $me['level'] < 2) && !has($foe, 'paralyzed')) { // a Paralyzed foe can't stop you
+    $held = has($foe, 'paralyzed') || has($foe, 'stunned'); // a foe that can't act can't stop you
+    if ((!in_array($me['class'], ['rogue', 'monk'], true) || $me['level'] < 2) && !$held) {
         $mine = roll('1d20') + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
         if ($mine < $theirs) {
@@ -529,7 +557,8 @@ function cmd_flee(array $me): array
 }
 
 /**
- * My weapon attacks on $foe this round (more than one with Extra Attack). Returns true if it died. Rage adds damage to
+ * My weapon attacks on $foe this round (more than one with Extra Attack), then any off-hand attack and a Monk's
+ * Unarmed Strikes (see cmd_technique() for what Focus adds). Returns true if it died. Rage adds damage to
  * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse or Ranged weapon, needs Advantage or another
  * hero on the same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit
  * gives Advantage on the next attack, and a Topple weapon's hit can knock it Prone (shortcut: MASTERIES are modeled for
@@ -541,19 +570,30 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     if ($me['offhand'] !== null && $me['attacks'] > 0) {
         $swings[] = ['off' => true] + $me['offhand'];
     }
+    // A Monk's Bonus Action Unarmed Strike (Martial Arts), or Flurry of Blows' two or three, already paid for.
+    $flurry = $me['flurry'] ?? 0;
+    if (($me['arts'] || $flurry) && !$me['volley']) {
+        for ($i = 0; $i < max(1, $flurry); $i++) {
+            $swings[] = ['strike' => $flurry ? 'flurry' : 'bonus'] + $me['unarmed'];
+        }
+    }
     $sneak = $me['class'] === 'rogue';
     $cleaved = false;
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $w) {
         $off = isset($w['off']);
         // Light: the extra attack takes my Bonus Action, unless its weapon's Nick makes it part of the Attack action.
-        if ($off && $w['mastery'] !== 'nick' && !spend_bonus($me)) {
+        if ((($off && $w['mastery'] !== 'nick') || ($w['strike'] ?? '') === 'bonus') && !spend_bonus($me)) {
             break;
         }
         $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $w['str_based']);
         [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, $aim, $w['ranged'] && !$me['volley']);
         $total = $d20 + $w['to_hit'] + $bonus;
-        [$you, $s] = $off ? ["Your off-hand {$w['weapon']}", 'es'] : ['You', ''];
+        [$you, $s] = match (true) {
+            $off => ["Your off-hand {$w['weapon']}", 'es'],
+            isset($w['strike']) => ['Your Unarmed Strike', 'es'],
+            default => ['You', ''],
+        };
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "$you miss$s the {$foe['name']} ($why$with).";
@@ -576,11 +616,35 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
             $sneak = false;
         }
-        [$dmg, $note] = typed(max(0, $dmg), $w['damage_type'], $foe);
-        $lines[] = ($crit ? 'Critical hit! ' : '') . "$you hit" . ($off ? 's' : '') . " the {$foe['name']} "
+        $typed = typed(max(0, $dmg), $w['damage_type'], $foe);
+        if ($w['weapon'] === 'Unarmed Strike' && $me['class'] === 'monk' && $me['level'] >= 6) { // Empowered Strikes
+            $force = typed(max(0, $dmg), 'force', $foe);
+            $typed = $force[0] > $typed[0] ? [$force[0], $force[1] . ' (force)'] : $typed;
+        }
+        [$dmg, $note] = $typed;
+        $lines[] = ($crit ? 'Critical hit! ' : '') . "$you hit" . ($s === '' ? '' : 's') . " the {$foe['name']} "
             . "($total vs AC {$foe['ac']}$with) for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
+        }
+        if (($me['stun'] ?? false) && $w['monk'] && spend_focus($me)) { // Stunning Strike, on my first such hit
+            $me['stun'] = false;
+            $dc = focus_dc($me);
+            [$save, $saved] = save($foe, 'con', $dc);
+            $roll = 'Con save ' . vs($save, $dc);
+            $lines[] = $saved
+                ? "The {$foe['name']} reels but isn't Stunned ($roll); the next attack on it has Advantage."
+                : "The {$foe['name']} is Stunned until your next turn ($roll)!";
+            set_condition($foe, $saved ? 'reeling' : 'stunned');
+        }
+        if (($w['strike'] ?? '') === 'flurry' && $me['level'] >= 3 && !has($foe, 'prone')) { // Open Hand Technique
+            $dc = focus_dc($me);
+            [$save, $saved] = save($foe, 'dex', $dc);
+            $lines[] = $saved ? "The {$foe['name']} keeps its feet (Dex save " . vs($save, $dc) . ').'
+                : "Your open hand topples the {$foe['name']}, Prone (Dex save " . vs($save, $dc) . ').';
+            if (!$saved) {
+                set_condition($foe, 'prone');
+            }
         }
         if ($w['mastery'] === 'topple' && !has($foe, 'prone')) {
             $dc = 8 + $w['attack_mod'] + $me['prof_bonus'];
@@ -650,13 +714,18 @@ function spend_bonus(array &$me): bool
 
 /**
  * The d20 for my attack roll at $foe, its edge, any dice my effects add (Bless), and how a combat line says those:
- * [d20, edge, bonus, note]. The edge is 1 with Advantage ($adv, my saved one, a Paralyzed or Blinded foe, or a Prone
- * foe next to me), -1 with Disadvantage ($dis, or a Prone foe shot at from afar), 0 with neither or both.
+ * [d20, edge, bonus, note]. The edge is 1 with Advantage ($adv, my saved one, a Paralyzed, Stunned or Blinded foe, a
+ * reeling one (used up), or a Prone foe next to me), -1 with Disadvantage ($dis, or a Prone foe shot at from afar), 0
+ * with neither or both.
  */
-function attack_d20(array &$me, array $foe, bool $adv = false, bool $dis = false): array
+function attack_d20(array &$me, array &$foe, bool $adv = false, bool $dis = false): array
 {
     $prone = has($foe, 'prone');
-    $adv = $adv || ($prone && !$me['volley']) || has($foe, 'paralyzed') || has($foe, 'blinded');
+    $adv = $adv || ($prone && !$me['volley']) || has($foe, 'paralyzed') || has($foe, 'stunned')
+        || has($foe, 'blinded') || has($foe, 'reeling');
+    if (has($foe, 'reeling')) { // a Stunning Strike it saved against: only the next attack roll
+        set_condition($foe, 'reeling', false);
+    }
     $dis = $dis || ($prone && $me['volley']);
     if ($me['advantage']) { // used up by this roll
         $adv = true;
@@ -701,13 +770,13 @@ function with(int $edge): string
 
 /**
  * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total (null when it
- * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed fails Str and Dex
- * saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
+ * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed and Stunned fail
+ * Str and Dex saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
  * Incapacitated. Effects like Bless add their dice.
  */
 function save(array $who, string $ability, int $dc): array
 {
-    if (in_array($ability, ['str', 'dex'], true) && has($who, 'paralyzed')) {
+    if (in_array($ability, ['str', 'dex'], true) && (has($who, 'paralyzed') || has($who, 'stunned'))) {
         return [null, false, 0];
     }
     $barbarian = ($who['class'] ?? null) === 'barbarian';
@@ -772,8 +841,9 @@ function set_condition(array &$foe, string $condition, bool $on = true): void
 
 /**
  * shove or grapple (SRD 5.2.1 Unarmed Strike, p.190) in place of one attack of my turn; any others follow with my
- * weapon. The foe makes a Str or Dex save, the better of its two, against 8 + my Str + PB. Failing a shove, it's
- * Prone; failing a grapple, it's Grappled by me, so it has Disadvantage attacking any other hero (Grappled p.182).
+ * weapon. The foe makes a Str or Dex save, the better of its two, against 8 + my Str (or a Monk's Dex) + PB. Failing a
+ * shove, it's Prone; failing a grapple, it's Grappled by me, so it has Disadvantage attacking any other hero (Grappled
+ * p.182).
  * The foe can be at most one size larger than me (shortcut: heroes are all Medium until species, and free hands aren't
  * checked).
  * Shove's push and the foe escaping a grapple are left out: there are no distances, and monsters never try.
@@ -790,7 +860,7 @@ function cmd_maneuver(array $me, string $how, string $target): array
             $lines[] = "The {$foe['name']} is too big to " . ($how === 'shove' ? 'shove.' : 'grab.');
             return hero_turn($me, $foe, $lines);
         }
-        $dc = 8 + mod($me['strength']) + $me['prof_bonus'];
+        $dc = 8 + max(mod($me['strength']), $me['arts'] ? mod($me['dexterity']) : -5) + $me['prof_bonus'];
         $ability = $foe['str_save'] >= $foe['dex_save'] ? 'str' : 'dex';
         [$save, $saved] = save($foe, $ability, $dc);
         $roll = ucfirst($ability) . ' save ' . vs($save, $dc);
@@ -898,11 +968,12 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         set_condition($foe, 'prone', false);
         $lines[] = "The {$foe['name']} gets back up.";
     }
-    if (has($foe, 'paralyzed') || has($foe, 'incapacitated')) { // no turn, and no Reaction when I flee
+    if (has($foe, 'paralyzed') || has($foe, 'stunned') || has($foe, 'incapacitated')) { // no turn, no Reaction
         if ($n !== null) {
             return false;
         }
-        $lines[] = "The {$foe['name']} is " . (has($foe, 'paralyzed') ? 'Paralyzed' : 'halted') . " and can't act.";
+        $why = has($foe, 'paralyzed') ? 'Paralyzed' : (has($foe, 'stunned') ? 'Stunned' : 'halted');
+        $lines[] = "The {$foe['name']} is $why and can't act.";
         foreach ($foe['effects'] as $i => $e) { // Command lasts that one turn
             if ($e['value'] === 'incapacitated') {
                 q('DELETE FROM effects WHERE id = ?', [$e['id']]);
@@ -914,8 +985,10 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
     // Held by another hero still fighting it, it has Disadvantage against me.
     $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
+    $deflect = $me['class'] === 'monk' && $me['level'] >= 3; // my Reaction, once a turn of theirs
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
-        $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held || has($foe, 'sapped') || has($foe, 'blinded'));
+        $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held || has($foe, 'sapped') || has($foe, 'blinded')
+            || has($me, 'dodging'));
         if (has($foe, 'sapped')) { // Sap: only its next attack roll
             set_condition($foe, 'sapped', false);
         }
@@ -934,9 +1007,21 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             $dmg += $extra;
             $note = implode('', array_unique([$note, $extra_note]));
         }
+        // Deflect Attacks (Monk 3): my Reaction cuts a Bludgeoning, Piercing or Slashing hit (any, from level 13).
+        $deflected = 0;
+        $bps = array_intersect([$foe['damage_type'], $foe['extra_type']], ['bludgeoning', 'piercing', 'slashing']);
+        if ($deflect && $dmg > 0 && ($bps || $me['level'] >= 13)) {
+            $deflect = false;
+            $deflected = min($dmg, roll('1d10') + mod($me['dexterity']) + $me['level']);
+            $dmg -= $deflected;
+        }
         $me['hp'] -= $dmg;
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '')
-            . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg damage$note.";
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg "
+            . "damage$note" . ($deflected ? ", $deflected deflected." : '.');
+        if ($deflected && $dmg === 0 && spend_focus($me) && redirect($me, $foe, $lines)) {
+            q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
+            return true;
+        }
         if ($me['hp'] <= 0) {
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
             $me['hp'] = (int) ceil($me['max_hp'] / 4);
@@ -1056,6 +1141,124 @@ function cmd_rage(array $me): array
         "You fly into a Rage! +{$me['rage_damage']} damage with Strength attacks and Resistance to Bludgeoning, "
             . 'Piercing and Slashing damage until the fight ends. ' . ($left - 1) . ' Rage left.',
     ];
+}
+
+/** Spends one of my Focus Points (Monk 2), or returns false if none are left. */
+function spend_focus(array &$me): bool
+{
+    if ($me['uses_spent'] >= $me['uses']) {
+        return false;
+    }
+    $me['uses_spent']++;
+    q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
+    return true;
+}
+
+/** The save DC of a Monk's Focus features: 8 + Wis + PB. */
+function focus_dc(array $me): int
+{
+    return 8 + mod($me['wisdom']) + $me['prof_bonus'];
+}
+
+/**
+ * A Monk rolling Initiative: Uncanny Metabolism (level 2, once a long rest) gets back every Focus Point and a Martial
+ * Arts die + level in HP, used once any point is spent; failing that, Perfect Focus (15) tops points up to 4.
+ */
+function focus_on_initiative(array &$me, array &$lines): void
+{
+    if (!$me['metabolized'] && $me['uses_spent'] > 0) {
+        $me['hp'] = min($me['max_hp'], $me['hp'] + roll('1d' . $me['martial_arts']) + $me['level']);
+        [$me['uses_spent'], $me['metabolized']] = [0, 1];
+        q('UPDATE users SET hp = ?, uses_spent = 0, metabolized = TRUE WHERE id = ?', [$me['hp'], $me['id']]);
+        $lines[] = "Uncanny Metabolism: your Focus Points return, and HP {$me['hp']}/{$me['max_hp']}.";
+    } elseif ($me['level'] >= 15 && $me['uses'] - $me['uses_spent'] < 4) {
+        $me['uses_spent'] = $me['uses'] - 4;
+        q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
+        $lines[] = 'Perfect Focus: you have 4 Focus Points.';
+    }
+}
+
+/**
+ * Deflect Attacks took a hit to 0 and I spent a Focus Point: $foe makes a Dex save or takes two Martial Arts dice + my
+ * Dex of the attack's type. Returns true if that killed it.
+ */
+function redirect(array &$me, array &$foe, array &$lines): bool
+{
+    $dc = focus_dc($me);
+    [$save, $saved] = save($foe, 'dex', $dc);
+    $roll = 'Dex save ' . vs($save, $dc);
+    if ($saved) {
+        $lines[] = "You turn the blow back, but the {$foe['name']} dodges it ($roll).";
+        return false;
+    }
+    $dice = '2d' . $me['martial_arts'] . sprintf('%+d', mod($me['dexterity']));
+    [$dmg, $note] = typed(max(0, roll($dice)), $foe['damage_type'], $foe);
+    $lines[] = "You turn the blow back on the {$foe['name']} ($roll) for $dmg damage$note.";
+    return hurt_foe($me, $foe, $dmg, $lines);
+}
+
+/**
+ * A round of attacks with a Monk technique, each 1 Focus Point (SRD 5.2.1 p.49-52): flurry (Flurry of Blows, the
+ * Bonus Action is two Unarmed Strikes, three from level 10; from level 3 Open Hand Technique lets each hit topple),
+ * patient (Patient Defense, the Bonus Action is a Dodge: attacks on me have Disadvantage until my next turn) and stun
+ * (Stunning Strike, level 5: my first hit with a Monk weapon or Unarmed Strike spends the point, and the foe makes a
+ * Con save or is Stunned until my next turn; if it saves, the next attack on it has Advantage). Patient Defense's
+ * Temporary Hit Points (level 10) are left out: there are none yet.
+ */
+function cmd_technique(array $me, string $how, string $target): array
+{
+    $level = $how === 'stun' ? 5 : 2;
+    if ($me['class'] !== 'monk' || $me['level'] < $level) {
+        return ["Only Monks of level $level or more know that technique."];
+    }
+    if ($me['uses_spent'] >= $me['uses']) {
+        return ['You have no Focus Points left. Rest to recover them.'];
+    }
+    if ($how !== 'stun' && $me['bonus_used']) {
+        return [BONUS_USED];
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($how): bool {
+        if ($how === 'stun') {
+            $me['stun'] = true;
+            return hero_turn($me, $foe, $lines);
+        }
+        spend_bonus($me);
+        spend_focus($me);
+        if ($how === 'flurry') {
+            $me['flurry'] = $me['level'] >= 10 ? 3 : 2;
+            $lines[] = 'You unleash a Flurry of Blows!';
+        } else {
+            $me['conditions'] = 'dodging'; // fight() just cleared the others
+            q("UPDATE users SET conditions = 'dodging' WHERE id = ?", [$me['id']]);
+            $lines[] = 'You settle into Patient Defense, Dodging.';
+        }
+        return hero_turn($me, $foe, $lines);
+    }, ucfirst($how) . ' what?');
+}
+
+/**
+ * Wholeness of Body (Open Hand 6): a Bonus Action, so it costs no turn. Heals a Martial Arts die + Wis (at least 1),
+ * Wis modifier times (at least once) a long rest.
+ */
+function cmd_wholeness(array $me): array
+{
+    if ($me['class'] !== 'monk' || $me['level'] < 6) {
+        return ['Only Monks of level 6 or more know Wholeness of Body.'];
+    }
+    $left = max(1, mod($me['wisdom'])) - $me['wholeness_spent'];
+    if ($left <= 0) {
+        return ['You have no Wholeness of Body left. A long rest restores it.'];
+    }
+    if ($me['hp'] >= $me['max_hp']) {
+        return ["You're already at full health."];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    $hp = min($me['max_hp'], $me['hp'] + max(1, roll('1d' . $me['martial_arts']) + mod($me['wisdom'])));
+    q('UPDATE users SET hp = ?, wholeness_spent = wholeness_spent + 1 WHERE id = ?', [$hp, $me['id']]);
+    return ['Your breath steadies and you regain ' . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}, "
+        . ($left - 1) . ' Wholeness of Body left.'];
 }
 
 /** Spell slots I've spent, one count per spell level I have slots for. */
@@ -1392,12 +1595,13 @@ function finish_rest(array &$me): array
     if (!$done) {
         return [];
     }
-    $use = ['fighter' => 'Second Wind', 'barbarian' => 'Rage'][$me['class']] ?? null;
+    $use = $me['uses'] ? ['fighter' => 'Second Wind', 'barbarian' => 'Rage', 'monk' => 'Focus Points'][$me['class']]
+        : null;
     if ($me['resting'] === 'long') {
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
             . ($me['slots'] ? ' and spell slots back, and you may change your prepared spells' : ' back') . '.';
-        q('UPDATE users SET may_prepare = TRUE WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET may_prepare = TRUE, metabolized = FALSE, wholeness_spent = 0 WHERE id = ?', [$me['id']]);
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
@@ -1406,9 +1610,10 @@ function finish_rest(array &$me): array
             $me['hit_dice_spent']++;
             $spent++;
         }
-        $me['uses_spent'] = max(0, $me['uses_spent'] - 1);
+        $monk = $me['class'] === 'monk'; // Focus Points all come back
+        $me['uses_spent'] = $monk ? 0 : max(0, $me['uses_spent'] - 1);
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice')
-            . ($use ? " and regaining a $use." : '.');
+            . ($use ? ($monk ? " and regaining your $use." : " and regaining a $use.") : '.');
     }
     $me['resting'] = null;
     q(
@@ -1432,8 +1637,9 @@ function loot(float $cr, int $room_id): ?string
 /**
  * My AC and attack from what I wear, by the SRD: armor's AC plus Dex (all for light, up to +2 for medium, none for
  * heavy) and +1 for a Fighter's Defense fighting style; unarmored, 10 + Dex (+ Con for a Barbarian's Unarmored
- * Defense); +2 for a shield. The weapon keys are wielding()'s for my main hand, and 'offhand' is a second Light
- * weapon's, or null.
+ * Defense, + Wis for a Monk's without a shield); +2 for a shield. The weapon keys are wielding()'s for my main hand,
+ * 'offhand' is a second Light weapon's, or null, and 'unarmed' my Unarmed Strike's. 'arts' is true while a Monk's
+ * Martial Arts work: no armor or shield, and only Monk weapons in hand.
  */
 function gear(array $me): array
 {
@@ -1445,52 +1651,79 @@ function gear(array $me): array
     }
     $dex = mod($me['dexterity']);
     $armor = $worn['armor'] ?? null;
+    $bare = $armor === null && !isset($worn['shield']);
     $ac = match (true) {
         $armor !== null => $armor['ac'] + ($me['class'] === 'fighter' ? 1 : 0)
             + match ($armor['armor']) { 'light' => $dex, 'medium' => min($dex, 2), 'heavy' => 0 },
         $me['class'] === 'barbarian' => 10 + $dex + mod($me['constitution']),
+        $me['class'] === 'monk' && $bare => 10 + $dex + mod($me['wisdom']),
         default => 10 + $dex,
     };
+    $arts = $me['class'] === 'monk' && $bare && monk_weapon($worn['weapon'] ?? null)
+        && monk_weapon($worn['offhand'] ?? null);
     return [
         'ac' => $ac + ($worn['shield']['ac'] ?? 0),
-        ...wielding($me, $worn['weapon'] ?? null, isset($worn['shield']) || isset($worn['offhand'])),
-        'offhand' => isset($worn['offhand']) ? wielding($me, $worn['offhand'], true) : null,
+        ...wielding($me, $worn['weapon'] ?? null, isset($worn['shield']) || isset($worn['offhand']), $arts),
+        'offhand' => isset($worn['offhand']) ? wielding($me, $worn['offhand'], true, $arts) : null,
+        'unarmed' => wielding($me, null, true, $arts),
+        'arts' => $arts,
     ];
+}
+
+/** A Monk weapon (or none): a Simple melee weapon, or a Martial melee one that's Light. */
+function monk_weapon(?array $weapon): bool
+{
+    return $weapon === null || (!$weapon['ranged'] && (!$weapon['martial'] || $weapon['light']));
 }
 
 /**
  * How I attack with $weapon (null: an Unarmed Strike, 1 + Str). A Versatile weapon does its bigger die unless the
  * other hand is busy, Finesse uses the better of Str and Dex, a Ranged weapon Dex. The Proficiency Bonus is added only
- * for a trained weapon.
+ * for a trained weapon. With a Monk's Martial Arts ($arts), a Monk weapon or Unarmed Strike may use Dex and the
+ * Martial Arts die.
  */
-function wielding(array $me, ?array $weapon, bool $one_hand): array
+function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false): array
 {
     [$dex, $str] = [mod($me['dexterity']), mod($me['strength'])];
     $finesse = $weapon !== null && $weapon['finesse'];
     $ranged = $weapon !== null && $weapon['ranged'];
-    $attack_mod = $finesse ? max($str, $dex) : ($ranged ? $dex : $str);
+    $nimble = $finesse || $arts;
+    $attack_mod = $nimble ? max($str, $dex) : ($ranged ? $dex : $str);
+    $damage = $weapon === null ? '1' : ($one_hand ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']);
+    // The Martial Arts die if it's bigger (Monk weapons all do one die).
+    if ($arts && ($weapon === null || (int) substr($damage, 2) < $me['martial_arts'])) {
+        $damage = '1d' . $me['martial_arts'];
+    }
     return [
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
-        'damage' => $weapon === null ? '1' : ($one_hand ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
+        'damage' => $damage,
         'damage_type' => $weapon['damage_type'] ?? 'bludgeoning', // an Unarmed Strike's
         'attack_mod' => $attack_mod,
         'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0),
         'finesse' => $finesse,
-        'str_based' => $finesse ? $str >= $dex : !$ranged,
+        'str_based' => $nimble ? $str >= $dex : !$ranged,
         'ranged' => $ranged,
         'thrown' => $weapon !== null && $weapon['thrown'],
         'loading' => $weapon !== null && $weapon['loading'],
-        'mastery' => $me['class'] === 'cleric' ? null : $weapon['mastery'] ?? null, // Clerics have no Weapon Mastery
+        'mastery' => (CLASSES[$me['class']]['mastery'] ?? false) ? ($weapon['mastery'] ?? null) : null,
+        'monk' => monk_weapon($weapon),
     ];
 }
 
-/** If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons. */
+/**
+ * If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons,
+ * Monks Simple or Light ones, the rest every weapon.
+ */
 function trained(array $me, array $o): bool
 {
     return match ($o['slot']) {
         'armor' => in_array($o['armor'], CLASSES[$me['class']]['armor'], true),
         'shield' => in_array('shield', CLASSES[$me['class']]['armor'], true),
-        'weapon' => $me['class'] !== 'rogue' || !$o['martial'] || $o['finesse'] || $o['light'],
+        'weapon' => !$o['martial'] || $o['light'] || match ($me['class']) {
+            'rogue' => $o['finesse'],
+            'monk' => false,
+            default => true,
+        },
         'potion' => true,
     };
 }
@@ -1682,11 +1915,12 @@ function hero_sheet(array $me): array
         'attacks' => $me['attacks'],
         'resources' => [
             ['Hit Dice', ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d{$c['die']}"],
-            match ($me['class']) {
-                'fighter' => ['Second Wind', $uses],
-                'barbarian' => ['Rage', $uses],
-                'rogue' => ['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6'],
-                'cleric' => ['Spell slots', slots_left($me)],
+            ...match ($me['class']) {
+                'fighter' => [['Second Wind', $uses]],
+                'barbarian' => [['Rage', $uses]],
+                'rogue' => [['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6']],
+                'cleric' => [['Spell slots', slots_left($me)]],
+                'monk' => [['Martial Arts', "d{$me['martial_arts']}"], ...($me['uses'] ? [['Focus', $uses]] : [])],
             },
             ...($me['offhand'] === null ? [] : [['Off hand', sprintf('%s %+d to hit, %s damage%s',
                 $me['offhand']['weapon'], $me['offhand']['to_hit'], $me['offhand']['damage'],
@@ -1694,6 +1928,7 @@ function hero_sheet(array $me): array
         ],
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
+            $me['class'] === 'monk' && !$me['arts'] ? 'no Martial Arts' : null,
             ...explode(',', $me['conditions']),
             ...array_column($me['effects'], 'spell'),
             ($spell = concentrating($me)) === null ? null : "concentrating on $spell",
