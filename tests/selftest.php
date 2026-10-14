@@ -1236,6 +1236,14 @@ try {
     q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testl'");
     run_command(hero('Testl'), 'score');
     check(hero('Testl')['shape'] === null && hero('Testl')['temp_hp'] === 0, 'a long rest ends Wild Shape');
+    run_command(hero('Testl'), 'wild dire');
+    run_command(hero('Testl'), 'cast moonbeam');
+    q("UPDATE users SET setup = 'class' WHERE name = 'Testl'"); // what bin/reclass.php does
+    create('Testl', 'fighter');
+    $h = hero('Testl');
+    check($h['class'] === 'fighter' && $h['level'] === 1 && $h['shape'] === null && $h['temp_hp'] === 0
+        && !q('SELECT 1 FROM effects WHERE caster_id = ?', [$h['id']])->fetch(),
+        'a hero sent back to creation starts over: no Wild Shape, Temporary HP or spells left on');
 
     // Warlock (Testm: Cha 15: spell attack +4; Sickle +1). The dummy: AC 10, saves +0, Slam +3.
     q('DELETE FROM effects');

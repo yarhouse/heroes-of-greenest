@@ -115,3 +115,13 @@ its `LICENSE`. To upgrade, copy `bootstrap.min.css` and `bootstrap.bundle.min.js
 ## Accounts
 
 Invite only. `php bin/adduser.php <Name>` creates a hero (who chooses a class on first login), or resets the password of an existing one (which also logs them out everywhere and clears any lockout).
+
+`php bin/reclass.php <Name>` sends a hero back to character creation: on their next login they choose a class and
+scores again and start over at level 1, keeping only their name and password.
+
+Test heroes are ordinary heroes (names are 3-16 letters, no digits). The password can come from a pipe, so one line
+makes one:
+
+```sh
+echo 'test password' | php bin/adduser.php Testbard
+```

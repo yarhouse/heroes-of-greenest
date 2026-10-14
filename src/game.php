@@ -448,12 +448,12 @@ function setup_abilities(array $me, string $word): array
     q(
         "UPDATE users SET setup = 'confirm', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
          wisdom = ?, charisma = ?, level = 1, xp = 0, hp = ?, max_hp = ?, hit_dice_spent = 0, uses_spent = 0,
-         slots_spent = '', prepared = '', may_prepare = TRUE, once_used = FALSE, feature_spent = 0, gold = ?,
-         room_id = ?, resting = NULL,
-         rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
+         slots_spent = '', prepared = '', may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0,
+         shape = NULL, gold = ?, room_id = ?, resting = NULL, rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
         [...$scores, $hp, $hp, $c['gold'], START_ROOM, $me['id']]
     );
     q('DELETE FROM objects WHERE user_id = ?', [$me['id']]);
+    q('DELETE FROM effects WHERE user_id = ? OR caster_id = ?', [$me['id'], $me['id']]); // Aid, Hex, Inspiration...
     foreach ($c['kit'] as [$item, $worn]) {
         q('INSERT INTO objects (item_id, user_id, worn) VALUES (?, ?, ?)', [$item, $me['id'], (int) $worn]);
     }
