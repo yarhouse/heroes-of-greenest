@@ -13,6 +13,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - `bin/convert-area.php` — turns a Riftshadow `.are` file into `db/areas/<name>.sql` (see README). Run locally only.
 - `db/schema.sql` — all tables, DESTRUCTIVE. `db/seed.sql` — world content, re-runnable, never touches heroes.
 - `db/areas/*.sql` — GENERATED dungeons; never hand-edit. Load after `seed.sql`, which clears all exits and spawns.
+- `db/areas/src/*.are` — Riftshadow area files we've edited (renamed, rewritten); convert from these, not `../riftshadow`.
 - `tests/selftest.php` — end-to-end checks, run in a rolled-back transaction.
 - `ROADMAP.md` — ordered tasks and past decisions. `BACKLOG.md` — unordered ideas. Update them in the commit that picks up or ships the work, then refresh their copies in the claude.ai Project.
 - `config.php` (gitignored, from `config.php.example`), `var/sessions/` (gitignored, created on first request).
