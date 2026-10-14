@@ -14,6 +14,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - `db/schema.sql` — all tables, DESTRUCTIVE. `db/seed.sql` — world content, re-runnable, never touches heroes.
 - `db/areas/*.sql` — GENERATED dungeons; never hand-edit. Load after `seed.sql`, which clears all exits and spawns.
 - `tests/selftest.php` — end-to-end checks, run in a rolled-back transaction.
+- `ROADMAP.md` — ordered tasks and past decisions. `BACKLOG.md` — unordered ideas. Update them in the commit that picks up or ships the work, then refresh their copies in the claude.ai Project.
 - `config.php` (gitignored, from `config.php.example`), `var/sessions/` (gitignored, created on first request).
 
 ## Design rules
