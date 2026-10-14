@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS spells, delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -176,4 +176,23 @@ CREATE TABLE objects (
 -- One row: the seed the Delve (src/delve.php) was last generated from. seed.sql sets it to 0 to force a rebuild.
 CREATE TABLE delve (
     seed INT UNSIGNED NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Spells the game can resolve (SRD 5.2.1 p.107+), by kind: a spell attack roll against AC, a saving throw, or healing
+-- (dice + the spellcasting modifier). Which classes cast what, and their spellcasting ability, is CLASSES in game.php.
+CREATE TABLE spells (
+    id INT UNSIGNED PRIMARY KEY,
+    name VARCHAR(40) NOT NULL UNIQUE,
+    level TINYINT UNSIGNED NOT NULL, -- 0 is a cantrip
+    classes SET('bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard') NOT NULL,
+    casting ENUM('action', 'bonus') NOT NULL, -- a Bonus Action costs no turn
+    kind ENUM('attack', 'save', 'heal') NOT NULL,
+    ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a ranged spell attack: Disadvantage next to a foe
+    dice VARCHAR(20) NOT NULL, -- at its own level; a cantrip's dice multiply at character levels 5, 11 and 17
+    upcast VARCHAR(20) NULL, -- added for each slot level above its own
+    damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL,
+    save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,
+    half BOOLEAN NOT NULL DEFAULT FALSE, -- a made save still takes half the damage
+    about VARCHAR(100) NOT NULL -- for the spell list
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

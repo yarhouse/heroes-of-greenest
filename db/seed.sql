@@ -127,6 +127,21 @@ AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks,
     rages = new.rages, rage_damage = new.rage_damage, slots = new.slots;
 
+-- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139.
+INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half, about) VALUES
+(1, 'Sacred Flame', 0, 'cleric', 'action', 'save', FALSE, '1d8', NULL, 'radiant', 'dex', FALSE,
+    'Dex save or 1d8 Radiant damage'),
+(2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
+    'spell attack, 4d6 Radiant, and Advantage on your next attack'),
+(3, 'Cure Wounds', 1, 'cleric', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
+    'heal 2d8 + your modifier; takes your turn in a fight'),
+(4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
+    'heal 2d4 + your modifier; a Bonus Action, so it costs no turn')
+AS new
+ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
+    kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
+    save = new.save, half = new.half, about = new.about;
+
 -- SRD 5.2.1 Weapons (p.90; ranges and ammunition left out), Armor (p.92) and Potion of Healing (p.99).
 -- Ids are fixed: the class kits (CLASSES in game.php) and the finds below use them. Every weapon has its mastery;
 -- MASTERIES in game.php lists the ones the game models.

@@ -27,7 +27,8 @@ const BONUS_USED = "You've already used your Bonus Action this round.";
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
  * level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con
- * Int Wis Cha order, saving throw proficiencies, armor training, and starting equipment A as [item id, worn]. Kits
+ * Int Wis Cha order, saving throw proficiencies, a caster's spellcasting ability, armor training, and starting
+ * equipment A as [item id, worn]. Kits
  * leave out ammunition, packs, tools and focuses. Every class but the Rogue is trained with every weapon (the
  * Fighter's Fighting Style is Defense, the Cleric's Divine Order is Protector).
  */
@@ -59,22 +60,11 @@ const CLASSES = [
     ],
     'cleric' => [
         'name' => 'Cleric', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [14, 8, 13, 10, 15, 12],
-        'saves' => ['wisdom', 'charisma'],
+        'saves' => ['wisdom', 'charisma'], 'casting' => 'wisdom',
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
         'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
         'about' => 'd8 HP, armor and shield. Spells that burn foes and heal you.',
     ],
-];
-
-/**
- * The Cleric's spells (SRD 5.2.1 p.159, p.138, p.121, p.139), as name => [level, usage, what it does]. Clerics have
- * them all prepared. A spell uses the lowest spell slot left of its level or higher; a higher slot makes it stronger.
- */
-const SPELLS = [
-    'sacred flame' => [0, '<monster>', 'cantrip: Dex save or 1d8 radiant damage'],
-    'guiding bolt' => [1, '<monster>', 'spell attack, 4d6 radiant, and Advantage on your next attack'],
-    'cure wounds' => [1, '', 'heal 2d8 + Wis; takes your turn in a fight'],
-    'healing word' => [1, '', 'heal 2d4 + Wis; a bonus action, so it costs no turn'],
 ];
 
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
@@ -93,7 +83,7 @@ const COMMANDS = [
     'flee' => 'try to escape a fight to a random exit',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
-    'cast <spell>' => 'Cleric: cast a spell (cast alone lists them)',
+    'cast <spell>' => 'cast a spell, at a monster if it needs one (cast alone lists them)',
     'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
     'sleep' => 'long rest in a safe place (1 h): recover everything',
     'score' => 'your abilities, HP, AC and XP',
@@ -162,7 +152,7 @@ function with_stats(array $me): array
         },
         'uses' => match ($class) { 'fighter' => $lv['second_wind'], 'barbarian' => $lv['rages'], default => 0 },
         'rage_damage' => $lv['rage_damage'],
-        'slots' => $class === 'cleric' ? array_map('intval', explode(',', $lv['slots'])) : [],
+        'slots' => isset(CLASSES[$class]['casting']) ? array_map('intval', explode(',', $lv['slots'])) : [],
         'resistances' => $me['raging'] ? 'bludgeoning,piercing,slashing' : '',
         'immunities' => '',
         'vulnerabilities' => '',
@@ -800,7 +790,8 @@ function win(array &$me, array $foe, array &$lines): void
     $cr = max(1, (int) ceil((float) $foe['cr']));
     $gold = roll($cr . 'd6');
     $xp = $me['xp'] + $foe['xp'];
-    $level = (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn();
+    // Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
+    $level = max($me['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn());
     $gain = ($level - $me['level']) * (CLASSES[$me['class']]['per_level'] + mod($me['constitution'])); // fixed HP
     q(
         'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
@@ -928,40 +919,40 @@ function slots_left(array $me): string
     return implode(' ', array_map(fn ($max, $used) => ($max - $used) . "/$max", $me['slots'], slots_spent($me)));
 }
 
-/** cast <spell> [monster]: the spell's words can be shortened ("cast sac rat"). A Cleric's only. */
+/**
+ * cast <spell> [monster]: the spell's words can be shortened ("cast sac rat"). Spells are rows of `spells`, resolved
+ * by kind, the way Luminari's spell routines are: an attack rolls against AC, a save against 8 + PB + the spellcasting
+ * modifier, healing adds that modifier. A spell uses the lowest slot left of its level or higher, and a higher slot
+ * adds its upcast dice; a cantrip's dice grow with character level. shortcut: casters know every spell of their class
+ * they have slots for, until `prepare` arrives; healing targets only yourself.
+ */
 function cmd_cast(array $me, string $arg): array
 {
-    if ($me['class'] !== 'cleric') {
+    $ability = CLASSES[$me['class']]['casting'] ?? null;
+    if ($ability === null) {
         return ["You don't know any spells."];
     }
-    $words = preg_split('/\s+/', strtolower($arg), -1, PREG_SPLIT_NO_EMPTY);
-    $spell = null;
-    foreach (array_keys(SPELLS) as $name) {
-        [$first, $second] = explode(' ', $name);
-        if ($words && str_starts_with($first, $words[0])) {
-            $spell = $name;
-            array_shift($words);
-            if ($words && str_starts_with($second, $words[0])) {
-                array_shift($words);
-            }
-            break;
-        }
-    }
+    $known = q(
+        'SELECT * FROM spells WHERE FIND_IN_SET(?, classes) AND level <= ? ORDER BY level, name',
+        [$me['class'], count($me['slots'])]
+    )->fetchAll();
+    [$spell, $target] = find_spell($known, $arg);
+    $mod = mod($me[$ability]);
+    $dc = 8 + $me['prof_bonus'] + $mod;
     if ($spell === null) {
-        $dc = 8 + $me['prof_bonus'] + mod($me['wisdom']);
         $lines = $arg === '' ? [] : ["You don't know a spell called '$arg'."];
         $lines[] = "Your spells (save DC $dc, spell attack +" . ($dc - 8) . '; slots ' . slots_left($me) . '):';
-        foreach (SPELLS as $name => [, $usage, $what]) {
-            $lines[] = sprintf('  %-24s %s', trim("$name $usage"), $what);
+        foreach ($known as $k) {
+            $usage = strtolower($k['name']) . ($k['kind'] === 'heal' ? '' : ' <monster>');
+            $lines[] = sprintf('  %-24s %s', $usage, ($k['level'] === 0 ? 'cantrip: ' : '') . $k['about']);
         }
         return $lines;
     }
 
-    // The lowest slot left of the spell's level or higher; cantrips need none.
-    $slot = 0;
-    if (SPELLS[$spell][0] > 0) {
+    $slot = 0; // the lowest slot left of the spell's level or higher; cantrips need none
+    if ($spell['level'] > 0) {
         foreach (slots_spent($me) as $i => $used) {
-            if ($i + 1 >= SPELLS[$spell][0] && $used < $me['slots'][$i]) {
+            if ($i + 1 >= $spell['level'] && $used < $me['slots'][$i]) {
                 $slot = $i + 1;
                 break;
             }
@@ -970,74 +961,105 @@ function cmd_cast(array $me, string $arg): array
             return ['You have no spell slots left for that. A long rest restores them.'];
         }
     }
+    $tier = 1 + intdiv($me['level'] + 1, 6); // cantrips: twice the dice at 5, three times at 11, four at 17
+    $dice = $spell['level'] === 0
+        ? preg_replace_callback('/^\d+/', fn ($n) => (string) ($n[0] * $tier), $spell['dice'])
+        : $spell['dice'] . str_repeat('+' . $spell['upcast'], $spell['upcast'] === null ? 0 : $slot - $spell['level']);
+    $name = $spell['name'] . ($slot > $spell['level'] ? " (level $slot)" : '');
     $spend = function (array &$me) use ($slot): void {
-        $spent = slots_spent($me);
-        $spent[$slot - 1]++;
-        $me['slots_spent'] = implode(',', $spent);
-        q('UPDATE users SET slots_spent = ? WHERE id = ?', [$me['slots_spent'], $me['id']]);
+        if ($slot > 0) {
+            $spent = slots_spent($me);
+            $spent[$slot - 1]++;
+            $me['slots_spent'] = implode(',', $spent);
+            q('UPDATE users SET slots_spent = ? WHERE id = ?', [$me['slots_spent'], $me['id']]);
+        }
     };
-    $heal = function (array &$me, string $dice) use ($spell, $slot, $spend): string {
-        $spend($me);
-        $hp = min($me['max_hp'], $me['hp'] + max(0, roll($dice) + mod($me['wisdom'])));
-        q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
-        $line = 'You cast ' . ucwords($spell) . ($slot > 1 ? " (level $slot)" : '') . ' and regain '
-            . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}. Slots " . slots_left($me) . '.';
-        $me['hp'] = $hp;
-        return $line;
-    };
-    $target = implode(' ', $words);
-    $at = 'Cast it at what?';
 
-    if ($spell === 'cure wounds' || $spell === 'healing word') {
+    if ($spell['kind'] === 'heal') {
         if ($me['hp'] >= $me['max_hp']) {
             return ["You're already at full health."];
         }
-        $dice = 2 * $slot . ($spell === 'cure wounds' ? 'd8' : 'd4');
-        if ($spell === 'healing word' && !spend_bonus($me)) {
+        $heal = function (array &$me) use ($spend, $dice, $mod, $name): string {
+            $spend($me);
+            $hp = min($me['max_hp'], $me['hp'] + max(0, roll($dice) + $mod));
+            q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+            $line = "You cast $name and regain " . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}. Slots "
+                . slots_left($me) . '.';
+            $me['hp'] = $hp;
+            return $line;
+        };
+        if ($spell['casting'] === 'bonus' && !spend_bonus($me)) {
             return [BONUS_USED];
         }
-        if ($spell === 'healing word' || $me['fighting'] === null) { // a Bonus Action costs no turn
-            return [$heal($me, $dice)];
+        if ($spell['casting'] === 'bonus' || $me['fighting'] === null) { // a Bonus Action costs no turn
+            return [$heal($me)];
         }
-        return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($heal, $dice): bool {
-            $lines[] = $heal($me, $dice);
+        return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($heal): bool {
+            $lines[] = $heal($me);
             return false;
         });
     }
-    if ($spell === 'sacred flame') {
-        return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
-            $dc = 8 + $me['prof_bonus'] + mod($me['wisdom']);
-            [$save, $saved] = save($foe, 'dex', $dc);
-            if ($saved) {
-                $lines[] = "The {$foe['name']} dodges your Sacred Flame (Dex save $save vs DC $dc).";
+    $act = function (array &$me, array &$foe, array &$lines) use ($spell, $spend, $dice, $mod, $dc, $name): bool {
+        $spend($me);
+        $type = $spell['damage_type'];
+        if ($spell['kind'] === 'save') {
+            $ability = $spell['save'];
+            [$save, $saved] = save($foe, $ability, $dc);
+            $roll = ucfirst($ability) . " save ($save vs DC $dc) against your $name";
+            if ($saved && !$spell['half']) {
+                $lines[] = "The {$foe['name']} makes its $roll and takes no damage.";
                 return false;
             }
-            $dice = 1 + ($me['level'] >= 5) + ($me['level'] >= 11) + ($me['level'] >= 17) . 'd8';
-            [$dmg, $note] = typed(roll($dice), 'radiant', $foe);
-            $lines[] = "Radiant flame descends on the {$foe['name']} (Dex save $save vs DC $dc) for $dmg damage$note.";
+            $dmg = $saved ? intdiv(roll($dice), 2) : roll($dice);
+            [$dmg, $note] = typed($dmg, $type, $foe);
+            $lines[] = "The {$foe['name']} " . ($saved ? 'makes' : 'fails')
+                . " its $roll and takes $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
-        }, $at);
-    }
-    return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($slot, $spend): bool {
-        $spend($me);
-        [$d20, $edge] = attack_d20($me, $foe, false, !$me['volley']); // a ranged spell attack
-        $total = $d20 + $me['prof_bonus'] + mod($me['wisdom']);
+        }
+        [$d20, $edge] = attack_d20($me, $foe, false, $spell['ranged'] && !$me['volley']);
+        $total = $d20 + $me['prof_bonus'] + $mod;
         $with = with($edge);
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
-            $lines[] = "Your Guiding Bolt misses the {$foe['name']} ($why$with).";
+            $lines[] = "Your $name misses the {$foe['name']} ($why$with).";
             return false;
         }
-        [$dmg, $note] = typed(roll(3 + $slot . 'd6', $d20 === 20), 'radiant', $foe);
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your Guiding Bolt strikes the {$foe['name']} ($total vs AC "
+        [$dmg, $note] = typed(roll($dice, $d20 === 20), $type, $foe);
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your $name hits the {$foe['name']} ($total vs AC "
             . "{$foe['ac']}$with) for $dmg damage$note.";
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
-        $me['advantage'] = true; // on the next attack roll against it (shortcut: only mine)
-        q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
+        if ($spell['name'] === 'Guiding Bolt') { // its rider: Advantage on the next attack roll against it
+            $me['advantage'] = true; // shortcut: only on mine
+            q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
+        }
         return false;
-    }, $at, true);
+    };
+    return fight($me, $target, $act, 'Cast it at what?', $spell['kind'] === 'attack' && $spell['ranged']);
+}
+
+/**
+ * The spell among $known whose name the words of $arg start with, each word a prefix of the name's next word ("sac
+ * fl"), and the words left over, the target: [spell or null, target]. The spell matching the most words wins.
+ */
+function find_spell(array $known, string $arg): array
+{
+    $words = preg_split('/\s+/', strtolower($arg), -1, PREG_SPLIT_NO_EMPTY);
+    [$best, $used] = [null, 0];
+    foreach ($known as $k) {
+        $n = 0;
+        foreach (explode(' ', strtolower($k['name'])) as $i => $word) {
+            if (!isset($words[$i]) || !str_starts_with($word, $words[$i])) {
+                break;
+            }
+            $n++;
+        }
+        if ($n > $used) {
+            [$best, $used] = [$k, $n];
+        }
+    }
+    return [$best, implode(' ', array_slice($words, $used))];
 }
 
 /** Starts a short or long rest. It finishes on the first command after it's done, unless I leave the room. */

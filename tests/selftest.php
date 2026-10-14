@@ -614,10 +614,11 @@ try {
     q('UPDATE spawns SET hp = 30 WHERE id = 9999');
     $dice_queue = [10, 1, 11, 5, 1]; // initiative 9 vs 1; save 11 fails, 1d8 = 5; Slam misses
     $out = run_command(hero('Teste'), 'cast sac flame dum');
-    check(says($out, 'Radiant flame descends on the Training Dummy (Dex save 11 vs DC 12) for 5 damage.')
+    check(says($out, 'fails its Dex save (11 vs DC 12) against your Sacred Flame and takes 5 damage.')
         && hero('Teste')['slots_spent'] === '', 'Sacred Flame: 1d8 on a failed Dex save, and no slot');
     $dice_queue = [12, 1];
-    check(says(run_command(hero('Teste'), 'cast sacred'), 'dodges your Sacred Flame (Dex save 12 vs DC 12)'),
+    check(says(run_command(hero('Teste'), 'cast sacred'), 'makes its Dex save (12 vs DC 12) against your Sacred '
+        . 'Flame and takes no damage.'),
         'a made save takes nothing; in a fight a spell goes at your foe');
     $ogre = q('SELECT * FROM monsters WHERE id = 13')->fetch();
     $dice_queue = [9, 9];
@@ -625,7 +626,7 @@ try {
         'six saves per stat block (Ogre: Con +3, Wis -2)');
     $dice_queue = [11, 15, 2, 3, 4, 5, 1]; // a ranged spell attack next to a foe: the lower of 11 and 15; Slam misses
     $out = run_command(hero('Teste'), 'cast guiding');
-    check(says($out, 'Your Guiding Bolt strikes the Training Dummy (15 vs AC 10, with Disadvantage) for 14 damage.')
+    check(says($out, 'Your Guiding Bolt hits the Training Dummy (15 vs AC 10, with Disadvantage) for 14 damage.')
         && hero('Teste')['advantage'] === 1 && hero('Teste')['slots_spent'] === '1',
         'Guiding Bolt: 4d6 and Advantage on your next attack, for a slot');
     q("UPDATE users SET hp = 2 WHERE name = 'Teste'");
@@ -639,6 +640,23 @@ try {
     $out = run_command(hero('Teste'), 'cast cure');
     check(says($out, 'You cast Cure Wounds (level 2) and regain 6 HP. HP 7/9. Slots 0/4 1/2.')
         && says($out, 'Slam misses'), 'Cure Wounds takes your turn; with the low slots spent, a higher one heals more');
+    q("UPDATE users SET level = 5 WHERE name = 'Teste'");
+    q('UPDATE spawns SET hp = 30 WHERE id = 9999');
+    $dice_queue = [5, 3, 4, 1];
+    check(says(run_command(hero('Teste'), 'cast sacred'), 'and takes 7 damage.') && $dice_queue === [],
+        'a cantrip doubles its dice at level 5');
+    q("UPDATE users SET level = 3 WHERE name = 'Teste'");
+    q("INSERT INTO spells (id, name, level, classes, casting, kind, dice, upcast, damage_type, save, half, about)
+        VALUES (9999, 'Test Burst', 1, 'cleric', 'action', 'save', '2d6', '1d6', 'fire', 'dex', TRUE, 'a test')");
+    $dice_queue = [15, 2, 3, 4, 1]; // a made save; a level 2 slot adds 1d6, so half of 9
+    check(says(run_command(hero('Teste'), 'cast test b'), 'makes its Dex save (15 vs DC 12) against your Test Burst '
+        . '(level 2) and takes 4 damage.') && $dice_queue === [], 'upcast dice, and half damage on a made save');
+    $h = with_stats(hero('Teste'));
+    $dice_queue = [1, 2];
+    $won = [];
+    win($h, ['id' => 0, 'name' => 'Rat', 'cr' => '0.125', 'xp' => 0], $won);
+    check(hero('Teste')['level'] === 3 && hero('Teste')['max_hp'] === $h['max_hp'],
+        'a kill never lowers a level set by hand ahead of the XP');
     q("UPDATE users SET fighting = NULL, room_id = 1, resting = 'long', rest_until = NOW() WHERE name = 'Teste'");
     check(says(run_command(hero('Teste'), 'score'), 'and spell slots back') && hero('Teste')['slots_spent'] === '',
         'a long rest restores spell slots');
