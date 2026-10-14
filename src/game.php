@@ -20,24 +20,29 @@ const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wis
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 /** The Weapon Mastery properties the game models (SRD 5.2.1 p.89); items list each weapon's own. */
 const MASTERIES = ['cleave', 'graze', 'nick', 'sap', 'topple', 'vex'];
-/** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
-const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = '', bonus_used = FALSE";
+/** Ends my fight, and what lasts only for one: Rage, Innate Sorcery, saved Advantage, conditions. For UPDATE users. */
+const END_FIGHT = "fighting = NULL, raging = FALSE, innate = FALSE, advantage = FALSE, conditions = '', "
+    . 'bonus_used = FALSE';
 const BONUS_USED = "You've already used your Bonus Action this round.";
 /** SQL: effect e (joined to its caster c) still lasts: not yet run out, or cast in a fight the caster is still in. */
 const LIVE_EFFECT = '(e.until > NOW() OR (e.during IS NOT NULL AND c.fighting = e.during))';
 const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+/** Font of Magic (SRD 5.2.1 p.66): a spell slot's level => [its cost in Sorcery Points, the Sorcerer level needed]. */
+const FONT_COSTS = [1 => [2, 2], 2 => [3, 3], 3 => [5, 5], 4 => [6, 7], 5 => [7, 9]];
+/** Metamagic the game models, => its cost in Sorcery Points. */
+const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
 
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Monk p.49, Paladin p.52,
- * Ranger p.56, Rogue p.61, Wizard p.77): Hit Die, level 1 HP and fixed HP per level (both before the Con modifier),
- * the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw proficiencies, Weapon Mastery, a
- * caster's spellcasting ability and slot table (full or half), prepared spells by level, the ones a new hero starts
- * with and the ones always prepared (name => from level), armor training, and starting equipment A as [item id, worn].
- * Kits leave out ammunition, packs, tools and focuses. Weapon training is trained()'s (the Fighter's and Paladin's
- * Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the subclasses are the
- * SRD's: Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Evoker). shortcut: casters know
- * every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
- * from.
+ * Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level (both before the
+ * Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw proficiencies,
+ * Weapon Mastery, a caster's spellcasting ability and slot table (full or half), prepared spells by level, the ones a
+ * new hero starts with and the ones always prepared (name => from level), armor training, and starting equipment A as
+ * [item id, worn]. Kits leave out ammunition, packs, tools and focuses. Weapon training is trained()'s (the Fighter's
+ * and Paladin's Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the subclasses
+ * are the SRD's: Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Evoker, Draconic Sorcery
+ * with Fire for its Elemental Affinity). shortcut: casters know every cantrip of their class, and a Wizard's
+ * spellbook holds every Wizard spell, until there are more to choose from.
  */
 const CLASSES = [
     'fighter' => [
@@ -112,6 +117,16 @@ const CLASSES = [
         'kit' => [[8, true], [2, false], [2, false]], // Quarterstaff, 2 Daggers
         'about' => 'd6 HP, no armor. Fire Bolt, Magic Missile, Fireball: the most spells of all.',
     ],
+    'sorcerer' => [
+        'name' => 'Sorcerer', 'die' => 6, 'hp' => 6, 'per_level' => 4, 'scores' => [10, 13, 14, 8, 12, 15],
+        'saves' => ['constitution', 'charisma'], 'casting' => 'charisma', 'slots' => 'slots',
+        'prepared' => [2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
+        'spells' => ['Burning Hands', 'Magic Missile'], // the SRD suggests Detect Magic, not modeled
+        'always' => ['Command' => 3], // Draconic Spells (shortcut: the others aren't modeled)
+        'armor' => [], 'gold' => 28,
+        'kit' => [[10, true], [2, false], [2, false]], // Spear, 2 Daggers
+        'about' => 'd6 HP, no armor. Innate magic: arcane spells, bent with Sorcery Points and Metamagic.',
+    ],
 ];
 
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
@@ -135,7 +150,10 @@ const COMMANDS = [
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
     'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
-    'cast <spell>' => 'cast a spell, at a monster or a hero if it needs one (cast alone lists them)',
+    'innate' => 'Sorcerer: Innate Sorcery for the fight, +1 spell save DC and Advantage on spell attacks; no turn',
+    'font <level>' => "Sorcerer 2: Sorcery Points into a spell slot; 'font points <level>' turns a slot into points",
+    'cast <spell>' => "cast a spell, at a monster or a hero if it needs one (cast alone lists them); a Sorcerer may "
+        . "put 'heightened' or 'seeking' first",
     'prepare <spells>' => 'after a long rest, choose your spells, with commas (prepare alone lists them)',
     'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
     'sleep' => 'long rest in a safe place (1 h): recover everything',
@@ -190,7 +208,8 @@ function mod(int $score): int
 
 /**
  * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind, Rage, Focus Points, the
- * Lay On Hands pool or free Hunter's Marks, and 'slots' a caster's spell slots by spell level.
+ * Lay On Hands pool, free Hunter's Marks or Sorcery Points, and 'slots' a caster's spell slots by spell level. A
+ * Draconic Sorcerer has Draconic Resilience (level 3: +1 HP a level) and Elemental Affinity (6: Fire Resistance).
  */
 function with_stats(array $me): array
 {
@@ -210,12 +229,17 @@ function with_stats(array $me): array
             'monk' => $me['level'] >= 2 ? $me['level'] : 0, // Focus Points
             'paladin' => 5 * $me['level'], // Lay On Hands
             'ranger' => 2 + intdiv($me['level'] - 1, 4), // Favored Enemy: free Hunter's Marks
+            'sorcerer' => $me['level'] >= 2 ? $me['level'] : 0, // Sorcery Points
             default => 0,
         },
         'rage_damage' => $lv['rage_damage'],
         'martial_arts' => $lv['martial_arts'],
         'slots' => $table === null ? [] : array_map('intval', explode(',', $lv[$table])),
-        'resistances' => $me['raging'] ? 'bludgeoning,piercing,slashing' : '',
+        'resistances' => match (true) {
+            (bool) $me['raging'] => 'bludgeoning,piercing,slashing',
+            $class === 'sorcerer' && $me['level'] >= 6 => 'fire',
+            default => '',
+        },
         'immunities' => '',
         'vulnerabilities' => '',
     ];
@@ -226,6 +250,7 @@ function with_stats(array $me): array
     }
     $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
     $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
+    $me['max_hp'] += $class === 'sorcerer' && $me['level'] >= 3 ? $me['level'] : 0; // Draconic Resilience
     foreach ($me['effects'] as $e) { // Mage Armor first: a base AC, if it beats mine
         if ($e['effect'] === 'base_ac' && !$me['armored']) {
             $me['ac'] = max($me['ac'], (int) $e['value'] + mod($me['dexterity']) + $me['shield_ac']);
@@ -266,6 +291,8 @@ function run_command(array $me, string $input): array
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
         in_array($verb, ['flurry', 'patient', 'stun'], true) => cmd_technique($me, $verb, trim($arg)),
         $verb === 'wholeness' => cmd_wholeness($me),
+        $verb === 'innate' => cmd_innate($me),
+        $verb === 'font' => cmd_font($me, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
@@ -369,7 +396,7 @@ function setup_abilities(array $me, string $word): array
     q(
         "UPDATE users SET setup = 'confirm', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
          wisdom = ?, charisma = ?, level = 1, xp = 0, hp = ?, max_hp = ?, hit_dice_spent = 0, uses_spent = 0,
-         slots_spent = '', prepared = '', may_prepare = TRUE, once_used = FALSE, wholeness_spent = 0, gold = ?,
+         slots_spent = '', prepared = '', may_prepare = TRUE, once_used = FALSE, feature_spent = 0, gold = ?,
          room_id = ?, resting = NULL,
          rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
         [...$scores, $hp, $hp, $c['gold'], START_ROOM, $me['id']]
@@ -683,7 +710,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
-        if (($me['stun'] ?? false) && $w['monk'] && spend_focus($me)) { // Stunning Strike, on my first such hit
+        if (($me['stun'] ?? false) && $w['monk'] && spend_uses($me)) { // Stunning Strike, on my first such hit
             $me['stun'] = false;
             $dc = focus_dc($me);
             [$save, $saved] = save($foe, 'con', $dc);
@@ -829,9 +856,10 @@ function with(int $edge): string
  * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total (null when it
  * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed and Stunned fail
  * Str and Dex saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
- * Incapacitated; Restrained gives Disadvantage on Dex saves. Effects like Bless add their dice.
+ * Incapacitated; Restrained gives Disadvantage on Dex saves, as does $dis (Heightened Spell). Effects like Bless add
+ * their dice.
  */
-function save(array $who, string $ability, int $dc): array
+function save(array $who, string $ability, int $dc, bool $dis = false): array
 {
     if (in_array($ability, ['str', 'dex'], true) && (has($who, 'paralyzed') || has($who, 'stunned'))) {
         return [null, false, 0];
@@ -839,7 +867,7 @@ function save(array $who, string $ability, int $dc): array
     $barbarian = ($who['class'] ?? null) === 'barbarian';
     $edge = (($ability === 'str' && ($who['raging'] ?? false))
         || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed')))
-        <=> ($ability === 'dex' && has($who, 'restrained'));
+        <=> ($dis || ($ability === 'dex' && has($who, 'restrained')));
     $total = d20($edge) + $who[$ability . '_save'] + d20_bonus($who)[0];
     return [$total, $total >= $dc, $edge];
 }
@@ -1078,7 +1106,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $hit_me = $me['class'] === 'ranger' && $me['level'] >= 7;
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg "
             . "damage$note" . ($deflected ? ", $deflected deflected." : '.');
-        if ($deflected && $dmg === 0 && spend_focus($me) && redirect($me, $foe, $lines)) {
+        if ($deflected && $dmg === 0 && spend_uses($me) && redirect($me, $foe, $lines)) {
             q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
             return true;
         }
@@ -1204,13 +1232,13 @@ function cmd_rage(array $me): array
     ];
 }
 
-/** Spends one of my Focus Points (Monk 2), or returns false if none are left. */
-function spend_focus(array &$me): bool
+/** Spends $n of my uses (Focus Points, Sorcery Points), or returns false if too few are left. */
+function spend_uses(array &$me, int $n = 1): bool
 {
-    if ($me['uses_spent'] >= $me['uses']) {
+    if ($me['uses_spent'] + $n > $me['uses']) {
         return false;
     }
-    $me['uses_spent']++;
+    $me['uses_spent'] += $n;
     q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
     return true;
 }
@@ -1284,7 +1312,7 @@ function cmd_technique(array $me, string $how, string $target): array
             return hero_turn($me, $foe, $lines);
         }
         spend_bonus($me);
-        spend_focus($me);
+        spend_uses($me);
         if ($how === 'flurry') {
             $me['flurry'] = $me['level'] >= 10 ? 3 : 2;
             $lines[] = 'You unleash a Flurry of Blows!';
@@ -1306,7 +1334,7 @@ function cmd_wholeness(array $me): array
     if ($me['class'] !== 'monk' || $me['level'] < 6) {
         return ['Only Monks of level 6 or more know Wholeness of Body.'];
     }
-    $left = max(1, mod($me['wisdom'])) - $me['wholeness_spent'];
+    $left = max(1, mod($me['wisdom'])) - $me['feature_spent'];
     if ($left <= 0) {
         return ['You have no Wholeness of Body left. A long rest restores it.'];
     }
@@ -1317,9 +1345,88 @@ function cmd_wholeness(array $me): array
         return [BONUS_USED];
     }
     $hp = min($me['max_hp'], $me['hp'] + max(1, roll('1d' . $me['martial_arts']) + mod($me['wisdom'])));
-    q('UPDATE users SET hp = ?, wholeness_spent = wholeness_spent + 1 WHERE id = ?', [$hp, $me['id']]);
+    q('UPDATE users SET hp = ?, feature_spent = feature_spent + 1 WHERE id = ?', [$hp, $me['id']]);
     return ['Your breath steadies and you regain ' . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}, "
         . ($left - 1) . ' Wholeness of Body left.'];
+}
+
+/**
+ * Innate Sorcery (Sorcerer 1): a Bonus Action, so it costs no turn. For the rest of the fight (the SRD's 1 minute) my
+ * spell save DC is 1 higher and my spell attack rolls have Advantage. Twice a long rest, and from level 7 (Sorcery
+ * Incarnate) for 2 Sorcery Points once those are gone.
+ */
+function cmd_innate(array $me): array
+{
+    if ($me['class'] !== 'sorcerer') {
+        return ['Only Sorcerers have Innate Sorcery.'];
+    }
+    if ($me['fighting'] === null) {
+        return ['Innate Sorcery needs a fight to burn in. Start one first.'];
+    }
+    if ($me['innate']) {
+        return ['Your Innate Sorcery already burns.'];
+    }
+    $left = 2 - $me['feature_spent'];
+    $points = $left <= 0 && $me['level'] >= 7;
+    if ($left <= 0 && (!$points || $me['uses'] - $me['uses_spent'] < 2)) {
+        return [$me['level'] >= 7 ? 'You have no Innate Sorcery left, nor 2 Sorcery Points. A long rest restores them.'
+            : 'You have no Innate Sorcery left. A long rest restores it.'];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    if ($points) {
+        spend_uses($me, 2);
+    } else {
+        q('UPDATE users SET feature_spent = feature_spent + 1 WHERE id = ?', [$me['id']]);
+    }
+    q('UPDATE users SET innate = TRUE WHERE id = ?', [$me['id']]);
+    return ['Magic surges up within you: +1 to your spell save DC and Advantage on your spell attacks until the fight '
+        . 'ends. ' . ($points ? '2 Sorcery Points spent.' : ($left - 1) . ' Innate Sorcery left.')];
+}
+
+/**
+ * Font of Magic (Sorcerer 2): font <level> shapes Sorcery Points into a spell slot of that level (FONT_COSTS), a Bonus
+ * Action; font points <level> turns a slot of that level back into as many points, no action. A slot made beyond my
+ * table shows as fewer than none spent, and vanishes with the long rest that clears slots_spent.
+ */
+function cmd_font(array $me, string $arg): array
+{
+    if ($me['class'] !== 'sorcerer' || $me['level'] < 2) {
+        return ['Only Sorcerers of level 2 or more have Font of Magic.'];
+    }
+    $back = (bool) preg_match('/^points?\s+/i', $arg, $m);
+    $level = (int) ($back ? substr($arg, strlen($m[0])) : $arg);
+    $left = $me['uses'] - $me['uses_spent'];
+    if ($back) {
+        if ($level < 1 || $level > count($me['slots']) || slots_spent($me)[$level - 1] >= $me['slots'][$level - 1]) {
+            return ["You have no level $level spell slot left to turn into points."];
+        }
+        $gain = min($level, $me['uses_spent']); // never more than my table's points
+        if ($gain === 0) {
+            return ['Your Sorcery Points are already full.'];
+        }
+        spend_slot($me, $level);
+        q('UPDATE users SET uses_spent = uses_spent - ? WHERE id = ?', [$gain, $me['id']]);
+        return ["You turn a level $level spell slot into $gain Sorcery " . ($gain === 1 ? 'Point' : 'Points')
+            . '. Sorcery Points: ' . ($left + $gain) . "/{$me['uses']}. Slots " . slots_left($me) . '.'];
+    }
+    [$cost, $needs] = FONT_COSTS[$level] ?? [0, 99];
+    if ($me['level'] < $needs) {
+        return ["Usage: font <level> (a slot of level 1 to 5, as your level allows), or font points <level>."];
+    }
+    if ($left < $cost) {
+        return ["A level $level slot takes $cost Sorcery Points, and you have $left."];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    spend_uses($me, $cost);
+    $spent = slots_spent($me);
+    $spent[$level - 1]--;
+    $me['slots_spent'] = implode(',', $spent);
+    q('UPDATE users SET slots_spent = ? WHERE id = ?', [$me['slots_spent'], $me['id']]);
+    return ["You shape $cost Sorcery Points into a level $level spell slot. Slots " . slots_left($me) . '.'];
 }
 
 /**
@@ -1370,10 +1477,10 @@ function slots_left(array $me): string
     return implode(' ', array_map(fn ($max, $used) => ($max - $used) . "/$max", $me['slots'], slots_spent($me)));
 }
 
-/** My spell save DC: 8 + PB + my spellcasting ability's modifier. */
+/** My spell save DC: 8 + PB + my spellcasting ability's modifier, + 1 with Innate Sorcery. */
 function spell_dc(array $me): int
 {
-    return 8 + $me['prof_bonus'] + mod($me[CLASSES[$me['class']]['casting']]);
+    return 8 + $me['prof_bonus'] + mod($me[CLASSES[$me['class']]['casting']]) + ($me['innate'] ? 1 : 0);
 }
 
 /** True while my Hunter's Mark lasts. */
@@ -1476,8 +1583,11 @@ function extra_damage(array $me, array $foe, bool $melee, bool $crit, ?string $s
  * cast <spell> [monster]: the spell's words can be shortened ("cast sac rat"). Spells are rows of `spells`, resolved
  * by kind, the way Luminari's spell routines are: an attack rolls against AC (once per ray), a save against 8 + PB +
  * the spellcasting modifier, healing adds that modifier, an auto spell just hits, a smite waits for my weapon hit. I
- * know cantrips, my prepared spells and the ones always prepared. A spell uses the lowest slot left of its level or
- * higher, and a higher slot adds its upcast dice; a cantrip's dice grow with character level.
+ * know cantrips, my prepared spells and the ones always prepared (which may come from another class's list). A spell
+ * uses the lowest slot left of its level or higher, and a higher slot adds its upcast dice; a cantrip's dice grow with
+ * character level. A Sorcerer (level 2) may put a Metamagic word first: heightened (2 Sorcery Points, Disadvantage on
+ * the spell's save) or seeking (1 point, spent only on a miss: reroll the attack's d20). With Innate Sorcery its spell
+ * attacks have Advantage; Elemental Affinity (Draconic 6) adds Cha to one damage roll of a Fire spell.
  */
 function cmd_cast(array $me, string $arg): array
 {
@@ -1485,17 +1595,25 @@ function cmd_cast(array $me, string $arg): array
     if ($ability === null) {
         return ["You don't know any spells."];
     }
-    $known = q( // cantrips and my prepared spells I have slots for
-        'SELECT * FROM spells WHERE FIND_IN_SET(?, classes) AND level <= ? AND (level = 0 OR FIND_IN_SET(id, ?))
-         ORDER BY level, name',
-        [$me['class'], count($me['slots']), implode(',', [...prepared_ids($me), ...always_ids($me)])]
+    $meta = null;
+    if (preg_match('/^(' . implode('|', array_keys(METAMAGIC)) . ')\s+(.*)$/i', $arg, $m)) {
+        [$meta, $arg] = [strtolower($m[1]), $m[2]];
+        if ($me['class'] !== 'sorcerer' || $me['level'] < 2) {
+            return ['Only Sorcerers of level 2 or more know Metamagic.'];
+        }
+    }
+    $known = q( // cantrips and my prepared spells I have slots for, and the ones always prepared
+        'SELECT * FROM spells WHERE level <= ? AND ((FIND_IN_SET(?, classes) AND (level = 0 OR FIND_IN_SET(id, ?)))
+         OR FIND_IN_SET(id, ?)) ORDER BY level, name',
+        [count($me['slots']), $me['class'], implode(',', prepared_ids($me)), implode(',', always_ids($me))]
     )->fetchAll();
     [$spell, $target] = find_spell($known, $arg);
     $mod = mod($me[$ability]);
     $dc = spell_dc($me);
     if ($spell === null) {
         $lines = $arg === '' ? [] : ["You don't know a spell called '$arg'."];
-        $lines[] = "Your spells (save DC $dc, spell attack +" . ($dc - 8) . '; slots ' . slots_left($me) . '):';
+        $lines[] = "Your spells (save DC $dc, spell attack +" . ($me['prof_bonus'] + $mod) . '; slots '
+            . slots_left($me) . '):';
         foreach ($known as $k) {
             $usage = strtolower($k['name']) . (['foe' => ' <monster>', 'ally' => ' [hero]'][$k['targets']] ?? '');
             $lines[] = sprintf('  %-28s %s', $usage, ($k['level'] === 0 ? 'cantrip: ' : '') . $k['about']);
@@ -1503,6 +1621,18 @@ function cmd_cast(array $me, string $arg): array
         return [...$lines, "'prepare' shows the others."];
     }
 
+    if ($meta !== null) {
+        $kind = $meta === 'heightened' ? 'save' : 'attack';
+        if ($spell['kind'] !== $kind || $spell['targets'] !== 'foe') {
+            return [ucfirst($meta) . ' Spell works only on a spell with ' . ($kind === 'save' ? 'a saving throw.'
+                : 'an attack roll.')];
+        }
+        $cost = METAMAGIC[$meta];
+        if ($me['uses'] - $me['uses_spent'] < $cost) {
+            return ["You need $cost Sorcery " . ($cost === 1 ? 'Point' : 'Points') . ' for that, and you have '
+                . ($me['uses'] - $me['uses_spent']) . '.'];
+        }
+    }
     // Favored Enemy: a Ranger casts Hunter's Mark free a few times a long rest.
     $free = $spell['name'] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['uses_spent'] < $me['uses'];
     $slot = $free ? 0 : lowest_slot($me, $spell['level']); // cantrips need none
@@ -1611,20 +1741,34 @@ function cmd_cast(array $me, string $arg): array
         return ["$spell[name] works only on a " . ucfirst($spell['creature']) . ", and the $foe[name] is "
             . lcfirst(a_an(ucfirst($foe['type']))) . '.'];
     }
-    $act = function (array &$me, array &$foe, array &$lines) use ($spell, $spend, $dice, $mod, $dc, $name, $up): bool {
+    $act = function (array &$me, array &$foe, array &$lines) use (
+        $spell,
+        $spend,
+        $dice,
+        $mod,
+        $dc,
+        $name,
+        $up,
+        $meta
+    ): bool {
         $spend($me);
         $type = $spell['damage_type'];
         // Potent Cantrip (Evoker 3): a cantrip that misses or is saved against still deals half damage.
         $potent = $spell['level'] === 0 && $me['class'] === 'wizard' && $me['level'] >= 3;
+        // Elemental Affinity (Draconic 6): + Cha to one damage roll of a Fire spell.
+        $affinity = $me['class'] === 'sorcerer' && $me['level'] >= 6 && $type === 'fire' ? mod($me['charisma']) : 0;
         if ($spell['kind'] === 'auto') {
-            [$dmg, $note] = typed(roll($dice), $type, $foe);
+            [$dmg, $note] = typed(roll($dice) + $affinity, $type, $foe);
             $lines[] = "Your $name strikes the {$foe['name']} for $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
         }
         if ($spell['kind'] === 'save') {
             $ability = $spell['save'];
-            [$save, $saved] = save($foe, $ability, $dc);
-            $roll = ucfirst($ability) . ' save (' . vs($save, $dc) . ") against your $name";
+            if ($meta === 'heightened') {
+                spend_uses($me, METAMAGIC[$meta]);
+            }
+            [$save, $saved, $edge] = save($foe, $ability, $dc, $meta === 'heightened');
+            $roll = ucfirst($ability) . ' save (' . vs($save, $dc) . with($edge) . ") against your $name";
             if ($spell['effect'] !== null && !$saved) {
                 start_effect($me, $spell, $dc, 'spawn_id', [$foe], $foe['id']);
                 $foe['effects'] = effects_on('spawn_id', $foe['id']);
@@ -1638,15 +1782,25 @@ function cmd_cast(array $me, string $arg): array
                 $lines[] = "The {$foe['name']} makes its $roll and takes no damage.";
                 return false;
             }
-            $dmg = $saved ? intdiv(roll($dice), 2) : roll($dice);
-            [$dmg, $note] = typed($dmg, $type, $foe);
+            $dmg = roll($dice) + $affinity;
+            [$dmg, $note] = typed($saved ? intdiv($dmg, 2) : $dmg, $type, $foe);
             $lines[] = "The {$foe['name']} " . ($saved ? 'makes' : 'fails')
                 . " its $roll and takes $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
         }
         for ($ray = 0; $ray < $spell['count'] + $spell['upcast_targets'] * $up; $ray++) { // Scorching Ray: three
-            [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, false, $spell['ranged'] && !$me['volley']);
+            [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, (bool) $me['innate'],
+                $spell['ranged'] && !$me['volley']);
             $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
+            if ($meta === 'seeking' && ($d20 === 1 || ($d20 < 20 && $total < $foe['ac']))) { // one reroll, one d20
+                $meta = null;
+                spend_uses($me, METAMAGIC['seeking']);
+                $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
+                $lines[] = "Your $name misses the {$foe['name']} ($why$with), but Seeking Spell steers it back.";
+                $with = substr($with, strlen(with($edge))); // keep Bless's note
+                $d20 = roll('1d20');
+                $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
+            }
             if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
                 $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
                 if (!$potent) {
@@ -1656,7 +1810,8 @@ function cmd_cast(array $me, string $arg): array
                 [$dmg, $note] = typed(intdiv(roll($dice), 2), $type, $foe);
                 $lines[] = "Your $name misses the {$foe['name']} ($why$with), but still deals $dmg damage$note.";
             } else {
-                [$dmg, $note] = typed(roll($dice, $d20 === 20), $type, $foe);
+                [$dmg, $note] = typed(roll($dice, $d20 === 20) + $affinity, $type, $foe);
+                $affinity = 0;
                 $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your $name hits the {$foe['name']} ($total vs AC "
                     . "{$foe['ac']}$with) for $dmg damage$note.";
             }
@@ -1829,12 +1984,13 @@ function finish_rest(array &$me): array
         return [];
     }
     $use = $me['uses'] ? ['fighter' => 'Second Wind', 'barbarian' => 'Rage', 'monk' => 'Focus Points',
-        'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks"][$me['class']] : null;
+        'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks", 'sorcerer' => 'Sorcery Points'][$me['class']]
+        : null;
     if ($me['resting'] === 'long') {
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
             . ($me['slots'] ? ' and spell slots back, and you may change your prepared spells' : ' back') . '.';
-        q('UPDATE users SET may_prepare = TRUE, once_used = FALSE, wholeness_spent = 0 WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0 WHERE id = ?', [$me['id']]);
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
@@ -1843,7 +1999,12 @@ function finish_rest(array &$me): array
             $me['hit_dice_spent']++;
             $spent++;
         }
-        $recovered = $me['class'] === 'wizard' && !$me['once_used'] ? arcane_recovery($me) : '';
+        $recovered = match (true) {
+            (bool) $me['once_used'] => '',
+            $me['class'] === 'wizard' => arcane_recovery($me),
+            $me['class'] === 'sorcerer' && $me['level'] >= 5 => sorcerous_restoration($me),
+            default => '',
+        };
         // One Second Wind or Rage comes back, every Focus Point, and nothing else.
         $back = match ($me['class']) { 'fighter', 'barbarian' => 1, 'monk' => $me['uses_spent'], default => 0 };
         $me['uses_spent'] = max(0, $me['uses_spent'] - $back);
@@ -1887,6 +2048,22 @@ function arcane_recovery(array &$me): string
     return ', with Arcane Recovery bringing back slots of level ' . implode(', ', $back);
 }
 
+/**
+ * Sorcerous Restoration (Sorcerer 5), on a short rest once a long rest: spent Sorcery Points back, up to half my level.
+ * Returns how the rest line says it.
+ */
+function sorcerous_restoration(array &$me): string
+{
+    $back = min($me['uses_spent'], intdiv($me['level'], 2));
+    if ($back === 0) {
+        return '';
+    }
+    $me['uses_spent'] -= $back;
+    $me['once_used'] = 1;
+    q('UPDATE users SET once_used = TRUE WHERE id = ?', [$me['id']]); // uses_spent is saved with the rest
+    return ", with Sorcerous Restoration bringing back $back Sorcery " . ($back === 1 ? 'Point' : 'Points');
+}
+
 /** Drops a random item a monster of $cr could have on $room_id's floor and returns its name (null if none can). */
 function loot(float $cr, int $room_id): ?string
 {
@@ -1901,7 +2078,8 @@ function loot(float $cr, int $room_id): ?string
 /**
  * My AC and attack from what I wear, by the SRD: armor's AC plus Dex (all for light, up to +2 for medium, none for
  * heavy) and +1 for a Fighter's or Paladin's (level 2) Defense fighting style; unarmored, 10 + Dex (+ Con for a
- * Barbarian's Unarmored Defense, + Wis for a Monk's without a shield); +2 for a shield. The weapon keys are
+ * Barbarian's Unarmored Defense, + Wis for a Monk's without a shield, + Cha for a Draconic Sorcerer's from level 3);
+ * +2 for a shield. The weapon keys are
  * wielding()'s for my main hand, 'offhand' is a second Light weapon's, or null, and 'unarmed' my Unarmed Strike's.
  * 'arts' is true while a Monk's Martial Arts work: no armor or shield, and only Monk weapons in hand.
  */
@@ -1922,6 +2100,7 @@ function gear(array $me): array
             + match ($armor['armor']) { 'light' => $dex, 'medium' => min($dex, 2), 'heavy' => 0 },
         $me['class'] === 'barbarian' => 10 + $dex + mod($me['constitution']),
         $me['class'] === 'monk' && $bare => 10 + $dex + mod($me['wisdom']),
+        $me['class'] === 'sorcerer' && $me['level'] >= 3 => 10 + $dex + mod($me['charisma']), // Draconic Resilience
         default => 10 + $dex,
     };
     $arts = $me['class'] === 'monk' && $bare && monk_weapon($worn['weapon'] ?? null)
@@ -1980,7 +2159,7 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
 
 /**
  * If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons,
- * Monks Simple or Light ones, Wizards Simple ones, the rest every weapon.
+ * Monks Simple or Light ones, Wizards and Sorcerers Simple ones, the rest every weapon.
  */
 function trained(array $me, array $o): bool
 {
@@ -1990,7 +2169,7 @@ function trained(array $me, array $o): bool
         'weapon' => !$o['martial'] || match ($me['class']) {
             'rogue' => $o['finesse'] || $o['light'],
             'monk' => $o['light'],
-            'wizard' => false,
+            'wizard', 'sorcerer' => false,
             default => true,
         },
         'potion' => true,
@@ -2193,6 +2372,11 @@ function hero_sheet(array $me): array
                 'paladin' => [['Lay On Hands', $uses], ['Spell slots', slots_left($me)]],
                 'ranger' => [['Favored Enemy', $uses], ['Spell slots', slots_left($me)]],
                 'wizard' => [['Spell slots', slots_left($me)]],
+                'sorcerer' => [
+                    ['Innate Sorcery', max(0, 2 - $me['feature_spent']) . '/2'],
+                    ...($me['uses'] ? [['Sorcery Points', $uses]] : []),
+                    ['Spell slots', slots_left($me)],
+                ],
             },
             ...($me['offhand'] === null ? [] : [['Off hand', sprintf('%s %+d to hit, %s damage%s',
                 $me['offhand']['weapon'], $me['offhand']['to_hit'], $me['offhand']['damage'],
@@ -2200,6 +2384,7 @@ function hero_sheet(array $me): array
         ],
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
+            $me['innate'] ? 'Innate Sorcery' : null,
             $me['class'] === 'monk' && !$me['arts'] ? 'no Martial Arts' : null,
             ...explode(',', $me['conditions']),
             ...array_column($me['effects'], 'spell'),

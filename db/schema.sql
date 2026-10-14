@@ -125,7 +125,7 @@ CREATE TABLE users (
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
-    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard')
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer')
         NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
@@ -138,14 +138,15 @@ CREATE TABLE users (
     wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
-    -- Second Wind, Rage, Focus Points, Lay On Hands HP or a Ranger's free Hunter's Marks
+    -- Second Wind, Rage, Focus Points, Lay On Hands HP, a Ranger's free Hunter's Marks or Sorcery Points
     uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
     -- A once-a-long-rest feature used since the last one: a Monk's Uncanny Metabolism, a Paladin's free Divine Smite,
-    -- a Wizard's Arcane Recovery.
+    -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration.
     once_used BOOLEAN NOT NULL DEFAULT FALSE,
-    wholeness_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body
+    feature_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body or a Sorcerer's Innate Sorcery
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
     raging BOOLEAN NOT NULL DEFAULT FALSE, -- until the fight ends
+    innate BOOLEAN NOT NULL DEFAULT FALSE, -- a Sorcerer's Innate Sorcery, until the fight ends
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
     conditions SET('reckless', 'dodging') NOT NULL DEFAULT '',
