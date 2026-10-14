@@ -14,13 +14,16 @@ fi
 php tests/selftest.php > /dev/null || { echo 'Local selftest failed: php tests/selftest.php' >&2; exit 1; }
 
 # The code lives outside the web root; only public/ is exposed, by a symlink. Excluded paths are never deleted on the
-# server, so config.php and var/sessions survive. --chmod: Apache must read public/, whatever the Mac's permissions are.
-rsync -az --chmod=D755,F644 --delete --exclude=/.git/ --exclude=/config.php --exclude=/var/ --exclude=/ref/ --exclude=/deploy.env \
+# server, so config.php and var/sessions survive.
+rsync -az --delete --exclude=/.git/ --exclude=/config.php --exclude=/var/ --exclude=/ref/ --exclude=/deploy.env \
     --exclude=.DS_Store ./ "$DEPLOY_HOST:$DEPLOY_DIR/"
 
-# -T refuses to replace a real folder there. seed.sql never touches heroes; it respawns monsters and rerolls the Delve.
+# -T refuses to replace a real folder there. Apache must read public/ whatever the Mac's permissions are (macOS's
+# openrsync has no --chmod), so open everything up except config.php and var/.
+# seed.sql never touches heroes; it respawns monsters and rerolls the Delve.
 # shortcut: schema changes still need their ALTERs run by hand first, or this stops at the seed.
 ssh "$DEPLOY_HOST" "ln -sfnT \"\$HOME/$DEPLOY_DIR/public\" '$DEPLOY_WEB' && cd '$DEPLOY_DIR' \
+    && find . \\( -path ./var -o -path ./config.php \\) -prune -o -exec chmod go+rX {} + \
     && cat db/seed.sql db/areas/*.sql | mysql && $php_bin tests/selftest.php > /dev/null \
     && echo 'Deployed $(git rev-parse --short HEAD); selftest ok.' \
-    || { echo 'FAILED on the server: symlink, world reload or selftest.'; exit 1; }"
+    || { echo 'FAILED on the server: symlink, permissions, world reload or selftest.'; exit 1; }"
