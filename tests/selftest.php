@@ -1237,6 +1237,70 @@ try {
     run_command(hero('Testl'), 'score');
     check(hero('Testl')['shape'] === null && hero('Testl')['temp_hp'] === 0, 'a long rest ends Wild Shape');
 
+    // Warlock (Testm: Cha 15: spell attack +4; Sickle +1). The dummy: AC 10, saves +0, Slam +3.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testm', 'correct horse');
+    create('Testm', 'warlock');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testm'");
+    $score = run_command(hero('Testm'), 'score');
+    check(says($score, 'level 1 Warlock') && says($score, 'HP 9/9   AC 13') && says($score, 'Sickle +1 to hit, 1d4-1')
+        && says($score, 'Hit Dice 1/1 d8   Pact slots 1/1 (level 1)')
+        && says($score, 'Saves  Str -1  Dex +2  Con +1  Int +1  Wis +2  Cha +4')
+        && count(objects_here('user_id', (int) hero('Testm')['id'])) === 4 && hero('Testm')['gold'] === 15,
+        'Warlock: d8, Leather Armor, a Sickle and 2 Daggers, Wis and Cha saves');
+    $out = run_command(hero('Testm'), 'cast');
+    check(says($out, 'eldritch blast <monster>') && says($out, 'hex  ') && says($out, 'mage armor [hero]'),
+        'Warlock cantrips and spells');
+    run_command(hero('Testm'), 'drop leather'); // Mage Armor needs no armor on
+    check(says(run_command(hero('Testm'), 'cast mage'), 'You cast Mage Armor (free) on you.')
+        && says(run_command(hero('Testm'), 'score'), 'AC 15') && hero('Testm')['slots_spent'] === '',
+        'Armor of Shadows: Mage Armor on yourself without a slot');
+    check(says(run_command(hero('Testm'), 'cast hex'), 'You cast Hex on you. Slots 0/1.'), 'Hex, with a Pact slot');
+    $dice_queue = [10, 1, 10, 5, 3];
+    check(says(run_command(hero('Testm'), 'cast eldritch dummy'), 'Your Eldritch Blast hits the Training Dummy (14 vs '
+        . 'AC 10) for 8 damage (+3 Hex).') && $dice_queue === [],
+        'Eldritch Blast: 1d10 Force; Hex adds to spell attacks');
+    q("UPDATE users SET level = 2 WHERE name = 'Testm'");
+    $dice_queue = [12, 15, 5, 3, 1];
+    check(says(run_command(hero('Testm'), 'cast eldritch'), '(16 vs AC 10, with Disadvantage) for 10 damage (+3 Hex).')
+        && $dice_queue === [], 'Agonizing Blast: + Cha to Eldritch Blast damage');
+    check(says(run_command(hero('Testm'), 'cunning'), "can't perform it in a fight"), 'no Magical Cunning in a fight');
+    $dice_queue = [20, 1];
+    run_command(hero('Testm'), 'flee');
+    q("UPDATE users SET slots_spent = '2' WHERE name = 'Testm'");
+    check(says(run_command(hero('Testm'), 'cunning'), '1 Pact Magic slot returns. Slots 1/2.')
+        && says(run_command(hero('Testm'), 'cunning'), 'since your last long rest'),
+        'Magical Cunning: half the Pact Magic slots, once a long rest');
+    q("UPDATE users SET resting = 'short', rest_until = NOW() WHERE name = 'Testm'");
+    check(says(run_command(hero('Testm'), 'score'), 'with your Pact Magic slots back')
+        && hero('Testm')['slots_spent'] === '', 'Pact Magic: every slot back on a short rest');
+    q("UPDATE users SET level = 3, room_id = 2 WHERE name = 'Testm'");
+    q('UPDATE spawns SET hp = 6 WHERE id = 9999');
+    $dice_queue = [10, 1, 10, 1, 3, 3, 2];
+    $out = run_command(hero('Testm'), 'cast eldritch dummy');
+    check(says($out, "Dark One's Blessing: you have 5 temporary HP.") && hero('Testm')['temp_hp'] === 5
+        && $dice_queue === [], "Dark One's Blessing: Cha + level in Temporary Hit Points for a kill");
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    $out = run_command(hero('Testm'), 'cast');
+    check(says($out, 'scorching ray') && says($out, 'command <monster>') && says(run_command(hero('Testm'), 'score'),
+        'Pact slots 2/2 (level 2)'), 'Fiend Spells always prepared; level 2 Pact slots at level 3');
+    q("UPDATE users SET level = 5 WHERE name = 'Testm'");
+    $dice_queue = [10, 1, 10, 5, 3, 1];
+    $out = run_command(hero('Testm'), 'cast eldritch dummy');
+    check(count(array_filter($out, fn ($l) => str_contains($l, 'Your Eldritch Blast hits'))) === 1
+        && says($out, 'Your Eldritch Blast misses') && $dice_queue === [], 'Eldritch Blast: two beams at level 5');
+    $dice_queue = [1, 1, 1, 1, 15, 2, 3, 12];
+    check(says(run_command(hero('Testm'), 'cast eldritch'), 'You keep your Concentration on Hex (Con save 13 vs DC 10)')
+        && $dice_queue === [], 'Eldritch Mind: Advantage on Concentration saves');
+    q("UPDATE users SET level = 6 WHERE name = 'Testm'");
+    $dice_queue = [1, 1, 1, 1, 15, 2, 2, 3, 7];
+    check(says(run_command(hero('Testm'), 'cast eldritch'), 'You keep your Concentration on Hex (Con save 11 vs DC 10)')
+        && $dice_queue === [] && hero('Testm')['uses_spent'] === 1, "Dark One's Own Luck: 1d10 on a failed save");
+    $dice_queue = [20, 1];
+    run_command(hero('Testm'), 'flee');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

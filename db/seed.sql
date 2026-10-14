@@ -118,32 +118,33 @@ INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
 -- SRD Character Advancement (p.23), and from the class Features tables: Fighter (p.47) Second Wind uses and attacks
 -- per round (Extra Attack at 5, Two Extra Attacks at 11, Three at 20), Barbarian (p.28) Rages and Rage Damage, Monk
 -- (p.49) Martial Arts die, and spell slots: Cleric (p.36) for full casters, Paladin (p.53) for half casters.
-INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, martial_arts, slots, half_slots)
+INSERT INTO levels (level, xp, prof_bonus, second_wind, attacks, rages, rage_damage, martial_arts, slots, half_slots,
+    pact_slots)
 VALUES
-(1, 0, 2, 2, 1, 2, 2, 6, '2', '2'),
-(2, 300, 2, 2, 1, 2, 2, 6, '3', '2'),
-(3, 900, 2, 2, 1, 3, 2, 6, '4,2', '3'),
-(4, 2700, 2, 3, 1, 3, 2, 6, '4,3', '3'),
-(5, 6500, 3, 3, 2, 3, 2, 8, '4,3,2', '4,2'),
-(6, 14000, 3, 3, 2, 4, 2, 8, '4,3,3', '4,2'),
-(7, 23000, 3, 3, 2, 4, 2, 8, '4,3,3,1', '4,3'),
-(8, 34000, 3, 3, 2, 4, 2, 8, '4,3,3,2', '4,3'),
-(9, 48000, 4, 3, 2, 4, 3, 8, '4,3,3,3,1', '4,3,2'),
-(10, 64000, 4, 4, 2, 4, 3, 8, '4,3,3,3,2', '4,3,2'),
-(11, 85000, 4, 4, 3, 4, 3, 10, '4,3,3,3,2,1', '4,3,3'),
-(12, 100000, 4, 4, 3, 5, 3, 10, '4,3,3,3,2,1', '4,3,3'),
-(13, 120000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1'),
-(14, 140000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1'),
-(15, 165000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1,1', '4,3,3,2'),
-(16, 195000, 5, 4, 3, 5, 4, 10, '4,3,3,3,2,1,1,1', '4,3,3,2'),
-(17, 225000, 6, 4, 3, 6, 4, 12, '4,3,3,3,2,1,1,1,1', '4,3,3,3,1'),
-(18, 265000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,1,1,1,1', '4,3,3,3,1'),
-(19, 305000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,2,1,1,1', '4,3,3,3,2'),
-(20, 355000, 6, 4, 4, 6, 4, 12, '4,3,3,3,3,2,2,1,1', '4,3,3,3,2')
+(1, 0, 2, 2, 1, 2, 2, 6, '2', '2', '1'),
+(2, 300, 2, 2, 1, 2, 2, 6, '3', '2', '2'),
+(3, 900, 2, 2, 1, 3, 2, 6, '4,2', '3', '0,2'),
+(4, 2700, 2, 3, 1, 3, 2, 6, '4,3', '3', '0,2'),
+(5, 6500, 3, 3, 2, 3, 2, 8, '4,3,2', '4,2', '0,0,2'),
+(6, 14000, 3, 3, 2, 4, 2, 8, '4,3,3', '4,2', '0,0,2'),
+(7, 23000, 3, 3, 2, 4, 2, 8, '4,3,3,1', '4,3', '0,0,0,2'),
+(8, 34000, 3, 3, 2, 4, 2, 8, '4,3,3,2', '4,3', '0,0,0,2'),
+(9, 48000, 4, 3, 2, 4, 3, 8, '4,3,3,3,1', '4,3,2', '0,0,0,0,2'),
+(10, 64000, 4, 4, 2, 4, 3, 8, '4,3,3,3,2', '4,3,2', '0,0,0,0,2'),
+(11, 85000, 4, 4, 3, 4, 3, 10, '4,3,3,3,2,1', '4,3,3', '0,0,0,0,3'),
+(12, 100000, 4, 4, 3, 5, 3, 10, '4,3,3,3,2,1', '4,3,3', '0,0,0,0,3'),
+(13, 120000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1', '0,0,0,0,3'),
+(14, 140000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1', '4,3,3,1', '0,0,0,0,3'),
+(15, 165000, 5, 4, 3, 5, 3, 10, '4,3,3,3,2,1,1,1', '4,3,3,2', '0,0,0,0,3'),
+(16, 195000, 5, 4, 3, 5, 4, 10, '4,3,3,3,2,1,1,1', '4,3,3,2', '0,0,0,0,3'),
+(17, 225000, 6, 4, 3, 6, 4, 12, '4,3,3,3,2,1,1,1,1', '4,3,3,3,1', '0,0,0,0,4'),
+(18, 265000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,1,1,1,1', '4,3,3,3,1', '0,0,0,0,4'),
+(19, 305000, 6, 4, 3, 6, 4, 12, '4,3,3,3,3,2,1,1,1', '4,3,3,3,2', '0,0,0,0,4'),
+(20, 355000, 6, 4, 4, 6, 4, 12, '4,3,3,3,3,2,2,1,1', '4,3,3,3,2', '0,0,0,0,4')
 AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks,
     rages = new.rages, rage_damage = new.rage_damage, martial_arts = new.martial_arts, slots = new.slots,
-    half_slots = new.half_slots;
+    half_slots = new.half_slots, pact_slots = new.pact_slots;
 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
 -- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,
@@ -153,7 +154,7 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 -- Missile p.146, Burning Hands p.114, Thunderwave p.169, Mage Armor p.145, Scorching Ray p.159, Shatter p.161, Web
 -- p.174, Mind Spike p.149, Fireball p.131, Lightning Bolt p.144, Vicious Mockery p.171, Starry Wisp p.165, Dissonant
 -- Whispers p.124 (no flight), Faerie Fire p.129, Produce Flame p.156 (hurled as it appears), Moonbeam p.150 (only
--- after each of its turns). Spells with an area hit only the foe you fight. Only the spells a fight
+-- after each of its turns), Eldritch Blast p.127, Hex p.140 (on whatever you fight). Spells with an area hit only the foe you fight. Only the spells a fight
 -- here can use. Bardic Inspiration (p.31) is a Bard feature, kept here for its effect. Second line: targets, count
 -- and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
@@ -253,7 +254,12 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d8 Fire'),
 (43, 'Moonbeam', 2, 'druid', 'action', 'buff', FALSE, NULL, '1d10', 'radiant', 'con', TRUE,
     'self', 1, 0, NULL, 'aura', '2d10', FALSE, TRUE, 1,
-    'a beam on your foe: 2d10 Radiant after each of its turns, Con save for half')
+    'a beam on your foe: 2d10 Radiant after each of its turns, Con save for half'),
+(44, 'Eldritch Blast', 0, 'warlock', 'action', 'attack', TRUE, '1d10', NULL, 'force', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d10 Force; more beams at 5, 11 and 17'),
+(45, 'Hex', 1, 'warlock', 'bonus', 'buff', FALSE, NULL, NULL, 'necrotic', NULL, FALSE,
+    'self', 1, 0, NULL, 'damage', '1d6', FALSE, TRUE, 60,
+    'your attack hits on your foe deal an extra 1d6 Necrotic; a Bonus Action')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

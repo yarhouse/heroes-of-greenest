@@ -34,16 +34,18 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
 
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Bard p.30, Cleric p.36, Druid p.41, Fighter p.47, Monk
- * p.49, Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level
- * (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw
- * proficiencies, Weapon Mastery, a caster's spellcasting ability and slot table (full or half), prepared spells by
- * level, the ones a new hero starts with and the ones always prepared (name => from level), armor training, and
- * starting equipment A as [item id, worn]. Kits leave out ammunition, packs, tools and focuses. Weapon training is
- * trained()'s (the Fighter's and Paladin's Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order
- * is Protector, the Druid's Primal Order is Warden, the subclasses are the SRD's: Lore, Land (Arid) with Primal Strike,
- * Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Evoker, Draconic Sorcery with Fire for its
- * Elemental Affinity). shortcut: casters know every cantrip of their class, and a Wizard's spellbook holds every Wizard
- * spell, until there are more to choose from.
+ * p.49, Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Warlock p.70, Wizard p.77): Hit Die, level 1 HP and
+ * fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha
+ * order, saving throw proficiencies, Weapon Mastery, a caster's spellcasting ability and slot table (full, half or
+ * pact), prepared spells by level, the ones a new hero starts with and the ones always prepared (name => from level),
+ * armor training, and starting equipment A as [item id, worn]. Kits leave out ammunition, packs, tools and focuses.
+ * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
+ * Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the Druid's Primal Order is Warden, a
+ * Warlock's Eldritch Invocations are Armor of Shadows from level 1 and Agonizing Blast and Eldritch Mind from 2, and
+ * the subclasses are the SRD's: Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with Colossus Slayer
+ * and Multiattack Defense, Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
+ * know every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
+ * from.
  */
 const CLASSES = [
     'fighter' => [
@@ -138,6 +140,18 @@ const CLASSES = [
         'kit' => [[32, true], [50, true], [9, true], [8, false]], // Leather Armor, Shield, Sickle, Quarterstaff
         'about' => 'd8 HP, light armor and shield. Nature spells, and Wild Shape into beasts.',
     ],
+    'warlock' => [
+        'name' => 'Warlock', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [8, 14, 13, 12, 10, 15],
+        'saves' => ['wisdom', 'charisma'], 'casting' => 'charisma', 'slots' => 'pact_slots',
+        'prepared' => [2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15],
+        'spells' => ['Bane', 'Hex'], // the SRD suggests Charm Person, not modeled
+        'always' => [ // Armor of Shadows, then Fiend Spells (Suggestion and Stinking Cloud aren't modeled)
+            'Mage Armor' => 1, 'Burning Hands' => 3, 'Command' => 3, 'Scorching Ray' => 3, 'Fireball' => 5,
+        ],
+        'armor' => ['light'], 'gold' => 15,
+        'kit' => [[32, true], [9, true], [2, false], [2, false]], // Leather Armor, Sickle, 2 Daggers
+        'about' => 'd8 HP, light armor. Eldritch Blast and Hex; few spell slots, back on every short rest.',
+    ],
     'sorcerer' => [
         'name' => 'Sorcerer', 'die' => 6, 'hp' => 6, 'per_level' => 4, 'scores' => [10, 13, 14, 8, 12, 15],
         'saves' => ['constitution', 'charisma'], 'casting' => 'charisma', 'slots' => 'slots',
@@ -172,6 +186,7 @@ const COMMANDS = [
     'inspire <hero>' => 'Bard: give a hero here a Bardic Inspiration die for a failed attack or save; costs no turn',
     'wild [beast]' => 'Druid 2: Wild Shape into a beast (wild alone lists them, or leaves the form); costs no turn',
     'land <monster>' => "Druid 3: Land's Aid, a Con save or 2d6 Necrotic, and you regain 2d6 HP (1 Wild Shape)",
+    'cunning' => 'Warlock 2: Magical Cunning, half your Pact Magic slots back, once a long rest (not in a fight)',
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
     'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
     'innate' => 'Sorcerer: Innate Sorcery for the fight, +1 spell save DC and Advantage on spell attacks; no turn',
@@ -257,6 +272,7 @@ function with_stats(array $me): array
             'sorcerer' => $me['level'] >= 2 ? $me['level'] : 0, // Sorcery Points
             'bard' => max(1, mod($me['charisma'])), // Bardic Inspiration
             'druid' => $me['level'] >= 2 ? ($me['level'] >= 17 ? 4 : ($me['level'] >= 6 ? 3 : 2)) : 0, // Wild Shape
+            'warlock' => $me['level'] >= 6 ? max(1, mod($me['charisma'])) : 0, // Dark One's Own Luck
             default => 0,
         },
         'bardic' => $me['level'] >= 15 ? 12 : ($me['level'] >= 10 ? 10 : ($me['level'] >= 5 ? 8 : 6)), // its die
@@ -332,6 +348,7 @@ function run_command(array $me, string $input): array
         $verb === 'inspire' => cmd_inspire($me, trim($arg)),
         $verb === 'wild' => cmd_wild($me, trim($arg)),
         $verb === 'land' => cmd_land($me, trim($arg)),
+        $verb === 'cunning' => cmd_cunning($me),
         $verb === 'cast' => cmd_cast($me, trim($arg)),
         $verb === 'prepare' => cmd_prepare($me, trim($arg)),
         $verb === 'rest' => cmd_rest($me, 'short'),
@@ -945,21 +962,29 @@ function with(int $edge): string
  * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total (null when it
  * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed and Stunned fail
  * Str and Dex saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
- * Incapacitated; Restrained gives Disadvantage on Dex saves, as does $dis (Heightened Spell). Effects like Bless add
- * their dice, and a hero who fails may be inspired().
+ * Incapacitated; Restrained gives Disadvantage on Dex saves. $force adds Advantage (1: Eldritch Mind) or Disadvantage
+ * (-1: Heightened Spell). Effects like Bless add their dice, and a hero who fails may be inspired(), then use a Fiend
+ * Warlock's Dark One's Own Luck (6): 1d10 more, when it could make the difference.
  */
-function save(array $who, string $ability, int $dc, bool $dis = false): array
+function save(array $who, string $ability, int $dc, int $force = 0): array
 {
     if (in_array($ability, ['str', 'dex'], true) && (has($who, 'paralyzed') || has($who, 'stunned'))) {
         return [null, false, 0];
     }
     $barbarian = ($who['class'] ?? null) === 'barbarian';
-    $edge = (($ability === 'str' && ($who['raging'] ?? false))
+    $edge = ($force > 0 || ($ability === 'str' && ($who['raging'] ?? false))
         || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed')))
-        <=> ($dis || ($ability === 'dex' && has($who, 'restrained')));
+        <=> ($force < 0 || ($ability === 'dex' && has($who, 'restrained')));
     $total = d20($edge) + $who[$ability . '_save'] + d20_bonus($who)[0];
     if ($total < $dc && isset($who['class'])) {
         $total += inspired($who, $dc - $total, false)[0];
+    }
+    // The UPDATE spends a use only if one is left: $who is a copy, maybe behind an earlier save this command.
+    if ($total < $dc && $dc - $total <= 10 && ($who['class'] ?? '') === 'warlock' && $who['level'] >= 6 && q(
+        'UPDATE users SET uses_spent = uses_spent + 1 WHERE id = ? AND uses_spent < ?',
+        [$who['id'], $who['uses']]
+    )->rowCount() === 1) {
+        $total += roll('1d10');
     }
     return [$total, $total >= $dc, $edge];
 }
@@ -1129,6 +1154,11 @@ function win(array &$me, array $foe, array &$lines): void
         [$xp, $gold, $level, $gain, $gain, $me['id']]
     );
     $lines[] = "The {$foe['name']} dies! You gain {$foe['xp']} XP and $gold gold.";
+    if ($me['class'] === 'warlock' && $me['level'] >= 3) { // Dark One's Blessing
+        $me['temp_hp'] = max($me['temp_hp'], max(1, mod($me['charisma']) + $me['level']));
+        q('UPDATE users SET temp_hp = ? WHERE id = ?', [$me['temp_hp'], $me['id']]);
+        $lines[] = "Dark One's Blessing: you have {$me['temp_hp']} temporary HP.";
+    }
     if ($level > $me['level']) {
         $lines[] = "You reach level $level! +$gain max HP.";
     }
@@ -1235,7 +1265,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $relentless = $me['class'] === 'ranger' && $me['level'] >= 13; // Hunter's Mark holds
         if ($dmg > 0 && ($spell = concentrating($me)) !== null && !($relentless && $spell === "Hunter's Mark")) {
             $dc = min(30, max(10, intdiv($dmg, 2)));
-            [$save, $saved] = save($me, 'con', $dc);
+            [$save, $saved] = save($me, 'con', $dc, $me['class'] === 'warlock' && $me['level'] >= 2 ? 1 : 0);
             $lines[] = $saved ? "You keep your Concentration on $spell (Con save " . vs($save, $dc) . ').'
                 : "You lose your Concentration on $spell (Con save " . vs($save, $dc) . ').';
             if (!$saved) {
@@ -1689,10 +1719,11 @@ function slots_spent(array $me): array
     return array_pad($spent, count($me['slots']), 0);
 }
 
-/** "2/2 1/3": spell slots left of each level. */
+/** "2/2 1/3": spell slots left of each level I have any of (a Warlock's are all of one level). */
 function slots_left(array $me): string
 {
-    return implode(' ', array_map(fn ($max, $used) => ($max - $used) . "/$max", $me['slots'], slots_spent($me)));
+    $left = array_map(fn ($max, $used) => $max ? ($max - $used) . "/$max" : null, $me['slots'], slots_spent($me));
+    return implode(' ', array_filter($left));
 }
 
 /** My spell save DC: 8 + PB + my spellcasting ability's modifier, + 1 with Innate Sorcery. */
@@ -1785,12 +1816,13 @@ function primal_type(array $foe): string
  * Damage my effects and features add to a weapon hit on $foe, each [damage, note]: Divine Favor's and Hunter's Mark's
  * dice (a d10 for a level 20 Ranger's Foe Slayer), from Paladin level 11 Radiant Strikes' 1d8 Radiant on a $melee
  * hit, and $more as [dice, damage type, name] (Colossus Slayer, Primal Strike, a Beast form's second damage). Twice
- * the dice on a $crit. shortcut: Hunter's Mark marks whatever I fight, and moving it costs no Bonus Action.
+ * the dice on a $crit. A spell attack (not a $weapon) gets Hunter's Mark and Hex but not Divine Favor. shortcut:
+ * Hunter's Mark and Hex mark whatever I fight, and moving them costs no Bonus Action.
  */
-function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $more = []): array
+function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $more = [], bool $weapon = true): array
 {
-    $extra = array_map(fn ($e) => [$e['value'], $e['damage_type'], $e['spell']],
-        array_filter($me['effects'], fn ($e) => $e['effect'] === 'damage'));
+    $extra = array_map(fn ($e) => [$e['value'], $e['damage_type'], $e['spell']], array_filter($me['effects'],
+        fn ($e) => $e['effect'] === 'damage' && ($weapon || $e['spell'] !== 'Divine Favor')));
     $extra = [...$extra, ...$more];
     foreach ($extra as &$x) {
         $x[0] = $x[2] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['level'] >= 20 ? '1d10' : $x[0];
@@ -1862,8 +1894,10 @@ function cmd_cast(array $me, string $arg): array
                 . ($me['uses'] - $me['uses_spent']) . '.'];
         }
     }
-    // Favored Enemy: a Ranger casts Hunter's Mark free a few times a long rest.
-    $free = $spell['name'] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['uses_spent'] < $me['uses'];
+    // Favored Enemy: a Ranger casts Hunter's Mark free a few times a long rest. Armor of Shadows: a Warlock casts Mage
+    // Armor on themself with no slot.
+    $favored = $spell['name'] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['uses_spent'] < $me['uses'];
+    $free = $favored || ($spell['name'] === 'Mage Armor' && $me['class'] === 'warlock' && $target === '');
     $slot = $free ? 0 : lowest_slot($me, $spell['level']); // cantrips need none
     if ($spell['kind'] === 'smite') { // its slot is spent on the hit
         $free = $spell['name'] === 'Divine Smite' && !$me['once_used']; // Paladin's Smite
@@ -1882,17 +1916,20 @@ function cmd_cast(array $me, string $arg): array
         return ['You have no spell slots left for that. A long rest restores them.'];
     }
     $tier = 1 + intdiv($me['level'] + 1, 6); // cantrips: twice the dice at 5, three times at 11, four at 17
+    $beams = $spell['name'] === 'Eldritch Blast'; // whose upgrade is more beams, each its own attack, not more dice
     $dice = match (true) {
         $spell['dice'] === null => null,
-        $spell['level'] === 0 => preg_replace_callback('/^\d+/', fn ($n) => (string) ($n[0] * $tier), $spell['dice']),
+        $spell['level'] === 0 && !$beams => preg_replace_callback('/^\d+/', fn ($n) => (string) ($n[0] * $tier),
+            $spell['dice']),
+        $spell['level'] === 0 => $spell['dice'],
         default => $spell['dice'] . str_repeat('+' . $spell['upcast'], $spell['upcast'] === null ? 0
             : $slot - $spell['level']),
     };
     $name = $spell['name'] . ($slot > $spell['level'] ? " (level $slot)" : '') . ($free ? ' (free)' : '');
     $up = max(0, $slot - $spell['level']); // slot levels above the spell's
-    $spend = function (array &$me) use ($slot, $free): void {
+    $spend = function (array &$me) use ($slot, $favored): void {
         spend_slot($me, $slot);
-        if ($free) {
+        if ($favored) {
             $me['uses_spent']++;
             q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
         }
@@ -1978,7 +2015,9 @@ function cmd_cast(array $me, string $arg): array
         $dc,
         $name,
         $up,
-        $meta
+        $meta,
+        $beams,
+        $tier
     ): bool {
         $spend($me);
         $type = $spell['damage_type'];
@@ -1986,6 +2025,7 @@ function cmd_cast(array $me, string $arg): array
         $potent = $spell['level'] === 0 && $me['class'] === 'wizard' && $me['level'] >= 3;
         // Elemental Affinity (Draconic 6): + Cha to one damage roll of a Fire spell.
         $affinity = $me['class'] === 'sorcerer' && $me['level'] >= 6 && $type === 'fire' ? mod($me['charisma']) : 0;
+        $agonizing = $beams && $me['class'] === 'warlock' && $me['level'] >= 2 ? mod($me['charisma']) : 0;
         if ($spell['kind'] === 'auto') {
             [$dmg, $note] = typed(roll($dice) + $affinity, $type, $foe);
             $lines[] = "Your $name strikes the {$foe['name']} for $dmg damage$note.";
@@ -1996,7 +2036,7 @@ function cmd_cast(array $me, string $arg): array
             if ($meta === 'heightened') {
                 spend_uses($me, METAMAGIC[$meta]);
             }
-            [$save, $saved, $edge] = save($foe, $ability, $dc, $meta === 'heightened');
+            [$save, $saved, $edge] = save($foe, $ability, $dc, $meta === 'heightened' ? -1 : 0);
             $roll = ucfirst($ability) . ' save (' . vs($save, $dc) . with($edge) . ") against your $name";
             if ($spell['effect'] === 'condition' && $spell['minutes'] === null && !$saved) {
                 set_condition($foe, $spell['value']); // Vicious Mockery: until its next attack roll, like Sap
@@ -2019,7 +2059,8 @@ function cmd_cast(array $me, string $arg): array
                 . " its $roll and takes $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
         }
-        for ($ray = 0; $ray < $spell['count'] + $spell['upcast_targets'] * $up; $ray++) { // Scorching Ray: three
+        $rays = $beams ? $tier : $spell['count'] + $spell['upcast_targets'] * $up; // Scorching Ray: three
+        for ($ray = 0; $ray < $rays; $ray++) {
             [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, (bool) $me['innate'],
                 $spell['ranged'] && !$me['volley']);
             $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
@@ -2041,8 +2082,12 @@ function cmd_cast(array $me, string $arg): array
                 [$dmg, $note] = typed(intdiv(roll($dice), 2), $type, $foe);
                 $lines[] = "Your $name misses the {$foe['name']} ($why$with), but still deals $dmg damage$note.";
             } else {
-                [$dmg, $note] = typed(roll($dice, $d20 === 20) + $affinity, $type, $foe);
+                [$dmg, $note] = typed(roll($dice, $d20 === 20) + $affinity + $agonizing, $type, $foe);
                 $affinity = 0;
+                foreach (extra_damage($me, $foe, false, $d20 === 20, [], false) as [$more, $more_note]) { // Hex
+                    $dmg += $more;
+                    $note .= $more_note;
+                }
                 $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your $name hits the {$foe['name']} ($total vs AC "
                     . "{$foe['ac']}$with) for $dmg damage$note.";
             }
@@ -2228,7 +2273,8 @@ function finish_rest(array &$me): array
     }
     $use = $me['uses'] ? ['fighter' => 'Second Wind', 'barbarian' => 'Rage', 'monk' => 'Focus Points',
         'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks", 'sorcerer' => 'Sorcery Points',
-        'bard' => 'Bardic Inspiration', 'druid' => 'Wild Shape'][$me['class']] : null;
+        'bard' => 'Bardic Inspiration', 'druid' => 'Wild Shape', 'warlock' => "Dark One's Own Luck"][$me['class']]
+        : null;
     if ($me['resting'] === 'long') {
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
@@ -2244,6 +2290,7 @@ function finish_rest(array &$me): array
             $spent++;
         }
         $recovered = match (true) {
+            $me['class'] === 'warlock' => pact_magic($me),
             (bool) $me['once_used'] => '',
             $me['class'] === 'wizard' => arcane_recovery($me, 'Arcane Recovery'),
             $me['class'] === 'druid' && $me['level'] >= 6 => arcane_recovery($me, 'Natural Recovery'),
@@ -2294,6 +2341,44 @@ function arcane_recovery(array &$me, string $feature): string
     $me['once_used'] = 1;
     q('UPDATE users SET once_used = TRUE WHERE id = ?', [$me['id']]); // slots_spent is saved with the rest
     return ", with $feature bringing back slots of level " . implode(', ', $back);
+}
+
+/** Pact Magic (Warlock 1): every slot back on a short rest. Returns how the rest line says it. */
+function pact_magic(array &$me): string
+{
+    if (!array_filter(slots_spent($me))) {
+        return '';
+    }
+    $me['slots_spent'] = ''; // saved with the rest
+    return ', with your Pact Magic slots back';
+}
+
+/**
+ * Magical Cunning (Warlock 2): a 1-minute rite, once a long rest, outside a fight. Spent Pact Magic slots come back,
+ * up to half my slots (rounded up).
+ */
+function cmd_cunning(array $me): array
+{
+    if ($me['class'] !== 'warlock' || $me['level'] < 2) {
+        return ['Only Warlocks of level 2 or more know Magical Cunning.'];
+    }
+    if ($me['fighting'] !== null) {
+        return ["The rite takes a minute. You can't perform it in a fight."];
+    }
+    if ($me['once_used']) {
+        return ['You have performed Magical Cunning since your last long rest.'];
+    }
+    $spent = slots_spent($me);
+    $level = count($spent);
+    $back = min($spent[$level - 1], intdiv($me['slots'][$level - 1] + 1, 2));
+    if ($back <= 0) {
+        return ['Your Pact Magic slots are all there.'];
+    }
+    $spent[$level - 1] -= $back;
+    $me['slots_spent'] = implode(',', $spent);
+    q('UPDATE users SET slots_spent = ?, once_used = TRUE WHERE id = ?', [$me['slots_spent'], $me['id']]);
+    return ["You perform an esoteric rite, and $back Pact Magic " . ($back === 1 ? 'slot returns' : 'slots return')
+        . '. Slots ' . slots_left($me) . '.'];
 }
 
 /**
@@ -2428,7 +2513,8 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
 
 /**
  * If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons,
- * Monks Simple or Light ones, Wizards, Sorcerers and Bards Simple ones, the rest (a Druid as a Warden) every weapon.
+ * Monks Simple or Light ones, Wizards, Sorcerers, Bards and Warlocks Simple ones, the rest (a Druid as a Warden) every
+ * weapon.
  */
 function trained(array $me, array $o): bool
 {
@@ -2438,7 +2524,7 @@ function trained(array $me, array $o): bool
         'weapon' => !$o['martial'] || match ($me['class']) {
             'rogue' => $o['finesse'] || $o['light'],
             'monk' => $o['light'],
-            'wizard', 'sorcerer', 'bard' => false,
+            'wizard', 'sorcerer', 'bard', 'warlock' => false,
             default => true,
         },
         'potion' => true,
@@ -2644,6 +2730,10 @@ function hero_sheet(array $me): array
                 'wizard' => [['Spell slots', slots_left($me)]],
                 'bard' => [['Bardic Inspiration', "$uses d{$me['bardic']}"], ['Spell slots', slots_left($me)]],
                 'druid' => [...($me['uses'] ? [['Wild Shape', $uses]] : []), ['Spell slots', slots_left($me)]],
+                'warlock' => [
+                    ...($me['uses'] ? [["Dark One's Own Luck", $uses]] : []),
+                    ['Pact slots', slots_left($me) . ' (level ' . count($me['slots']) . ')'],
+                ],
                 'sorcerer' => [
                     ['Innate Sorcery', max(0, 2 - $me['feature_spent']) . '/2'],
                     ...($me['uses'] ? [['Sorcery Points', $uses]] : []),

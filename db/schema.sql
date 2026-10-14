@@ -85,7 +85,8 @@ CREATE TABLE levels (
     rage_damage TINYINT UNSIGNED NOT NULL, -- Barbarian
     martial_arts TINYINT UNSIGNED NOT NULL, -- Monk: the Martial Arts die's sides
     slots VARCHAR(30) NOT NULL, -- a full caster's (Cleric) spell slots by spell level, e.g. '4,3,2'
-    half_slots VARCHAR(30) NOT NULL -- a half caster's (Paladin, Ranger)
+    half_slots VARCHAR(30) NOT NULL, -- a half caster's (Paladin, Ranger)
+    pact_slots VARCHAR(30) NOT NULL -- a Warlock's Pact Magic slots, all of one level: '0,2' is two of level 2
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Item templates: the SRD 5.2.1 weapons, armor, Shield and Potion of Healing. Ammunition, weapon ranges, Strength
@@ -126,7 +127,7 @@ CREATE TABLE users (
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
     class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard',
-        'druid') NOT NULL DEFAULT 'fighter',
+        'druid', 'warlock') NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,
@@ -141,10 +142,11 @@ CREATE TABLE users (
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
     -- Second Wind, Rage, Focus Points, Lay On Hands HP, a Ranger's free Hunter's Marks, Sorcery Points or Bardic
-    -- Inspiration or Wild Shape
+    -- Inspiration, Wild Shape or Dark One's Own Luck
     uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
     -- A once-a-long-rest feature used since the last one: a Monk's Uncanny Metabolism, a Paladin's free Divine Smite,
-    -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration, a Druid's Natural Recovery.
+    -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration, a Druid's Natural Recovery, a Warlock's Magical
+    -- Cunning.
     once_used BOOLEAN NOT NULL DEFAULT FALSE,
     feature_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body or a Sorcerer's Innate Sorcery
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
