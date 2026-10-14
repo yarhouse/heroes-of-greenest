@@ -4,7 +4,7 @@ Unordered ideas. Move an item to a commit when it ships.
 
 - [x] **Character creation: choose starter options.** Class (Fighter, Barbarian, Rogue, Cleric) and Standard Array on first login, with the class's kit A.
 - [ ] **More creation choices.** Backgrounds (their +2/+1 ability boost), species, point buy, Fighting Style and Divine Order picks, weapon mastery choices.
-- [ ] **Class features past level 2.** Not modeled yet: Action Surge (Fighter 2), Cleric Channel Divinity (2) and spells above 1st level, subclasses (3), Ability Score Improvements (4), Uncanny Dodge (Rogue 5). Weapon masteries other than Vex and Topple (Push and Slow need distances, Nick needs two-weapon fighting).
+- [ ] **Class features past level 2.** Not modeled yet: Action Surge (Fighter 2), Cleric Channel Divinity (2) and spells above 1st level, subclasses (3), Ability Score Improvements (4), Uncanny Dodge (Rogue 5). Weapon masteries other than Vex, Topple and Nick (Push and Slow need distances). Fighting Style choices such as Two-Weapon Fighting. Only one slot spell a turn when one was a Bonus Action.
 - [ ] **Heal other heroes.** Cure Wounds and Healing Word only target yourself; let them name a hero in the room.
 - [x] **Always-visible `score`.** Show the `score` output (abilities, HP, AC, XP) in a panel that stays on screen instead of needing the command. Maybe desktop-only, since a phone screen has no room beside the terminal.
 - [x] **ASCII map.** Rooms two steps around the hero, under the score panel (and the `map` command on phones).

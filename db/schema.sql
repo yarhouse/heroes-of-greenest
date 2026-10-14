@@ -135,6 +135,7 @@ CREATE TABLE users (
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
     conditions SET('reckless') NOT NULL DEFAULT '',
+    bonus_used BOOLEAN NOT NULL DEFAULT FALSE, -- my Bonus Action this round of a fight; my turn's end clears it
     gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
@@ -163,6 +164,7 @@ CREATE TABLE objects (
     room_id INT UNSIGNED NULL,
     user_id INT UNSIGNED NULL,
     worn BOOLEAN NOT NULL DEFAULT FALSE,
+    offhand BOOLEAN NOT NULL DEFAULT FALSE, -- a worn weapon held in the off hand (a second Light weapon)
     KEY (room_id),
     KEY (user_id),
     FOREIGN KEY (item_id) REFERENCES items (id),

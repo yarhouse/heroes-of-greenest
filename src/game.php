@@ -19,9 +19,10 @@ const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 /** The Weapon Mastery properties the game models (SRD 5.2.1 p.89); items list each weapon's own. */
-const MASTERIES = ['topple', 'vex'];
+const MASTERIES = ['nick', 'topple', 'vex'];
 /** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
-const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = ''";
+const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = '', bonus_used = FALSE";
+const BONUS_USED = "You've already used your Bonus Action this round.";
 
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
@@ -96,7 +97,7 @@ const COMMANDS = [
     'inventory' => 'what you carry and wear (or i)',
     'get <item>' => 'pick something up',
     'drop <item>' => 'put something down',
-    'equip <item>' => 'wield or wear something you carry',
+    'equip <item>' => "wield or wear something you carry; 'equip <item> offhand' for a second Light weapon",
     'drink <potion>' => 'drink a potion; like Second Wind, it costs no turn',
     'say <text>' => "speak to the room ('<text> works too)",
     'who' => 'every hero, and when last seen',
@@ -449,18 +450,19 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         q('UPDATE spawns SET conditions = ?, grappled_by = ? WHERE id = ?',
             [$foe['conditions'], $foe['grappled_by'], $foe['id']]);
     }
-    if ($me['volley']) { // the foe spends this round closing in, so my shots go unanswered
+    // In a volley the foe spends this round closing in, so my shots go unanswered.
+    $over = !$me['volley'] && $me['foe_first'] && monster_turn($me, $foe, $lines);
+    if (!$over) {
         start_turn($me);
         $over = $act($me, $foe, $lines);
-        if (!$over) {
+        if ($me['bonus_used'] && !$over) { // my turn is over; a Bonus Action before my next one counts for that one
+            $me['bonus_used'] = false;
+            q('UPDATE users SET bonus_used = FALSE WHERE id = ?', [$me['id']]);
+        }
+        if ($me['volley'] && !$over) {
             $lines[] = "The {$foe['name']} closes in!";
         }
-    } else {
-        $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
-        if (!$over) {
-            start_turn($me);
-            $over = $act($me, $foe, $lines) || (!$me['foe_first'] && monster_turn($me, $foe, $lines));
-        }
+        $over = $over || (!$me['volley'] && !$me['foe_first'] && monster_turn($me, $foe, $lines));
     }
     if (!$over) {
         $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
@@ -514,37 +516,47 @@ function cmd_flee(array $me): array
  * gives Advantage on the next attack, and a Topple weapon's hit can knock it Prone (shortcut: MASTERIES are modeled for
  * any weapon you wield, not the few your class picks). A Ranged weapon has Disadvantage except in an opening volley.
  */
-function hero_turn(array $me, array &$foe, array &$lines): bool
+function hero_turn(array &$me, array &$foe, array &$lines): bool
 {
-    $sneak = $me['class'] === 'rogue' && ($me['finesse'] || $me['ranged']);
+    $swings = array_fill(0, $me['attacks'], $me);
+    if ($me['offhand'] !== null && $me['attacks'] > 0) {
+        $swings[] = ['off' => true] + $me['offhand'];
+    }
+    $sneak = $me['class'] === 'rogue';
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
-    $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $me['str_based']);
-    for ($i = 0; $i < $me['attacks']; $i++) {
-        [$d20, $edge] = attack_d20($me, $foe, $aim, $me['ranged'] && !$me['volley']);
-        $adv = $edge > 0;
-        $total = $d20 + $me['to_hit'];
+    foreach ($swings as $w) {
+        $off = isset($w['off']);
+        // Light: the extra attack takes my Bonus Action, unless its weapon's Nick makes it part of the Attack action.
+        if ($off && $w['mastery'] !== 'nick' && !spend_bonus($me)) {
+            break;
+        }
+        $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $w['str_based']);
+        [$d20, $edge] = attack_d20($me, $foe, $aim, $w['ranged'] && !$me['volley']);
+        $total = $d20 + $w['to_hit'];
         $with = with($edge);
+        [$you, $s] = $off ? ["Your off-hand {$w['weapon']}", 'es'] : ['You', ''];
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
-            $lines[] = "You miss the {$foe['name']} ($why$with).";
+            $lines[] = "$you miss$s the {$foe['name']} ($why$with).";
             continue;
         }
         $crit = $d20 === 20;
-        $rage = $me['raging'] && $me['str_based'] ? $me['rage_damage'] : 0;
-        $dmg = roll($me['damage'], $crit) + $me['attack_mod'] + $rage;
-        $sneaking = $sneak && ($adv || $helped);
+        $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
+        // The extra attack adds no ability modifier unless it's negative (shortcut: no Two-Weapon Fighting style yet).
+        $dmg = roll($w['damage'], $crit) + ($off ? min(0, $w['attack_mod']) : $w['attack_mod']) + $rage;
+        $sneaking = $sneak && ($w['finesse'] || $w['ranged']) && ($edge > 0 || $helped);
         if ($sneaking) {
             $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
             $sneak = false;
         }
-        [$dmg, $note] = typed(max(0, $dmg), $me['damage_type'], $foe);
-        $lines[] = ($crit ? 'Critical hit! ' : '') . "You hit the {$foe['name']} ($total vs AC {$foe['ac']}$with) "
-            . "for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
+        [$dmg, $note] = typed(max(0, $dmg), $w['damage_type'], $foe);
+        $lines[] = ($crit ? 'Critical hit! ' : '') . "$you hit" . ($off ? 's' : '') . " the {$foe['name']} "
+            . "($total vs AC {$foe['ac']}$with) for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
-        if ($me['mastery'] === 'topple' && !has($foe, 'prone')) {
-            $dc = 8 + $me['attack_mod'] + $me['prof_bonus'];
+        if ($w['mastery'] === 'topple' && !has($foe, 'prone')) {
+            $dc = 8 + $w['attack_mod'] + $me['prof_bonus'];
             [$save, $saved] = save($foe, 'con', $dc);
             $lines[] = $saved ? "The {$foe['name']} keeps its feet (Con save $save vs DC $dc)."
                 : "The {$foe['name']} topples over, Prone (Con save $save vs DC $dc).";
@@ -552,12 +564,26 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
                 knock_prone($foe);
             }
         }
-        if ($me['mastery'] === 'vex' && !$me['advantage']) {
+        if ($w['mastery'] === 'vex' && !$me['advantage']) {
             $me['advantage'] = true;
             q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
         }
     }
     return false;
+}
+
+/** Spends my Bonus Action for this round of a fight, or returns false if it's spent. Outside a fight it's free. */
+function spend_bonus(array &$me): bool
+{
+    if ($me['fighting'] === null) {
+        return true;
+    }
+    if ($me['bonus_used']) {
+        return false;
+    }
+    $me['bonus_used'] = true;
+    q('UPDATE users SET bonus_used = TRUE WHERE id = ?', [$me['id']]);
+    return true;
 }
 
 /**
@@ -785,6 +811,9 @@ function cmd_second(array $me): array
     if ($me['hp'] >= $me['max_hp']) {
         return ["You're already at full health."];
     }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
     $hp = min($me['max_hp'], $me['hp'] + roll('1d10') + $me['level']);
     q('UPDATE users SET hp = ?, uses_spent = uses_spent + 1 WHERE id = ?', [$hp, $me['id']]);
     return [
@@ -808,6 +837,9 @@ function cmd_rage(array $me): array
     $left = $me['uses'] - $me['uses_spent'];
     if ($left <= 0) {
         return ['You have no Rage left. Rest to recover it.'];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
     }
     q('UPDATE users SET raging = TRUE, uses_spent = uses_spent + 1 WHERE id = ?', [$me['id']]);
     return [
@@ -894,6 +926,9 @@ function cmd_cast(array $me, string $arg): array
             return ["You're already at full health."];
         }
         $dice = 2 * $slot . ($spell === 'cure wounds' ? 'd8' : 'd4');
+        if ($spell === 'healing word' && !spend_bonus($me)) {
+            return [BONUS_USED];
+        }
         if ($spell === 'healing word' || $me['fighting'] === null) { // a Bonus Action costs no turn
             return [$heal($me, $dice)];
         }
@@ -1008,18 +1043,18 @@ function loot(float $cr, int $room_id): ?string
 /**
  * My AC and attack from what I wear, by the SRD: armor's AC plus Dex (all for light, up to +2 for medium, none for
  * heavy) and +1 for a Fighter's Defense fighting style; unarmored, 10 + Dex (+ Con for a Barbarian's Unarmored
- * Defense); +2 for a shield. A Versatile weapon does its bigger die without a shield, Finesse uses the better of Str
- * and Dex, and no weapon is an Unarmed Strike (1 + Str). The Proficiency Bonus is added only for a trained weapon.
+ * Defense); +2 for a shield. The weapon keys are wielding()'s for my main hand, and 'offhand' is a second Light
+ * weapon's, or null.
  */
 function gear(array $me): array
 {
     $worn = [];
     foreach (objects_here('user_id', (int) $me['id']) as $o) {
         if ($o['worn']) {
-            $worn[$o['slot']] = $o;
+            $worn[$o['offhand'] ? 'offhand' : $o['slot']] = $o;
         }
     }
-    [$dex, $str] = [mod($me['dexterity']), mod($me['strength'])];
+    $dex = mod($me['dexterity']);
     $armor = $worn['armor'] ?? null;
     $ac = match (true) {
         $armor !== null => $armor['ac'] + ($me['class'] === 'fighter' ? 1 : 0)
@@ -1027,15 +1062,27 @@ function gear(array $me): array
         $me['class'] === 'barbarian' => 10 + $dex + mod($me['constitution']),
         default => 10 + $dex,
     };
-    $weapon = $worn['weapon'] ?? null;
+    return [
+        'ac' => $ac + ($worn['shield']['ac'] ?? 0),
+        ...wielding($me, $worn['weapon'] ?? null, isset($worn['shield']) || isset($worn['offhand'])),
+        'offhand' => isset($worn['offhand']) ? wielding($me, $worn['offhand'], true) : null,
+    ];
+}
+
+/**
+ * How I attack with $weapon (null: an Unarmed Strike, 1 + Str). A Versatile weapon does its bigger die unless the
+ * other hand is busy, Finesse uses the better of Str and Dex, a Ranged weapon Dex. The Proficiency Bonus is added only
+ * for a trained weapon.
+ */
+function wielding(array $me, ?array $weapon, bool $one_hand): array
+{
+    [$dex, $str] = [mod($me['dexterity']), mod($me['strength'])];
     $finesse = $weapon !== null && $weapon['finesse'];
     $ranged = $weapon !== null && $weapon['ranged'];
     $attack_mod = $finesse ? max($str, $dex) : ($ranged ? $dex : $str);
     return [
-        'ac' => $ac + ($worn['shield']['ac'] ?? 0),
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
-        'damage' => $weapon === null ? '1'
-            : (isset($worn['shield']) ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
+        'damage' => $weapon === null ? '1' : ($one_hand ? $weapon['dice'] : $weapon['versatile'] ?? $weapon['dice']),
         'damage_type' => $weapon['damage_type'] ?? 'bludgeoning', // an Unarmed Strike's
         'attack_mod' => $attack_mod,
         'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0),
@@ -1080,7 +1127,7 @@ function objects_here(string $where, int $id): array
     $col = match ($where) { 'room_id' => 'room_id', 'user_id' => 'user_id' }; // the only two allowed in SQL
     return q(
         // o.id comes last, so it wins over i.id.
-        "SELECT i.*, o.id, o.worn FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ?
+        "SELECT i.*, o.id, o.worn, o.offhand FROM objects o JOIN items i ON i.id = o.item_id WHERE o.$col = ?
          ORDER BY i.name, o.id",
         [$id]
     )->fetchAll();
@@ -1105,7 +1152,7 @@ function cmd_inventory(array $me): array
     }
     $lines = ['You are carrying:'];
     foreach ($carried as $o) {
-        $worn = $o['worn'] ? '  (equipped)' : '';
+        $worn = $o['worn'] ? ($o['offhand'] ? '  (off hand)' : '  (equipped)') : '';
         $lines[] = sprintf('  %-22s %s', $o['name'], describe($o)) . $worn;
     }
     return $lines;
@@ -1142,6 +1189,8 @@ function cmd_drop(array $me, string $target): array
 
 function cmd_equip(array $me, string $target): array
 {
+    $off = (bool) preg_match('/\s+off-?\s?hand$/i', $target, $m);
+    $target = $off ? substr($target, 0, -strlen($m[0])) : $target;
     if ($target === '') {
         return ['Equip what?'];
     }
@@ -1154,6 +1203,9 @@ function cmd_equip(array $me, string $target): array
     if ($o['slot'] === 'potion') {
         return ["You can't equip the {$o['name']}. Drink it instead."];
     }
+    if ($off && ($o['slot'] !== 'weapon' || !$o['light'])) {
+        return ["Only a Light weapon goes in your off hand, and the {$o['name']} isn't one."];
+    }
     if ($o['worn']) {
         return ["You already have the {$o['name']} equipped."];
     }
@@ -1164,17 +1216,29 @@ function cmd_equip(array $me, string $target): array
     if ($o['slot'] === 'armor' && $me['fighting'] !== null) { // the SRD's quickest armor takes a minute to don
         return ["You can't change armor in the middle of a fight!"];
     }
-    // One of each slot, and a Two-Handed weapon leaves no hand for a shield.
+    // Light (SRD 5.2.1 p.89): the off hand takes a second Light weapon, with a Light one in the main hand.
+    $main = fn ($c) => $c['worn'] && $c['slot'] === 'weapon' && !$c['offhand'];
+    if ($off && !array_filter($carried, fn ($c) => $main($c) && $c['light'])) {
+        return ['Wield a Light weapon in your main hand first.'];
+    }
+    // One of each slot, a Two-Handed weapon leaves no hand for a shield, and an off-hand weapon none for either.
     $two_hands = fn ($c) => $c['slot'] === 'weapon' && $c['two_handed'];
-    $clashes = fn ($c) => $c['worn'] && ($c['slot'] === $o['slot']
-        || ($o['slot'] === 'shield' && $two_hands($c)) || ($c['slot'] === 'shield' && $two_hands($o)));
+    $in_off = fn ($c) => $c['worn'] && $c['offhand'];
+    $clashes = fn ($c) => $c['worn'] && match (true) {
+        $off => $in_off($c) || $c['slot'] === 'shield',
+        $o['slot'] === 'weapon' => $main($c) || ($in_off($c) && !$o['light'])
+            || ($c['slot'] === 'shield' && $two_hands($o)),
+        $o['slot'] === 'shield' => $c['slot'] === 'shield' || $two_hands($c) || $in_off($c),
+        default => $c['slot'] === $o['slot'],
+    };
     $lines = [];
     foreach (array_filter($carried, $clashes) as $old) {
-        q('UPDATE objects SET worn = FALSE WHERE id = ?', [$old['id']]);
+        q('UPDATE objects SET worn = FALSE, offhand = FALSE WHERE id = ?', [$old['id']]);
         $lines[] = "You put away the {$old['name']}.";
     }
-    q('UPDATE objects SET worn = TRUE WHERE id = ?', [$o['id']]);
-    $lines[] = "You equip the {$o['name']}." . ($trained ? '' : " You aren't trained with it: no Proficiency Bonus.");
+    q('UPDATE objects SET worn = TRUE, offhand = ? WHERE id = ?', [(int) $off, $o['id']]);
+    $lines[] = "You equip the {$o['name']}" . ($off ? ' in your off hand.' : '.')
+        . ($trained ? '' : " You aren't trained with it: no Proficiency Bonus.");
     return $lines;
 }
 
@@ -1191,6 +1255,9 @@ function cmd_drink(array $me, string $target): array
     }
     if ($me['hp'] >= $me['max_hp']) {
         return ["You're already at full health."];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
     }
     // Deleting by owner first means two requests at once can't both drink it.
     if (q('DELETE FROM objects WHERE id = ? AND user_id = ?', [$o['id'], $me['id']])->rowCount() === 0) {
@@ -1232,6 +1299,9 @@ function hero_sheet(array $me): array
                 'rogue' => ['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6'],
                 'cleric' => ['Spell slots', slots_left($me)],
             },
+            ...($me['offhand'] === null ? [] : [['Off hand', sprintf('%s %+d to hit, %s damage%s',
+                $me['offhand']['weapon'], $me['offhand']['to_hit'], $me['offhand']['damage'],
+                $me['offhand']['mastery'] === 'nick' ? ' (Nick)' : ', a Bonus Action')]]),
         ],
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,

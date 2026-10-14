@@ -481,6 +481,48 @@ try {
     $dice_queue = [20, 1];
     run_command(hero('Testa'), 'flee');
     run_command(hero('Testa'), 'equip greatsword');
+    // Two-weapon fighting (Light, p.89): an extra attack with a second Light weapon, no ability modifier to damage.
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    q("UPDATE users SET room_id = 2, fighting = NULL, advantage = FALSE WHERE name IN ('Testc', 'Testd')");
+    run_command(hero('Testd'), 'equip shortsword');
+    check(says(run_command(hero('Testd'), 'equip dagger offhand'), 'You equip the Dagger in your off hand.')
+        && str_contains(line(run_command(hero('Testd'), 'i'), '(off hand)'), 'Dagger')
+        && says(run_command(hero('Testd'), 'score'), 'Off hand Dagger +4 to hit, 1d4 damage (Nick)'),
+        'a second Light weapon goes in the off hand');
+    $dice_queue = [10, 1, 12, 3, 2, 11, 2, 4, 1]; // Shortsword hits (Vex); the Dagger has Advantage, so Sneak Attack
+    $out = run_command(hero('Testd'), 'kill dummy');
+    check(says($out, '(16 vs AC 10) for 5 damage.')
+        && says($out, 'Your off-hand Dagger hits the Training Dummy (15 vs AC 10, with Advantage) for 6 damage, with '
+            . 'Sneak Attack.') && $dice_queue === [],
+        'the extra attack: no Dex to its damage, and Sneak Attack can ride it');
+    q("UPDATE users SET bonus_used = TRUE WHERE name = 'Testd'");
+    $dice_queue = [12, 3, 12, 2, 2, 4, 1];
+    check(says(run_command(hero('Testd'), 'kill'), 'Your off-hand Dagger hits') && $dice_queue === [],
+        "Nick: the extra attack doesn't need the Bonus Action");
+    $dice_queue = [20, 1];
+    run_command(hero('Testd'), 'flee');
+    check(says(run_command(hero('Testc'), 'equip greataxe offhand'), 'Only a Light weapon')
+        && says(run_command(hero('Testc'), 'equip handaxe offhand'), 'Light weapon in your main hand first'),
+        'the off hand needs Light weapons in both hands');
+    run_command(hero('Testc'), 'equip handaxe');
+    run_command(hero('Testc'), 'equip handaxe offhand');
+    $dice_queue = [10, 1, 15, 3, 2, 14, 3]; // thrown Handaxes open a volley: one hits (Vex), the off-hand one too
+    $out = run_command(hero('Testc'), 'kill dummy');
+    check(says($out, 'Your off-hand Handaxe hits the Training Dummy (18 vs AC 10, with Advantage) for 3 damage.')
+        && $dice_queue === [] && hero('Testc')['bonus_used'] === 0,
+        'without Nick it takes the Bonus Action, which is back for the next round');
+    q("UPDATE users SET uses_spent = 0, hp = hp - 1 WHERE name = 'Testc'");
+    q('INSERT INTO objects (item_id, user_id) VALUES (60, ?)', [hero('Testc')['id']]);
+    run_command(hero('Testc'), 'rage');
+    check(says(run_command(hero('Testc'), 'drink potion'), BONUS_USED), 'one Bonus Action a round');
+    $dice_queue = [15, 2, 3, 1]; // the off-hand Vex's Advantage; 3 + 2 Str + 2 Rage
+    $out = run_command(hero('Testc'), 'kill');
+    check(says($out, 'for 7 damage') && !says($out, 'off-hand') && $dice_queue === [],
+        'so after Rage there is no off-hand attack that round');
+    $dice_queue = [20, 1];
+    run_command(hero('Testc'), 'flee');
+    check(count(array_filter(run_command(hero('Testc'), 'equip greataxe'), fn ($l) => str_contains($l, 'put away')))
+        === 2, 'a two-handed weapon puts away both hands');
 
     // Shove and grapple in place of one attack (Testa: level 5, two attacks, Str +2, PB +3: DC 13).
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
