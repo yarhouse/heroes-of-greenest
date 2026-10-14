@@ -125,10 +125,17 @@ CREATE TABLE users (
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
-    -- a class and ability scores on their next login; the defaults below are overwritten then.
-    setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
+    -- a class, ability scores, species and background on their next login; the defaults below are overwritten then.
+    setup ENUM('class', 'abilities', 'species', 'background', 'confirm') NULL DEFAULT 'class',
     class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard',
         'druid', 'warlock') NOT NULL DEFAULT 'fighter',
+    -- SPECIES and BACKGROUNDS in game.php; NULL for a hero made before there were any, until bin/reclass.php
+    species ENUM('dragonborn', 'dwarf', 'elf', 'gnome', 'goliath', 'halfling', 'human', 'orc', 'tiefling') NULL,
+    lineage VARCHAR(10) NULL, -- the species' choice: a dragon, lineage, giant, legacy, or a Human's Origin feat
+    background ENUM('acolyte', 'criminal', 'sage', 'soldier') NULL,
+    -- Uses of Breath Weapon or Giant Ancestry, or a Human's Heroic Inspiration or an Orc's Relentless Endurance used
+    species_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    origin_spent VARCHAR(30) NOT NULL DEFAULT '', -- lineage and Magic Initiate spell ids cast free since a long rest
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,

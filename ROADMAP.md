@@ -5,12 +5,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Species and backgrounds at character creation** (SRD 5.2.1). Species: Dragonborn, Dwarf, Elf, Gnome, Goliath,
-   Halfling, Human, Orc, Tiefling. Backgrounds carry the ability boosts (+2/+1) and an Origin feat under these rules,
-   so they come in the same pass. Model the traits a fight uses (Halfling Luck, Relentless Endurance, Dwarven
-   Toughness, breath weapons, damage resistances); show the rest (darkvision, skills, speed) without rules. Existing
-   heroes pick theirs via `bin/reclass.php`.
-2. **Humanoid NPCs in the converter.** Rift humanoids are mostly race "human", so map them by role words to the SRD's
+1. **Humanoid NPCs in the converter.** Rift humanoids are mostly race "human", so map them by role words to the SRD's
    NPC stat blocks (Guard, Cultist, Priest, Mage, Scout, Spy, Tough, Knight, Noble, Pirate...). Do it with the Sewers,
    which also need stand-ins for monsters the SRD lacks (no mind flayers).
 
@@ -42,3 +37,7 @@ Any time: **accounts for the friends**, once each:
 - 2026-10-14 **Edited areas** live as `.are` copies in `db/areas/src/`, converted from there; generated SQL is never
   hand-edited.
 - 2026-10-14 **Deployed** at https://yarhouse.dev/heroes-of-greenest with `bin/deploy.sh` (see README).
+- 2026-10-14 **Species and backgrounds** come after the Standard Array: the SRD's nine species and its four
+  backgrounds (Acolyte, Criminal, Sage, Soldier), each with +2/+1 (or +1 x3) and its Origin feat. The game picks
+  Magic Initiate's spells and the Int/Wis/Cha ability for origin spells; Giant Ancestry is used at the first chance.
+  Fight traits are ruled, the rest only shown. Background equipment is skipped: heroes start with class kit A.

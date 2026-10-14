@@ -23,11 +23,21 @@ function says(array $lines, string $text): bool
 {
     return (bool) array_filter($lines, fn ($l) => str_contains($l, $text));
 }
-/** Takes a new hero through character creation: class, ability scores ('ok' for the suggested ones), begin. */
-function create(string $name, string $class, string $scores = 'ok'): array
+/**
+ * Takes a new hero through character creation: class, ability scores ('ok' for the suggested ones), species and
+ * background, begin. With no species the hero skips both, like one made before there were any, so the class's own
+ * numbers hold.
+ */
+function create(string $name, string $class, string $scores = 'ok', string $species = '', string $bg = ''): array
 {
     run_command(hero($name), $class);
     run_command(hero($name), $scores);
+    if ($species === '') {
+        q("UPDATE users SET setup = 'confirm' WHERE name = ?", [$name]);
+    } else {
+        run_command(hero($name), $species);
+        run_command(hero($name), $bg);
+    }
     return run_command(hero($name), 'begin');
 }
 /** The first line containing $text, or ''. */
@@ -56,7 +66,8 @@ try {
     save_hero('Testa', 'new password!');
     check(session_user() === null, 'password reset ends old sessions');
 
-    // Character creation: choose a class, assign the Standard Array, then begin. Nothing else runs until then.
+    // Character creation: choose a class, assign the Standard Array, a species and a background, then begin. Nothing
+    // else runs until then.
     save_hero('Testc', 'correct horse');
     $out = run_command(hero('Testc'), 'look');
     check(says($out, 'Choose your class') && says($out, 'barbarian') && !says($out, "There's no"),
@@ -71,10 +82,27 @@ try {
         && hero('Testc')['setup'] === 'abilities', 'scores must be the Standard Array');
     check(says(run_command(hero('Testc'), 'back'), 'Choose your class'), "'back' returns to the classes");
     run_command(hero('Testc'), 'rogue');
-    $out = run_command(hero('Testc'), '8 15 14 12 13 10');
-    check(says($out, 'Testc, level 1 Rogue') && says($out, 'Str 8 (-1)  Dex 15 (+2)  Con 14 (+2)')
-        && says($out, 'HP 10/10   AC 13') && says($out, 'Shortsword +4 to hit, 1d6+2 damage')
-        && says($out, 'Dagger') && says($out, "Type 'begin'"), 'own scores in order, then a look at the hero and kit');
+    check(says(run_command(hero('Testc'), '8 15 14 12 13 10'), 'choose your species')
+        && hero('Testc')['dexterity'] === 15, 'own scores in order, then the species');
+    check(says(run_command(hero('Testc'), 'kobold'), "no 'kobold' species"), 'an unknown species is refused');
+    $out = run_command(hero('Testc'), 'dragonborn');
+    check(says($out, 'your dragon ancestor') && says($out, 'red       Fire breath')
+        && hero('Testc')['species'] === null, 'a species with a choice asks for it');
+    check(says(run_command(hero('Testc'), 'halfling'), 'You are a Halfling') && says(run_command(hero('Testc'), ''),
+        'Savage Attacker'), 'a species, then the backgrounds');
+    check(says(run_command(hero('Testc'), 'sage wis'), 'You were a Sage: Con +1, Wis +2'),
+        'a background with one ability named: +2 there, +1 to the best other');
+    run_command(hero('Testc'), 'back');
+    run_command(hero('Testc'), 'rogue');
+    run_command(hero('Testc'), '8 15 14 12 13 10');
+    run_command(hero('Testc'), 'half');
+    check(says(run_command(hero('Testc'), 'criminal int int'), 'two different'), 'a background ability once');
+    $out = run_command(hero('Testc'), 'crim');
+    check(says($out, 'You were a Criminal: Dex +2, Con +1, and Alert.') && says($out, 'Testc, level 1 Halfling Rogue')
+        && says($out, 'Str 8 (-1)  Dex 17 (+3)  Con 15 (+2)') && says($out, 'HP 10/10   AC 14')
+        && says($out, 'Shortsword +5 to hit, 1d6+3 damage') && says($out, 'Species Halfling: Speed 30 ft, Brave')
+        && says($out, 'Background Criminal: Alert; Sleight of Hand, Stealth') && says($out, 'Dagger')
+        && says($out, "Type 'begin'"), 'by default +2 and +1 to the best two, then a look at the hero and kit');
     $out = run_command(hero('Testc'), 'begin');
     check(says($out, 'You set out') && says($out, 'Greenest Town Square') && hero('Testc')['setup'] === null,
         "'begin' enters the world");
@@ -1367,6 +1395,126 @@ try {
         && $dice_queue === [] && hero('Testm')['uses_spent'] === 1, "Dark One's Own Luck: 1d10 on a failed save");
     $dice_queue = [20, 1];
     run_command(hero('Testm'), 'flee');
+
+    // Species and backgrounds, against the dummy in room 2 (AC 10, saves +0, Slam +3 for 1d4 Bludgeoning).
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL, conditions = \'\' WHERE id = 9999');
+    $hero = function (string $name, string $class, string $species, string $bg): array {
+        q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+        save_hero($name, 'correct horse');
+        create($name, $class, 'ok', $species, $bg);
+        q('UPDATE users SET room_id = 2 WHERE name = ?', [$name]);
+        return hero($name);
+    };
+    save_hero('Pick', 'correct horse');
+    run_command(hero('Pick'), 'fighter');
+    run_command(hero('Pick'), 'ok');
+    check(in_array('dragonborn ', actions(hero('Pick')), true) && in_array('dwarf', actions(hero('Pick')), true)
+        && choices(hero('Pick'))['dragonborn'][0] === ['black', 'dragonborn black'],
+        "species buttons: one with a choice goes in the prompt, then its kinds");
+    run_command(hero('Pick'), 'human sav');
+    check(says(run_command(hero('Pick'), 'soldier'), 'already have Savage Attacker as a Human'),
+        "a Human's Versatile feat can't be the background's too");
+
+    $hero('Drag', 'fighter', 'dragonborn red', 'soldier'); // Str 17, Dex 15, Con 13: breath DC 11
+    $score = run_command(hero('Drag'), 'score');
+    check(says($score, 'level 1 Dragonborn Fighter') && says($score, 'Breath Weapon 2/2 1d10 Fire')
+        && says($score, 'Species Red Dragonborn: Speed 30 ft, Darkvision 60 ft, Fire Resistance')
+        && str_contains(with_stats(hero('Drag'))['resistances'], 'fire'), 'Dragonborn: Breath Weapon and Resistance');
+    $dice_queue = [10, 5, 5, 7, 1]; // initiative; its Dex save 5; 7 Fire; then no attack left; Slam a natural 1
+    $out = run_command(hero('Drag'), 'breathe dummy');
+    check(says($out, 'You breathe fire at the Training Dummy (Dex save 5 vs DC 11) for 7 damage.')
+        && !says($out, 'You hit') && hero('Drag')['species_spent'] === 1 && $dice_queue === [],
+        'breathe: in place of an attack, a Dex save or 1d10');
+    $dice_queue = [15, 1, 1, 6, 6, 1]; // a hit; 2d6 rolls 2, rerolled 12 for 12 + 3; Slam a natural 1
+    check(says(run_command(hero('Drag'), 'kill'), '(20 vs AC 10) for 15 damage') && $dice_queue === [],
+        'Savage Attacker: a weapon hit rolls its damage dice twice and keeps the higher');
+    $dice_queue = [20, 1];
+    run_command(hero('Drag'), 'flee');
+    q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Drag'");
+    run_command(hero('Drag'), 'score');
+    check(hero('Drag')['species_spent'] === 0, 'a long rest restores Breath Weapon');
+
+    $hero('Orca', 'fighter', 'orc', 'criminal'); // Dex 16, Alert: initiative +5
+    q("UPDATE users SET hp = 1 WHERE name = 'Orca'");
+    $dice_queue = [3, 10, 15, 4, 1]; // initiative 8 vs 10; Slam 18 hits for 4; a natural 1 (Graze 2)
+    $out = run_command(hero('Orca'), 'kill dummy');
+    check(says($out, 'Initiative: you 8, it 10') && says($out, 'Relentless Endurance: you stay on your feet at 1 HP!')
+        && hero('Orca')['hp'] === 1 && hero('Orca')['room_id'] === 2,
+        'Alert adds PB to Initiative; an Orc at 0 HP drops to 1');
+    $dice_queue = [20, 1];
+    run_command(hero('Orca'), 'flee');
+
+    $hero('Half', 'rogue', 'halfling', 'criminal'); // Dex 17
+    $dice_queue = [1, 12, 5, 1, 15, 3, 1]; // initiative 1 rerolled; attack 1 rerolled; 1d6 3; Slam a natural 1
+    $out = run_command(hero('Half'), 'kill dummy');
+    check(says($out, 'Initiative: you 17, it 5') && says($out, '(20 vs AC 10) for 6 damage') && $dice_queue === [],
+        'Halfling Luck: a 1 on a d20 Test is rerolled');
+    $dice_queue = [20, 1];
+    run_command(hero('Half'), 'flee');
+
+    $hero('Gnom', 'wizard', 'gnome rock', 'sage');
+    $dice_queue = [2, 15];
+    [$total, $saved, $edge] = save(with_stats(hero('Gnom')), 'wis', 10);
+    check($edge === 1 && $saved && says(run_command(hero('Gnom'), 'score'), 'level 1 Gnome Wizard'),
+        'Gnomish Cunning: Advantage on Int, Wis and Cha saves');
+
+    $hero('Huma', 'fighter', 'human alert', 'sage'); // Con 15, Wis 11; Magic Initiate (Wizard) with Cha 12
+    $out = run_command(hero('Huma'), 'cast');
+    check(says($out, 'save DC 11, spell attack +3):') && says($out, 'fire bolt <monster>')
+        && says($out, 'magic missile <monster>') && !says($out, 'prepare'), 'Magic Initiate: a Fighter casts with Cha');
+    $dice_queue = [10, 5, 2, 15, 3, 4, 1]; // initiative 10 + 2 + Alert; a miss rerolled to a hit; 2d6 7; Slam 1
+    $out = run_command(hero('Huma'), 'kill dummy');
+    check(says($out, 'Initiative: you 14') && says($out, '(19 vs AC 10, Heroic Inspiration rerolls a 2) for 9 damage')
+        && hero('Huma')['species_spent'] === 1, 'Heroic Inspiration: a Human rerolls a failed attack roll');
+    $dice_queue = [1, 1, 1, 1];
+    $out = run_command(hero('Huma'), 'cast magic missile');
+    check(says($out, 'Your Magic Missile (free) strikes the Training Dummy for 6 damage')
+        && hero('Huma')['origin_spent'] !== '', 'Magic Initiate: its level 1 spell free once a long rest');
+    check(says(run_command(hero('Huma'), 'cast magic missile'), 'no spell slots left'), 'then only with slots');
+    $dice_queue = [20, 1];
+    run_command(hero('Huma'), 'flee');
+
+    $hero('Tief', 'fighter', 'tiefling abyssal', 'soldier');
+    q("UPDATE users SET level = 5 WHERE name = 'Tief'");
+    $t = with_stats(hero('Tief'));
+    check(str_contains($t['resistances'], 'poison')
+        && array_column(known_spells($t), 'name') === ['Poison Spray', 'Hold Person'],
+        'Tiefling: Resistance and legacy spells, a level 2 one from level 5');
+
+    $hero('Dwar', 'fighter', 'dwarf', 'soldier'); // Con 13: 11 HP, +1
+    check(says(run_command(hero('Dwar'), 'score'), 'HP 12/12'), 'Dwarven Toughness: +1 HP a level');
+
+    $hero('Goli', 'fighter', 'goliath fire', 'soldier');
+    $dice_queue = [10, 5, 15, 3, 4, 1, 1, 5, 1]; // a hit, Savage keeps 7 + 3; Fire's Burn 5; Slam a natural 1
+    check(says(run_command(hero('Goli'), 'kill dummy'), 'for 15 damage (+5 Fire\'s Burn)'),
+        "Fire's Burn: a Goliath's hit adds 1d10 Fire");
+    $dice_queue = [20, 1];
+    run_command(hero('Goli'), 'flee');
+    $hero('Ston', 'fighter', 'goliath stone', 'criminal'); // Con 14
+    $dice_queue = [1, 20, 15, 4, 12, 1]; // it goes first and hits for 4; 1d12 12 + 2 takes it all; a natural 1
+    $out = run_command(hero('Ston'), 'kill dummy');
+    check(says($out, "for 0 damage, 4 shrugged off (Stone's Endurance).") && hero('Ston')['hp'] === 12,
+        "Stone's Endurance: a Reaction takes 1d12 + Con off a hit");
+    $dice_queue = [20, 1];
+    run_command(hero('Ston'), 'flee');
+    $hero('Stor', 'fighter', 'goliath storm', 'criminal');
+    $dice_queue = [1, 20, 15, 4, 8, 1]; // it goes first and hits for 4; 1d8 8 Thunder back; a natural 1
+    check(says(run_command(hero('Stor'), 'kill dummy'), "Storm's Thunder: thunder cracks back at the Training Dummy"),
+        "Storm's Thunder: a Reaction deals 1d8 Thunder back");
+    $dice_queue = [20, 1];
+    run_command(hero('Stor'), 'flee');
+    $hero('Hill', 'fighter', 'goliath hill', 'criminal');
+    $dice_queue = [10, 5, 15, 3, 4, 1];
+    check(says(run_command(hero('Hill'), 'kill dummy'), "Hill's Tumble: the Training Dummy goes down, Prone."),
+        "Hill's Tumble: a hit knocks it Prone");
+    $dice_queue = [20, 1];
+    run_command(hero('Hill'), 'flee');
+    $hero('Clou', 'fighter', 'goliath cloud', 'criminal');
+    q("UPDATE users SET fighting = 9999 WHERE name = 'Clou'");
+    $dice_queue = [];
+    check(says(run_command(hero('Clou'), 'flee'), "Cloud's Jaunt") && hero('Clou')['fighting'] === null,
+        "Cloud's Jaunt: a Goliath flees without a roll");
+    q('UPDATE spawns SET conditions = \'\' WHERE id = 9999');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");

@@ -164,6 +164,139 @@ const CLASSES = [
     ],
 ];
 
+/**
+ * The species a hero can be (SRD 5.2.1 p.84-86), all Humanoid: size, Speed, Darkvision, damage Resistance, and the
+ * choice some make ('kinds', stored in users.lineage: Draconic Ancestry, Elven or Gnomish Lineage, Giant Ancestry,
+ * Fiendish Legacy, or a Human's Versatile Origin feat). A kind adds to or replaces its species' values, and its
+ * 'spells' (name => character level) are known from that level, cast with origin_ability(), a leveled one free once a
+ * long rest (or with slots). What a fight uses is ruled in code: Breath Weapon (breathe), Dwarven Toughness, Gnomish
+ * Cunning, Giant Ancestry, Halfling Luck, Heroic Inspiration (Resourceful), Relentless Endurance, a Small hero's
+ * shoves and grapples. 'traits' are only shown. The game's choices: Humans and Tieflings are Medium, and the lineage
+ * spells and cantrips it doesn't have (Dancing Lights, Misty Step...) are traits.
+ */
+const SPECIES = [
+    'dragonborn' => [
+        'name' => 'Dragonborn', 'size' => 'medium', 'speed' => 30, 'darkvision' => 60,
+        'choose' => 'your dragon ancestor',
+        'kinds' => [
+            'black' => ['resist' => 'acid'], 'blue' => ['resist' => 'lightning'], 'brass' => ['resist' => 'fire'],
+            'bronze' => ['resist' => 'lightning'], 'copper' => ['resist' => 'acid'], 'gold' => ['resist' => 'fire'],
+            'green' => ['resist' => 'poison'], 'red' => ['resist' => 'fire'], 'silver' => ['resist' => 'cold'],
+            'white' => ['resist' => 'cold'],
+        ],
+        'traits' => ['Draconic Flight (5)'],
+        'about' => "Breath Weapon, and Resistance to your dragon ancestor's damage.",
+    ],
+    'dwarf' => [
+        'name' => 'Dwarf', 'size' => 'medium', 'speed' => 30, 'darkvision' => 120, 'resist' => 'poison',
+        'traits' => ['Dwarven Resilience', 'Stonecunning'],
+        'about' => 'Poison Resistance, and +1 HP every level.',
+    ],
+    'elf' => [
+        'name' => 'Elf', 'size' => 'medium', 'speed' => 30, 'darkvision' => 60,
+        'choose' => 'your elven lineage',
+        'kinds' => [
+            'drow' => ['darkvision' => 120, 'spells' => ['Faerie Fire' => 3], 'traits' => ['Dancing Lights',
+                'Darkness (5)'], 'about' => 'Faerie Fire from level 3'],
+            'high' => ['traits' => ['Prestidigitation', 'Detect Magic (3)', 'Misty Step (5)'],
+                'about' => 'arcane tricks'],
+            'wood' => ['speed' => 35, 'traits' => ['Druidcraft', 'Longstrider (3)', 'Pass without Trace (5)'],
+                'about' => 'Speed 35'],
+        ],
+        'traits' => ['Fey Ancestry', 'Keen Senses', 'Trance'],
+        'about' => 'Darkvision and fey magic of your lineage.',
+    ],
+    'gnome' => [
+        'name' => 'Gnome', 'size' => 'small', 'speed' => 30, 'darkvision' => 60,
+        'choose' => 'your gnomish lineage',
+        'kinds' => [
+            'forest' => ['traits' => ['Minor Illusion', 'Speak with Animals'], 'about' => 'Minor Illusion'],
+            'rock' => ['traits' => ['Mending', 'Prestidigitation', 'clockwork devices'], 'about' => 'tinkering'],
+        ],
+        'traits' => [],
+        'about' => 'Small. Advantage on Int, Wis and Cha saves.',
+    ],
+    'goliath' => [
+        'name' => 'Goliath', 'size' => 'medium', 'speed' => 35, 'darkvision' => 0,
+        'choose' => 'your giant ancestor',
+        'kinds' => [ // used at the first chance, Proficiency Bonus times a long rest
+            'cloud' => ['about' => "Cloud's Jaunt: flee without fail"],
+            'fire' => ['about' => "Fire's Burn: +1d10 Fire on a hit"],
+            'frost' => ['about' => "Frost's Chill: +1d6 Cold on a hit"],
+            'hill' => ['about' => "Hill's Tumble: a weapon hit knocks it Prone"],
+            'stone' => ['about' => "Stone's Endurance: take 1d12 + Con less from a hit"],
+            'storm' => ['about' => "Storm's Thunder: 1d8 Thunder back when hit"],
+        ],
+        'traits' => ['Large Form (5)', 'Powerful Build'],
+        'about' => 'Speed 35, and a boon from your giant ancestor.',
+    ],
+    'halfling' => [
+        'name' => 'Halfling', 'size' => 'small', 'speed' => 30, 'darkvision' => 0,
+        'traits' => ['Brave', 'Halfling Nimbleness', 'Naturally Stealthy'],
+        'about' => 'Small. Luck: reroll a 1 on any d20.',
+    ],
+    'human' => [
+        'name' => 'Human', 'size' => 'medium', 'speed' => 30, 'darkvision' => 0,
+        'choose' => 'an Origin feat (Versatile)',
+        'kinds' => [ // Versatile: an Origin feat, besides your background's
+            'alert' => ['feat' => 'alert'], 'savage' => ['feat' => 'savage'], 'skilled' => ['feat' => 'skilled'],
+            'cleric' => ['feat' => 'cleric'], 'wizard' => ['feat' => 'wizard'],
+        ],
+        'traits' => ['Skillful'],
+        'about' => 'A second Origin feat, and Heroic Inspiration after each long rest.',
+    ],
+    'orc' => [
+        'name' => 'Orc', 'size' => 'medium', 'speed' => 30, 'darkvision' => 120,
+        'traits' => ['Adrenaline Rush'],
+        'about' => 'Relentless Endurance: once a long rest, drop to 1 HP instead of 0.',
+    ],
+    'tiefling' => [
+        'name' => 'Tiefling', 'size' => 'medium', 'speed' => 30, 'darkvision' => 60,
+        'choose' => 'your fiendish legacy',
+        'kinds' => [
+            'abyssal' => ['resist' => 'poison', 'spells' => ['Poison Spray' => 1, 'Hold Person' => 5],
+                'traits' => ['Ray of Sickness (3)']],
+            'chthonic' => ['resist' => 'necrotic', 'spells' => ['Chill Touch' => 1],
+                'traits' => ['False Life (3)', 'Ray of Enfeeblement (5)']],
+            'infernal' => ['resist' => 'fire', 'spells' => ['Fire Bolt' => 1],
+                'traits' => ['Hellish Rebuke (3)', 'Darkness (5)']],
+        ],
+        'traits' => ['Thaumaturgy'],
+        'about' => 'Resistance and spells from your fiendish legacy.',
+    ],
+];
+
+/**
+ * Origin feats (SRD 5.2.1 p.87). Alert adds PB to Initiative (its swap is left out: no allies share initiative).
+ * Magic Initiate's spells are the game's choice, of the ones it has: its cantrips and level 1 spell (cast free once a
+ * long rest, or with slots) use origin_ability(). Skilled is only shown.
+ */
+const FEATS = [
+    'alert' => ['name' => 'Alert', 'about' => 'add your Proficiency Bonus to Initiative'],
+    'savage' => ['name' => 'Savage Attacker',
+        'about' => "once a turn, roll a weapon hit's damage twice, keep the best"],
+    'skilled' => ['name' => 'Skilled', 'about' => 'three more skills (not used in play)'],
+    'cleric' => ['name' => 'Magic Initiate (Cleric)', 'spells' => ['Sacred Flame', 'Cure Wounds'],
+        'about' => 'Sacred Flame, and Cure Wounds free once a long rest'],
+    'wizard' => ['name' => 'Magic Initiate (Wizard)', 'spells' => ['Fire Bolt', 'Ray of Frost', 'Magic Missile'],
+        'about' => 'Fire Bolt and Ray of Frost, and Magic Missile free once a long rest'],
+];
+
+/**
+ * Backgrounds (SRD 5.2.1 p.83): the three abilities it can raise (+2 and +1, or +1 each, none past 20), its Origin
+ * feat and its skills (shown only). Its tool and equipment are left out: heroes start with their class's kit.
+ */
+const BACKGROUNDS = [
+    'acolyte' => ['name' => 'Acolyte', 'abilities' => ['intelligence', 'wisdom', 'charisma'], 'feat' => 'cleric',
+        'skills' => 'Insight, Religion'],
+    'criminal' => ['name' => 'Criminal', 'abilities' => ['dexterity', 'constitution', 'intelligence'],
+        'feat' => 'alert', 'skills' => 'Sleight of Hand, Stealth'],
+    'sage' => ['name' => 'Sage', 'abilities' => ['constitution', 'intelligence', 'wisdom'], 'feat' => 'wizard',
+        'skills' => 'Arcana, History'],
+    'soldier' => ['name' => 'Soldier', 'abilities' => ['strength', 'dexterity', 'constitution'], 'feat' => 'savage',
+        'skills' => 'Athletics, Intimidation'],
+];
+
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
@@ -177,6 +310,7 @@ const COMMANDS = [
     'reckless <monster>' => 'Barbarian 2: attack with Advantage, but attacks on you get it too',
     'shove <monster>' => 'knock a foe Prone, in place of one attack: attacks on it get Advantage',
     'grapple <monster>' => 'hold a foe, in place of one attack: it has Disadvantage against other heroes',
+    'breathe <monster>' => 'Dragonborn: Breath Weapon in place of one attack, a Dex save or 1d10 (more by level)',
     'flee' => 'try to escape a fight to a random exit',
     'flurry <monster>' => 'Monk 2: attack, then two Unarmed Strikes as your Bonus Action (1 Focus)',
     'patient <monster>' => 'Monk 2: attack, and Dodge as your Bonus Action: attacks on you have Disadvantage (1 Focus)',
@@ -209,8 +343,12 @@ const COMMANDS = [
     'quit' => 'log out',
 ];
 
-/** The class, and level, a feature's command needs. Its handler refuses anyone else; this only hides it from them. */
+/**
+ * The class (or species), and level, a feature's command needs. Its handler refuses anyone else; this only hides it
+ * from them.
+ */
 const FEATURES = [
+    'breathe' => ['dragonborn', 1],
     'reckless' => ['barbarian', 2], 'rage' => ['barbarian', 1], 'second' => ['fighter', 1],
     'flurry' => ['monk', 2], 'patient' => ['monk', 2], 'stun' => ['monk', 5], 'wholeness' => ['monk', 6],
     'inspire' => ['bard', 1], 'wild' => ['druid', 2], 'land' => ['druid', 3], 'cunning' => ['warlock', 2],
@@ -223,8 +361,8 @@ function my_commands(array $me): array
     return array_filter(COMMANDS, function (string $usage) use ($me): bool {
         $verb = explode(' ', $usage)[0];
         [$class, $level] = FEATURES[$verb] ?? [$me['class'], 1];
-        return $me['class'] === $class && $me['level'] >= $level
-            && ($verb !== 'cast' || isset(CLASSES[$me['class']]['casting']))
+        return in_array($class, [$me['class'], $me['species']], true) && $me['level'] >= $level
+            && ($verb !== 'cast' || isset(CLASSES[$me['class']]['casting']) || origin_spells($me))
             && ($verb !== 'prepare' || isset(CLASSES[$me['class']]['prepared']));
     }, ARRAY_FILTER_USE_KEY);
 }
@@ -265,11 +403,66 @@ function mod(int $score): int
     return (int) floor(($score - 10) / 2);
 }
 
+/** My species with my kind of it merged in (see SPECIES), traits from both; [] before I've chosen one. */
+function origin(array $me): array
+{
+    if (($me['species'] ?? null) === null) {
+        return [];
+    }
+    $s = SPECIES[$me['species']];
+    $k = $s['kinds'][$me['lineage']] ?? [];
+    return ['traits' => [...$s['traits'], ...($k['traits'] ?? [])]] + $k + $s;
+}
+
+/** True if my background or a Human's Versatile gave me Origin feat $feat (a FEATS key). */
+function has_feat(array $me, string $feat): bool
+{
+    return (BACKGROUNDS[$me['background'] ?? '']['feat'] ?? null) === $feat || (origin($me)['feat'] ?? null) === $feat;
+}
+
+/** The ids of the spells my lineage (from its level) and Magic Initiate give me, whatever my class. */
+function origin_spells(array $me): array
+{
+    $names = array_keys(array_filter(origin($me)['spells'] ?? [], fn ($lv) => $me['level'] >= $lv));
+    foreach (['cleric', 'wizard'] as $feat) {
+        $names = [...$names, ...(has_feat($me, $feat) ? FEATS[$feat]['spells'] : [])];
+    }
+    return spell_ids($names);
+}
+
+/** The ability my origin spells use: my class's if it's Int, Wis or Cha, else the best of those (the game's choice). */
+function origin_ability(array $me): string
+{
+    $class = CLASSES[$me['class']]['casting'] ?? null;
+    if ($class !== null) {
+        return $class;
+    }
+    $mental = ['intelligence' => $me['intelligence'], 'wisdom' => $me['wisdom'], 'charisma' => $me['charisma']];
+    return array_search(max($mental), $mental, true);
+}
+
+/**
+ * Spends one use of my species' trait (Breath Weapon, Giant Ancestry, Heroic Inspiration, Relentless Endurance), or
+ * returns false if none are left. The UPDATE checks too, as $me may be a copy behind an earlier spend this command.
+ */
+function spend_species(array &$me): bool
+{
+    if ($me['species_spent'] >= $me['species_uses'] || q(
+        'UPDATE users SET species_spent = species_spent + 1 WHERE id = ? AND species_spent < ?',
+        [$me['id'], $me['species_uses']]
+    )->rowCount() !== 1) {
+        return false;
+    }
+    $me['species_spent']++;
+    return true;
+}
+
 /**
  * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind, Rage, Focus Points, the
  * Lay On Hands pool, free Hunter's Marks, Sorcery Points or Bardic Inspiration, and 'slots' a caster's spell slots by
  * spell level, with a Wild Shape's form in place of my gear. A Draconic Sorcerer has Draconic Resilience (level 3: +1
- * HP a level) and Elemental Affinity (6: Fire Resistance).
+ * HP a level) and Elemental Affinity (6: Fire Resistance), and a Dwarf Dwarven Toughness (+1 HP a level).
+ * 'species_uses' is how many times my species' trait works a long rest.
  */
 function with_stats(array $me): array
 {
@@ -299,11 +492,16 @@ function with_stats(array $me): array
         'rage_damage' => $lv['rage_damage'],
         'martial_arts' => $lv['martial_arts'],
         'slots' => $table === null ? [] : array_map('intval', explode(',', $lv[$table])),
-        'resistances' => match (true) {
-            (bool) $me['raging'] => 'bludgeoning,piercing,slashing',
+        'resistances' => implode(',', array_filter([
+            $me['raging'] ? 'bludgeoning,piercing,slashing' : '',
             // Elemental Affinity, Nature's Ward (Arid)
-            ($class === 'sorcerer' && $me['level'] >= 6) || ($class === 'druid' && $me['level'] >= 10) => 'fire',
-            default => '',
+            ($class === 'sorcerer' && $me['level'] >= 6) || ($class === 'druid' && $me['level'] >= 10) ? 'fire' : '',
+            origin($me)['resist'] ?? '',
+        ])),
+        'species_uses' => match ($me['species']) {
+            'dragonborn', 'goliath' => $lv['prof_bonus'],
+            'human', 'orc' => 1,
+            default => 0,
         },
         'immunities' => '',
         'vulnerabilities' => '',
@@ -319,6 +517,7 @@ function with_stats(array $me): array
     }
     $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
     $me['max_hp'] += $class === 'sorcerer' && $me['level'] >= 3 ? $me['level'] : 0; // Draconic Resilience
+    $me['max_hp'] += $me['species'] === 'dwarf' ? $me['level'] : 0; // Dwarven Toughness
     foreach ($me['effects'] as $e) { // Mage Armor first: a base AC, if it beats mine
         if ($e['effect'] === 'base_ac' && !$me['armored']) {
             $me['ac'] = max($me['ac'], (int) $e['value'] + mod($me['dexterity']) + $me['shield_ac']);
@@ -357,6 +556,7 @@ function run_command(array $me, string $input): array
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
+        $verb === 'breathe' => cmd_breathe($me, trim($arg)),
         in_array($verb, ['flurry', 'patient', 'stun'], true) => cmd_technique($me, $verb, trim($arg)),
         $verb === 'wholeness' => cmd_wholeness($me),
         $verb === 'innate' => cmd_innate($me),
@@ -405,7 +605,8 @@ function heard_since_last_command(array $me): array
 
 /**
  * Character creation, one step per command until the hero sets out: choose a class, then assign the Standard Array
- * (which gives the class's kit and a fresh level 1 hero, even one who was played before), then 'begin'.
+ * (which gives the class's kit and a fresh level 1 hero, even one who was played before), a species, a background
+ * (whose ability increases set the hero's HP), then 'begin'. 'back' starts over.
  */
 function cmd_setup(array $me, string $input): array
 {
@@ -416,6 +617,12 @@ function cmd_setup(array $me, string $input): array
     }
     if ($me['setup'] === 'abilities') {
         return setup_abilities($me, $word);
+    }
+    if ($me['setup'] === 'species') {
+        return setup_species($me, $word);
+    }
+    if ($me['setup'] === 'background') {
+        return setup_background($me, $word);
     }
     if ($word !== 'begin') {
         return setup_summary($me);
@@ -466,7 +673,8 @@ function setup_abilities(array $me, string $word): array
     }
     $hp = $c['hp'] + mod($scores[2]);
     q(
-        "UPDATE users SET setup = 'confirm', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
+        "UPDATE users SET setup = 'species', species = NULL, lineage = NULL, background = NULL, species_spent = 0,
+         origin_spent = '', strength = ?, dexterity = ?, constitution = ?, intelligence = ?,
          wisdom = ?, charisma = ?, level = 1, xp = 0, hp = ?, max_hp = ?, hit_dice_spent = 0, uses_spent = 0,
          slots_spent = '', prepared = '', may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0,
          shape = NULL, gold = ?, room_id = ?, resting = NULL, rest_until = NULL, " . END_FIGHT . ' WHERE id = ?',
@@ -477,7 +685,122 @@ function setup_abilities(array $me, string $word): array
     foreach ($c['kit'] as [$item, $worn]) {
         q('INSERT INTO objects (item_id, user_id, worn) VALUES (?, ?, ?)', [$item, $me['id'], (int) $worn]);
     }
-    return setup_summary(q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch());
+    return species_prompt();
+}
+
+/** species <name> [kind]: the kind is needed when the species has a choice, and then asked for. */
+function setup_species(array $me, string $word): array
+{
+    [$name, $kind] = array_pad(preg_split('/\s+/', $word, 2), 2, '');
+    foreach (SPECIES as $species => $s) {
+        if ($name === '' || !str_starts_with($species, $name)) {
+            continue;
+        }
+        $kinds = array_keys($s['kinds'] ?? []);
+        $match = array_values(array_filter($kinds, fn ($k) => $kind !== '' && str_starts_with($k, $kind)));
+        if ($kinds && !$match) {
+            $lines = $kind === '' ? [] : ["There's no '$kind' to choose for a {$s['name']}."];
+            $lines[] = "Choose {$s['choose']} by typing '$species' and one of these:";
+            foreach ($s['kinds'] as $k => $about) {
+                $lines[] = sprintf('  %-9s %s', $k, kind_about($about));
+            }
+            return $lines;
+        }
+        q("UPDATE users SET species = ?, lineage = ?, setup = 'background' WHERE id = ?",
+            [$species, $match[0] ?? null, $me['id']]);
+        $feat = $s['kinds'][$match[0] ?? '']['feat'] ?? null;
+        $you = $feat === null ? lcfirst(a_an(trim(ucfirst($match[0] ?? '') . " {$s['name']}")))
+            : "a {$s['name']}, with " . FEATS[$feat]['name'];
+        return ["You are $you.", ...background_prompt()];
+    }
+    return [...($word === '' ? [] : ["There's no '$word' species here."]), ...species_prompt()];
+}
+
+/** What a species kind gives, for the prompt. */
+function kind_about(array $k): string
+{
+    return match (true) {
+        isset($k['feat']) => FEATS[$k['feat']]['name'] . ': ' . FEATS[$k['feat']]['about'],
+        isset($k['about']) => $k['about'],
+        default => ucfirst($k['resist']) . ' breath and Resistance',
+    };
+}
+
+function species_prompt(): array
+{
+    $lines = ['Now choose your species by typing its name:'];
+    foreach (SPECIES as $species => $s) {
+        $lines[] = sprintf('  %-10s %s', $species, $s['about']);
+    }
+    return [...$lines, "'back' starts over."];
+}
+
+function background_prompt(): array
+{
+    $lines = ['Now choose your background. It raises three abilities and gives an Origin feat:'];
+    foreach (BACKGROUNDS as $bg => $b) {
+        $f = FEATS[$b['feat']];
+        $lines[] = sprintf('  %-9s %s; %s: %s', $bg, implode(' ', array_map(fn ($a) => ucfirst(substr($a, 0, 3)),
+            $b['abilities'])), $f['name'], $f['about']);
+    }
+    return [
+        ...$lines,
+        "Its name alone gives +2 and +1 to your best two of its three ('soldier'). Or name them: 'soldier con str'",
+        "is Con +2, Str +1, and 'soldier all' is +1 to each. 'back' starts over.",
+    ];
+}
+
+/**
+ * background <name> [+2 ability] [+1 ability] | all. A Human's Versatile feat can't be the background's too, unless
+ * it's the repeatable Skilled. The Standard Array tops out at 15, so no increase can pass 20.
+ */
+function setup_background(array $me, string $word): array
+{
+    $words = preg_split('/\s+/', $word, -1, PREG_SPLIT_NO_EMPTY);
+    $bg = array_values(array_filter(array_keys(BACKGROUNDS), fn ($b) => str_starts_with($b, $words[0] ?? '-')))[0]
+        ?? null;
+    if ($bg === null) {
+        return [...($word === '' ? [] : ["There's no '$word' background here."]), ...background_prompt()];
+    }
+    $b = BACKGROUNDS[$bg];
+    $human = origin($me)['feat'] ?? null;
+    if ($human === $b['feat'] && $human !== 'skilled') {
+        return ['You already have ' . FEATS[$human]['name'] . " as a Human. Choose another background, or 'back'."];
+    }
+    $boost = array_fill_keys($b['abilities'], 0);
+    if (($words[1] ?? '') === 'all') {
+        $boost = array_fill_keys($b['abilities'], 1);
+    } else {
+        $named = [];
+        foreach (array_slice($words, 1, 2) as $w) {
+            $a = array_values(array_filter($b['abilities'], fn ($a) => str_starts_with($a, $w)))[0] ?? null;
+            if ($a === null || in_array($a, $named, true)) {
+                return ["A {$b['name']} raises two different ones of "
+                    . implode(', ', array_map(fn ($a) => ucfirst(substr($a, 0, 3)), $b['abilities'])) . '.'];
+            }
+            $named[] = $a;
+        }
+        $rest = array_diff($b['abilities'], $named);
+        usort($rest, fn ($x, $y) => $me[$y] <=> $me[$x]); // the best scores first; ties keep the listed order
+        [$plus2, $plus1] = array_slice([...$named, ...$rest], 0, 2);
+        [$boost[$plus2], $boost[$plus1]] = [2, 1];
+    }
+    foreach ($boost as $a => $n) {
+        $me[$a] += $n;
+    }
+    $max_hp = CLASSES[$me['class']]['hp'] + mod($me['constitution']);
+    $hp = $max_hp + ($me['species'] === 'dwarf' ? 1 : 0); // with_stats() adds Dwarven Toughness to the maximum
+    q(
+        "UPDATE users SET background = ?, setup = 'confirm', strength = ?, dexterity = ?, constitution = ?,
+         intelligence = ?, wisdom = ?, charisma = ?, hp = ?, max_hp = ? WHERE id = ?",
+        [$bg, ...array_map(fn ($a) => $me[$a], ABILITIES), $hp, $max_hp, $me['id']]
+    );
+    $raised = array_map(fn ($a, $n) => ucfirst(substr($a, 0, 3)) . " +$n", array_keys($boost), $boost);
+    return [
+        "You were a {$b['name']}: " . implode(', ', array_filter($raised, fn ($r) => !str_ends_with($r, '+0')))
+            . ', and ' . FEATS[$b['feat']]['name'] . '.',
+        ...setup_summary(q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch()),
+    ];
 }
 
 function setup_summary(array $me): array
@@ -610,7 +933,7 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
     $lines = [];
     $me['volley'] = $ranged && $me['fighting'] === null;
     if ($me['fighting'] === null) {
-        $mine = roll('1d20') + mod($me['dexterity']);
+        $mine = d20(0, lucky($me)) + mod($me['dexterity']) + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
         $theirs = roll('1d20') + $foe['initiative'];
         $me['foe_first'] = $theirs > $mine; // ties go to the hero
         $me['fighting'] = $foe['id'];
@@ -676,7 +999,8 @@ function start_turn(array &$me): void
 
 /**
  * Fleeing is a contest: d20 + Dex modifier against the monster's d20 + initiative. Failing draws an attack. A Rogue
- * or Monk from level 2 always gets away, with Cunning Action's or Step of the Wind's Disengage.
+ * or Monk from level 2 always gets away, with Cunning Action's or Step of the Wind's Disengage, and so does a Cloud
+ * Goliath with a use of Cloud's Jaunt left (spent only when it's needed).
  */
 function cmd_flee(array $me): array
 {
@@ -686,8 +1010,10 @@ function cmd_flee(array $me): array
     }
     start_turn($me);
     $held = has($foe, 'paralyzed') || has($foe, 'stunned'); // a foe that can't act can't stop you
-    if ((!in_array($me['class'], ['rogue', 'monk'], true) || $me['level'] < 2) && !$held) {
-        $mine = roll('1d20') + mod($me['dexterity']);
+    $free = (in_array($me['class'], ['rogue', 'monk'], true) && $me['level'] >= 2) || $held;
+    $jaunt = !$free && $me['species'] === 'goliath' && $me['lineage'] === 'cloud' && spend_species($me);
+    if (!$free && !$jaunt) {
+        $mine = d20(0, lucky($me)) + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
         if ($mine < $theirs) {
             $lines = ["You try to break away, but the {$foe['name']} cuts you off ($mine vs $theirs)!"];
@@ -699,10 +1025,11 @@ function cmd_flee(array $me): array
     }
     q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
     $dir = q('SELECT dir FROM exits WHERE room_id = ? ORDER BY RAND() LIMIT 1', [$me['room_id']])->fetchColumn();
+    $lines = $jaunt ? ["Cloud's Jaunt: you vanish and step out of the air 30 feet away."] : [];
     if ($dir === false) {
-        return ["You break away from the {$foe['name']}, but there's nowhere to run."];
+        return [...$lines, "You break away from the {$foe['name']}, but there's nowhere to run."];
     }
-    return ["You flee $dir from the {$foe['name']}!", ...cmd_move(['fighting' => null] + $me, $dir)];
+    return [...$lines, "You flee $dir from the {$foe['name']}!", ...cmd_move(['fighting' => null] + $me, $dir)];
 }
 
 /**
@@ -730,6 +1057,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     $colossus = $me['class'] === 'ranger' && $me['level'] >= 3; // Colossus Slayer, once a turn
     $primal = $me['class'] === 'druid' && $me['level'] >= 7; // Primal Strike, once a turn
     $cleaved = false;
+    $savage = has_feat($me, 'savage') && $me['shape'] === null; // Savage Attacker, once a turn, with a weapon
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $w) {
         $off = isset($w['off']);
@@ -761,7 +1089,11 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         $crit = $d20 === 20 || (has($foe, 'paralyzed') && !$w['ranged'] && !$me['volley']);
         $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
         // The extra attack adds no ability modifier unless it's negative (shortcut: no Two-Weapon Fighting style yet).
-        $dmg = roll($w['damage'], $crit) + ($off ? min(0, $w['attack_mod']) : $w['attack_mod']) + $rage;
+        $dice = roll($w['damage'], $crit);
+        if ($savage && !isset($w['strike'])) {
+            [$dice, $savage] = [max($dice, roll($w['damage'], $crit)), false];
+        }
+        $dmg = $dice + ($off ? min(0, $w['attack_mod']) : $w['attack_mod']) + $rage;
         $sneaking = $sneak && ($w['finesse'] || $w['ranged']) && ($edge > 0 || $helped);
         if ($sneaking) {
             $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
@@ -795,6 +1127,11 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         }
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
+        }
+        if ($me['species'] === 'goliath' && $me['lineage'] === 'hill' && !has($foe, 'prone')
+            && array_search($foe['size'], SIZES, true) <= array_search('large', SIZES, true) && spend_species($me)) {
+            $lines[] = "Hill's Tumble: the {$foe['name']} goes down, Prone.";
+            set_condition($foe, 'prone');
         }
         if (($me['stun'] ?? false) && $w['monk'] && spend_uses($me)) { // Stunning Strike, on my first such hit
             $me['stun'] = false;
@@ -903,17 +1240,21 @@ function attack_d20(array &$me, array &$foe, bool $adv = false, bool $dis = fals
         q('UPDATE users SET advantage = FALSE WHERE id = ?', [$me['id']]);
     }
     $edge = $adv <=> $dis;
-    $d20 = d20($edge);
+    $d20 = d20($edge, lucky($me));
     [$bonus, $note] = d20_bonus($me);
     return [$d20, $edge, $bonus, with($edge) . $note];
 }
 
 /**
- * True if my attack roll misses AC $ac: a natural 1, or a total under it that isn't a natural 20, once inspired() has
- * had its chance to add to $total and the line's note $with.
+ * True if my attack roll misses AC $ac: a natural 1, or a total under it that isn't a natural 20, once a Human's
+ * Heroic Inspiration has rerolled $d20 and inspired() has had its chance to add to $total and the line's note $with.
  */
-function misses(array &$me, int $d20, int &$total, int $ac, string &$with): bool
+function misses(array &$me, int &$d20, int &$total, int $ac, string &$with): bool
 {
+    if ($d20 !== 20 && ($d20 === 1 || $total < $ac) && $me['species'] === 'human' && spend_species($me)) {
+        $new = roll('1d20');
+        [$total, $with, $d20] = [$total - $d20 + $new, "$with, Heroic Inspiration rerolls a $d20", $new];
+    }
     if ($d20 === 1 || $d20 === 20 || $total >= $ac) {
         return $d20 === 1;
     }
@@ -962,14 +1303,24 @@ function d20_bonus(array $who): array
     return [$sum, $note];
 }
 
-/** A d20 for a D20 Test: with Advantage (edge 1) the higher of two, with Disadvantage (-1) the lower. */
-function d20(int $edge): int
+/**
+ * A d20 for a D20 Test: with Advantage (edge 1) the higher of two, with Disadvantage (-1) the lower. A $lucky one
+ * rerolls each 1 and keeps the new roll (Halfling Luck).
+ */
+function d20(int $edge, bool $lucky = false): int
 {
+    $die = fn (): int => ($n = roll('1d20')) === 1 && $lucky ? roll('1d20') : $n;
     return match ($edge) {
-        1 => max(roll('1d20'), roll('1d20')),
-        -1 => min(roll('1d20'), roll('1d20')),
-        default => roll('1d20'),
+        1 => max($die(), $die()),
+        -1 => min($die(), $die()),
+        default => $die(),
     };
+}
+
+/** True if $who (a hero or a monster) has Halfling Luck. */
+function lucky(array $who): bool
+{
+    return ($who['species'] ?? null) === 'halfling';
 }
 
 /** How a combat line says a roll's edge. */
@@ -983,8 +1334,9 @@ function with(int $edge): string
  * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed and Stunned fail
  * Str and Dex saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
  * Incapacitated; Restrained gives Disadvantage on Dex saves. $force adds Advantage (1: Eldritch Mind) or Disadvantage
- * (-1: Heightened Spell). Effects like Bless add their dice, and a hero who fails may be inspired(), then use a Fiend
- * Warlock's Dark One's Own Luck (6): 1d10 more, when it could make the difference.
+ * (-1: Heightened Spell), and Gnomish Cunning on Int, Wis and Cha saves. Effects like Bless add their dice, and a hero
+ * who fails may reroll the d20 with Heroic Inspiration, be inspired(), then use a Fiend Warlock's Dark One's Own Luck
+ * (6): 1d10 more, when it could make the difference.
  */
 function save(array $who, string $ability, int $dc, int $force = 0): array
 {
@@ -993,9 +1345,14 @@ function save(array $who, string $ability, int $dc, int $force = 0): array
     }
     $barbarian = ($who['class'] ?? null) === 'barbarian';
     $edge = ($force > 0 || ($ability === 'str' && ($who['raging'] ?? false))
-        || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed')))
+        || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed'))
+        || (in_array($ability, ['int', 'wis', 'cha'], true) && ($who['species'] ?? null) === 'gnome'))
         <=> ($force < 0 || ($ability === 'dex' && has($who, 'restrained')));
-    $total = d20($edge) + $who[$ability . '_save'] + d20_bonus($who)[0];
+    $d20 = d20($edge, lucky($who));
+    $total = $d20 + $who[$ability . '_save'] + d20_bonus($who)[0];
+    if ($total < $dc && ($who['species'] ?? null) === 'human' && spend_species($who)) {
+        $total += roll('1d20') - $d20;
+    }
     if ($total < $dc && isset($who['class'])) {
         $total += inspired($who, $dc - $total, false)[0];
     }
@@ -1067,8 +1424,7 @@ function set_condition(array &$foe, string $condition, bool $on = true): void
  * weapon. The foe makes a Str or Dex save, the better of its two, against 8 + my Str (or a Monk's Dex) + PB. Failing a
  * shove, it's Prone; failing a grapple, it's Grappled by me, so it has Disadvantage attacking any other hero (Grappled
  * p.182).
- * The foe can be at most one size larger than me (shortcut: heroes are all Medium until species, and free hands aren't
- * checked).
+ * The foe can be at most one size larger than me (shortcut: free hands aren't checked).
  * Shove's push and the foe escaping a grapple are left out: there are no distances, and monsters never try.
  */
 function cmd_maneuver(array $me, string $how, string $target): array
@@ -1079,7 +1435,7 @@ function cmd_maneuver(array $me, string $how, string $target): array
             $lines[] = "The {$foe['name']} is already " . ($how === 'shove' ? 'Prone.' : 'in your grip.');
             return hero_turn($me, $foe, $lines);
         }
-        if (array_search($foe['size'], SIZES, true) > array_search('large', SIZES, true)) { // Medium heroes
+        if (array_search($foe['size'], SIZES, true) > array_search(origin($me)['size'] ?? 'medium', SIZES, true) + 1) {
             $lines[] = "The {$foe['name']} is too big to " . ($how === 'shove' ? 'shove.' : 'grab.');
             return hero_turn($me, $foe, $lines);
         }
@@ -1100,6 +1456,38 @@ function cmd_maneuver(array $me, string $how, string $target): array
         $me['attacks']--;
         return hero_turn($me, $foe, $lines);
     }, ucfirst($how) . ' what?');
+}
+
+/**
+ * Breath Weapon (Dragonborn), in place of one attack of my round: a Dex save against 8 + Con + PB or 1d10 of my
+ * ancestor's damage type (2d10 from level 5, 3d10 from 11, 4d10 from 17), half on a success; then my other attacks.
+ * Proficiency Bonus uses a long rest. shortcut: it reaches only the foe I fight, as there are no positions for its
+ * Cone or Line.
+ */
+function cmd_breathe(array $me, string $target): array
+{
+    if ($me['species'] !== 'dragonborn') {
+        return ['Only Dragonborn have a Breath Weapon.'];
+    }
+    if ($me['species_spent'] >= $me['species_uses']) {
+        return ['Your Breath Weapon is spent until you finish a long rest.'];
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        if (spend_species($me)) {
+            $dc = 8 + mod($me['constitution']) + $me['prof_bonus'];
+            [$save, $saved] = save($foe, 'dex', $dc);
+            $type = origin($me)['resist'];
+            $dmg = roll((1 + intdiv($me['level'] + 1, 6)) . 'd10');
+            [$dmg, $note] = typed($saved ? intdiv($dmg, 2) : $dmg, $type, $foe);
+            $lines[] = "You breathe $type at the {$foe['name']} (Dex save " . vs($save, $dc)
+                . ") for $dmg damage$note.";
+            if (hurt_foe($me, $foe, $dmg, $lines)) {
+                return true;
+            }
+            $me['attacks']--;
+        }
+        return hero_turn($me, $foe, $lines);
+    }, 'Breathe on what?');
 }
 
 /**
@@ -1169,10 +1557,12 @@ function win(array &$me, array $foe, array &$lines): void
     // Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
     $level = max($me['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn());
     $gain = ($level - $me['level']) * (CLASSES[$me['class']]['per_level'] + mod($me['constitution'])); // fixed HP
+    $tough = $me['species'] === 'dwarf' ? $level - $me['level'] : 0; // Dwarven Toughness: with_stats() adds the max
     q(
         'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
-        [$xp, $gold, $level, $gain, $gain, $me['id']]
+        [$xp, $gold, $level, $gain, $gain + $tough, $me['id']]
     );
+    $gain += $tough;
     $lines[] = "The {$foe['name']} dies! You gain {$foe['xp']} XP and $gold gold.";
     if ($me['class'] === 'warlock' && $me['level'] >= 3) { // Dark One's Blessing
         $me['temp_hp'] = max($me['temp_hp'], max(1, mod($me['charisma']) + $me['level']));
@@ -1190,7 +1580,12 @@ function win(array &$me, array $foe, array &$lines): void
     }
 }
 
-/** $foe attacks me: $n times, its Multiattack by default. Returns true if I died (and woke in town). */
+/**
+ * $foe attacks me: $n times, its Multiattack by default. Returns true if the fight is over: I died (and woke in town),
+ * or my Reaction killed it. A Stone or Storm Goliath's Reaction (Giant Ancestry) goes on the first hit that hurts
+ * (shortcut: it doesn't count against Deflect Attacks' or Cutting Words'), and an Orc's Relentless Endurance keeps
+ * them on 1 HP.
+ */
 function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): bool
 {
     if ($n === null && has($foe, 'prone')) { // its turn starts (a free attack when I flee is a Reaction, not a turn)
@@ -1216,6 +1611,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
     $deflect = $me['class'] === 'monk' && $me['level'] >= 3; // my Reaction, once a turn of theirs
     $cutting = $me['class'] === 'bard' && $me['level'] >= 3; // Cutting Words, my Reaction too
+    $giant = $me['species'] === 'goliath' && in_array($me['lineage'], ['stone', 'storm'], true);
     $hit_me = false; // Multiattack Defense (Ranger 7): after one hit, its other attacks this turn have Disadvantage
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
         $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held || has($foe, 'sapped') || has($foe, 'blinded')
@@ -1256,6 +1652,11 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             $deflected = min($dmg, roll('1d10') + mod($me['dexterity']) + $me['level']);
             $dmg -= $deflected;
         }
+        $endured = 0; // Stone's Endurance
+        if ($giant && $dmg > 0 && $me['lineage'] === 'stone' && spend_species($me)) {
+            [$giant, $endured] = [false, min($dmg, max(0, roll('1d12') + mod($me['constitution'])))];
+            $dmg -= $endured;
+        }
         $soaked = min($me['temp_hp'], $dmg); // Temporary Hit Points go first
         if ($soaked > 0) {
             $me['temp_hp'] -= $soaked;
@@ -1265,10 +1666,15 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $hit_me = $me['class'] === 'ranger' && $me['level'] >= 7;
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg "
             . "damage$note" . ($soaked ? " ($soaked to temporary HP)" : '')
-            . ($deflected ? ", $deflected deflected." : '.');
+            . ($deflected ? ", $deflected deflected" : '')
+            . ($endured ? ", $endured shrugged off (Stone's Endurance)" : '') . '.';
         if ($deflected && $dmg === 0 && spend_uses($me) && redirect($me, $foe, $lines)) {
             q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
             return true;
+        }
+        if ($me['hp'] <= 0 && $me['species'] === 'orc' && spend_species($me)) {
+            $me['hp'] = 1;
+            $lines[] = 'Relentless Endurance: you stay on your feet at 1 HP!';
         }
         if ($me['hp'] <= 0) {
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
@@ -1282,6 +1688,15 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
             array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
             return true;
+        }
+        if ($giant && $dmg > 0 && $me['lineage'] === 'storm' && spend_species($me)) { // Storm's Thunder
+            $giant = false;
+            [$thunder, $note] = typed(roll('1d8'), 'thunder', $foe);
+            $lines[] = "Storm's Thunder: thunder cracks back at the {$foe['name']} for $thunder damage$note.";
+            if (hurt_foe($me, $foe, $thunder, $lines)) {
+                q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
+                return true;
+            }
         }
         $relentless = $me['class'] === 'ranger' && $me['level'] >= 13; // Hunter's Mark holds
         if ($dmg > 0 && ($spell = concentrating($me)) !== null && !($relentless && $spell === "Hunter's Mark")) {
@@ -1753,10 +2168,11 @@ function slots_left(array $me): string
     return implode(' ', array_filter($left));
 }
 
-/** My spell save DC: 8 + PB + my spellcasting ability's modifier, + 1 with Innate Sorcery. */
+/** My spell save DC: 8 + PB + my spellcasting ability's modifier (or origin_ability()), + 1 with Innate Sorcery. */
 function spell_dc(array $me): int
 {
-    return 8 + $me['prof_bonus'] + mod($me[CLASSES[$me['class']]['casting']]) + ($me['innate'] ? 1 : 0);
+    $ability = CLASSES[$me['class']]['casting'] ?? origin_ability($me);
+    return 8 + $me['prof_bonus'] + mod($me[$ability]) + ($me['innate'] ? 1 : 0);
 }
 
 /** True while my Hunter's Mark lasts. */
@@ -1843,11 +2259,16 @@ function primal_type(array $foe): string
  * Damage my effects and features add to a weapon hit on $foe, each [damage, note]: Divine Favor's and Hunter's Mark's
  * dice (a d10 for a level 20 Ranger's Foe Slayer), from Paladin level 11 Radiant Strikes' 1d8 Radiant on a $melee
  * hit, and $more as [dice, damage type, name] (Colossus Slayer, Primal Strike, a Beast form's second damage). Twice
- * the dice on a $crit. A spell attack (not a $weapon) gets Hunter's Mark and Hex but not Divine Favor. shortcut:
- * Hunter's Mark and Hex mark whatever I fight, and moving them costs no Bonus Action.
+ * the dice on a $crit. A spell attack (not a $weapon) gets Hunter's Mark and Hex but not Divine Favor. Either gets a
+ * Fire or Frost Goliath's Giant Ancestry, a use spent. shortcut: Hunter's Mark and Hex mark whatever I fight, and
+ * moving them costs no Bonus Action.
  */
-function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $more = [], bool $weapon = true): array
+function extra_damage(array &$me, array $foe, bool $melee, bool $crit, array $more = [], bool $weapon = true): array
 {
+    $giant = ['fire' => ['1d10', 'fire', "Fire's Burn"], 'frost' => ['1d6', 'cold', "Frost's Chill"]];
+    if ($me['species'] === 'goliath' && isset($giant[$me['lineage']]) && spend_species($me)) {
+        $more[] = $giant[$me['lineage']];
+    }
     $extra = array_map(fn ($e) => [$e['value'], $e['damage_type'], $e['spell']], array_filter($me['effects'],
         fn ($e) => $e['effect'] === 'damage' && ($weapon || $e['spell'] !== 'Divine Favor')));
     $extra = [...$extra, ...$more];
@@ -1868,8 +2289,9 @@ function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $mor
  * cast <spell> [monster]: the spell's words can be shortened ("cast sac rat"). Spells are rows of `spells`, resolved
  * by kind, the way Luminari's spell routines are: an attack rolls against AC (once per ray), a save against 8 + PB +
  * the spellcasting modifier, healing adds that modifier, an auto spell just hits, a smite waits for my weapon hit. I
- * know cantrips, my prepared spells and the ones always prepared (which may come from another class's list). A spell
- * uses the lowest slot left of its level or higher, and a higher slot adds its upcast dice; a cantrip's dice grow with
+ * know cantrips, my prepared spells and the ones always prepared (which may come from another class's list), and my
+ * origin_spells(), whatever my class: a leveled one is free once a long rest. A spell uses the lowest slot left of its
+ * level or higher, and a higher slot adds its upcast dice; a cantrip's dice grow with
  * character level. A Sorcerer (level 2) may put a Metamagic word first: heightened (2 Sorcery Points, Disadvantage on
  * the spell's save) or seeking (1 point, spent only on a miss: reroll the attack's d20). With Innate Sorcery its spell
  * attacks have Advantage; Elemental Affinity (Draconic 6) adds Cha to one damage roll of a Fire spell.
@@ -1877,9 +2299,11 @@ function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $mor
 function cmd_cast(array $me, string $arg): array
 {
     $ability = CLASSES[$me['class']]['casting'] ?? null;
-    if ($ability === null) {
+    $origin = origin_spells($me);
+    if ($ability === null && !$origin) {
         return ["You don't know any spells."];
     }
+    $ability ??= origin_ability($me);
     if ($me['shape'] !== null && $me['level'] < 18) { // Beast Spells (Druid 18)
         return ["You can't cast spells in Wild Shape. 'wild' returns you to your own form."];
     }
@@ -1896,13 +2320,13 @@ function cmd_cast(array $me, string $arg): array
     $dc = spell_dc($me);
     if ($spell === null) {
         $lines = $arg === '' ? [] : ["You don't know a spell called '$arg'."];
-        $lines[] = "Your spells (save DC $dc, spell attack +" . ($me['prof_bonus'] + $mod) . '; slots '
-            . slots_left($me) . '):';
+        $lines[] = "Your spells (save DC $dc, spell attack +" . ($me['prof_bonus'] + $mod)
+            . ($me['slots'] ? '; slots ' . slots_left($me) : '') . '):';
         foreach ($known as $k) {
             $usage = strtolower($k['name']) . (['foe' => ' <monster>', 'ally' => ' [hero]'][$k['targets']] ?? '');
             $lines[] = sprintf('  %-28s %s', $usage, ($k['level'] === 0 ? 'cantrip: ' : '') . $k['about']);
         }
-        return [...$lines, "'prepare' shows the others."];
+        return [...$lines, ...(isset(CLASSES[$me['class']]['prepared']) ? ["'prepare' shows the others."] : [])];
     }
 
     if ($meta !== null) {
@@ -1921,6 +2345,9 @@ function cmd_cast(array $me, string $arg): array
     // Armor on themself with no slot.
     $favored = $spell['name'] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['uses_spent'] < $me['uses'];
     $free = $favored || ($spell['name'] === 'Mage Armor' && $me['class'] === 'warlock' && $target === '');
+    $innate = !$free && $spell['level'] > 0 && in_array($spell['id'], $origin, true)
+        && !in_array((string) $spell['id'], explode(',', $me['origin_spent']), true); // a lineage or feat spell
+    $free = $free || $innate;
     $slot = $free ? 0 : lowest_slot($me, $spell['level']); // cantrips need none
     if ($spell['kind'] === 'smite') { // its slot is spent on the hit
         $free = $spell['name'] === 'Divine Smite' && !$me['once_used']; // Paladin's Smite
@@ -1946,12 +2373,16 @@ function cmd_cast(array $me, string $arg): array
             $spell['dice']),
         $spell['level'] === 0 => $spell['dice'],
         default => $spell['dice'] . str_repeat('+' . $spell['upcast'], $spell['upcast'] === null ? 0
-            : $slot - $spell['level']),
+            : max(0, $slot - $spell['level'])),
     };
     $name = $spell['name'] . ($slot > $spell['level'] ? " (level $slot)" : '') . ($free ? ' (free)' : '');
     $up = max(0, $slot - $spell['level']); // slot levels above the spell's
-    $spend = function (array &$me) use ($slot, $favored): void {
+    $spend = function (array &$me) use ($slot, $favored, $innate, $spell): void {
         spend_slot($me, $slot);
+        if ($innate) {
+            $me['origin_spent'] = ltrim("{$me['origin_spent']},{$spell['id']}", ',');
+            q('UPDATE users SET origin_spent = ? WHERE id = ?', [$me['origin_spent'], $me['id']]);
+        }
         if ($favored) {
             $me['uses_spent']++;
             q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
@@ -2093,7 +2524,7 @@ function cmd_cast(array $me, string $arg): array
                 $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
                 $lines[] = "Your $name misses the {$foe['name']} ($why$with), but Seeking Spell steers it back.";
                 $with = substr($with, strlen(with($edge))); // keep Bless's note
-                $d20 = roll('1d20');
+                $d20 = d20(0, lucky($me));
                 $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
             }
             if ($missed = misses($me, $d20, $total, $foe['ac'], $with)) {
@@ -2160,17 +2591,20 @@ function start_effect(
     }
 }
 
-/** The ids of my prepared spells: my own list, or the class's suggested ones until I make one. */
-/** My class's cantrips, my prepared spells I have slots for, and the ones always prepared. */
+/** My class's cantrips, my prepared spells I have slots for, the ones always prepared, and my origin_spells(). */
 function known_spells(array $me): array
 {
     return q(
-        'SELECT * FROM spells WHERE level <= ? AND ((level = 0 AND FIND_IN_SET(?, classes)) OR FIND_IN_SET(id, ?))
-         ORDER BY level, name',
-        [count($me['slots']), $me['class'], implode(',', [...prepared_ids($me), ...always_ids($me)])]
+        'SELECT * FROM spells WHERE (level <= ? AND ((level = 0 AND FIND_IN_SET(?, classes)) OR FIND_IN_SET(id, ?)))
+         OR FIND_IN_SET(id, ?) ORDER BY level, name',
+        [
+            count($me['slots']), $me['class'], implode(',', [...prepared_ids($me), ...always_ids($me)]),
+            implode(',', origin_spells($me)),
+        ]
     )->fetchAll();
 }
 
+/** The ids of my prepared spells: my own list, or the class's suggested ones until I make one. */
 function prepared_ids(array $me): array
 {
     $ids = array_map('intval', array_filter(explode(',', $me['prepared'])));
@@ -2312,8 +2746,9 @@ function finish_rest(array &$me): array
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
             . ($me['slots'] ? ' and spell slots back, and you may change your prepared spells' : ' back') . '.';
-        q('UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0, shape = NULL
-           WHERE id = ?', [$me['id']]); // shortcut: a Wild Shape lasts until now, not half my level in hours
+        // shortcut: a Wild Shape lasts until now, not half my level in hours
+        q("UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0, shape = NULL,
+           species_spent = 0, origin_spent = '' WHERE id = ?", [$me['id']]);
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
@@ -2738,10 +3173,16 @@ function hero_sheet(array $me): array
         ->fetchAll(PDO::FETCH_KEY_PAIR);
     $c = CLASSES[$me['class']];
     $uses = max(0, $me['uses'] - $me['uses_spent']) . "/{$me['uses']}";
+    $species = max(0, $me['species_uses'] - $me['species_spent']) . "/{$me['species_uses']}";
+    $o = origin($me);
+    $b = BACKGROUNDS[$me['background'] ?? ''] ?? null;
+    $free = q('SELECT id, name FROM spells WHERE level > 0 AND FIND_IN_SET(id, ?) ORDER BY level, name',
+        [implode(',', origin_spells($me))])->fetchAll(PDO::FETCH_KEY_PAIR);
+    $spent = explode(',', $me['origin_spent']);
     return [
         'name' => $me['name'],
         'level' => $me['level'],
-        'class' => $c['name'],
+        'class' => trim(($o['name'] ?? '') . ' ' . $c['name']),
         'hp' => $me['hp'],
         'max_hp' => $me['max_hp'],
         'temp_hp' => $me['temp_hp'],
@@ -2778,6 +3219,16 @@ function hero_sheet(array $me): array
                     ['Spell slots', slots_left($me)],
                 ],
             },
+            ...match ($me['species']) {
+                'dragonborn' => [['Breath Weapon', "$species " . (1 + intdiv($me['level'] + 1, 6)) . 'd10 '
+                    . ucfirst($o['resist'])]],
+                'goliath' => [[explode(':', $o['about'])[0], $species]],
+                'human' => [['Heroic Inspiration', $species]],
+                'orc' => [['Relentless Endurance', $species]],
+                default => [],
+            },
+            ...array_map(fn ($id, $name) => [$name, (in_array((string) $id, $spent, true) ? '0' : '1') . '/1 free'],
+                array_keys($free), $free),
             ...($me['offhand'] === null ? [] : [['Off hand', sprintf('%s %+d to hit, %s damage%s',
                 $me['offhand']['weapon'], $me['offhand']['to_hit'], $me['offhand']['damage'],
                 $me['offhand']['mastery'] === 'nick' ? ' (Nick)' : ', a Bonus Action')]]),
@@ -2792,6 +3243,18 @@ function hero_sheet(array $me): array
             ($spell = concentrating($me)) === null ? null : "concentrating on $spell",
             $me['resting'] !== null ? "taking a {$me['resting']} rest" : null,
         ])),
+        // Shown, not ruled where SPECIES says so. A hero from before species has none of this.
+        'origin' => $o === [] ? [] : [
+            ['Species', trim(ucfirst(isset($o['feat']) ? '' : (string) $me['lineage']) . " {$o['name']}") . ': '
+                . implode(', ', array_filter([
+                    "Speed {$o['speed']} ft",
+                    $o['darkvision'] ? "Darkvision {$o['darkvision']} ft" : null,
+                    isset($o['resist']) ? ucfirst($o['resist']) . ' Resistance' : null,
+                    isset($o['feat']) ? FEATS[$o['feat']]['name'] : null,
+                    ...$o['traits'],
+                ]))],
+            ...($b === null ? [] : [['Background', "{$b['name']}: " . FEATS[$b['feat']]['name'] . "; {$b['skills']}"]]),
+        ],
         'xp' => $me['xp'],
         'xp_from' => $xp[$me['level']],
         'xp_next' => $xp[$me['level'] + 1] ?? null,
@@ -2811,6 +3274,7 @@ function cmd_score(array $me): array
         sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
             . ($s['attacks'] > 1 ? ", {$s['attacks']} attacks a round" : ''),
         implode('   ', [...array_map(fn ($r) => implode(' ', $r), $s['resources']), ...$s['status']]),
+        ...array_map(fn ($r) => implode(' ', $r), $s['origin']),
         "XP {$s['xp']}"
             . ($s['xp_next'] === null ? ' (max level)' : " ({$s['xp_next']} for level " . ($s['level'] + 1) . ')')
             . "   Gold {$s['gold']}",
@@ -2936,13 +3400,17 @@ function actions(array $me): array
         return match ($me['setup']) {
             'class' => array_keys(CLASSES),
             'abilities' => ['ok', 'back'],
+            // A species with a choice goes in the prompt, for choices() to offer its kinds.
+            'species' => [...array_map(fn ($sp) => isset(SPECIES[$sp]['kinds']) ? "$sp " : $sp, array_keys(SPECIES)),
+                'back'],
+            'background' => [...array_keys(BACKGROUNDS), 'back'],
             'confirm' => ['begin', 'back'],
         };
     }
     $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
     $mine = array_intersect(
-        ['reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage', 'innate', 'wholeness',
-            'lay', 'cast'],
+        ['breathe', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage', 'innate',
+            'wholeness', 'lay', 'cast'],
         $mine
     );
     $cast = in_array('cast', $mine, true) ? ['cast '] : [];
@@ -2970,6 +3438,13 @@ function actions(array $me): array
  */
 function choices(array $me): array
 {
+    if ($me['setup'] !== null) { // a species' kinds, once its name is in the prompt
+        $c = [];
+        foreach ($me['setup'] === 'species' ? SPECIES : [] as $species => $s) {
+            $c[$species] = array_map(fn ($k) => [$k, "$species $k"], array_keys($s['kinds'] ?? []));
+        }
+        return array_filter($c);
+    }
     $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
     $has = fn (string $verb): bool => in_array($verb, $mine, true);
     $pick = fn (string $verb, array $names): array => array_map(fn ($n) => [$n, "$verb $n"], array_values($names));
@@ -2988,7 +3463,7 @@ function choices(array $me): array
         'wild' => $has('wild') ? [...($me['shape'] !== null ? [['your own form', 'wild']] : []),
             ...$pick('wild', $names(wild_forms($me)))] : [],
     ];
-    foreach (['kill', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land'] as $verb) {
+    foreach (['kill', 'breathe', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land'] as $verb) {
         $c[$verb] = $verb === 'kill' || $has($verb) ? $pick($verb, $foes) : [];
     }
     foreach ($has('cast') ? known_spells($me) : [] as $k) {

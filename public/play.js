@@ -58,7 +58,8 @@ async function send(cmd) {
  * hero_sheet() in game.php.
  * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, temp_hp: number, ac: number,
  *   prof: number, abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string,
- *   attacks: number, resources: [string, string][], status: string[], xp: number, xp_from: number,
+ *   attacks: number, resources: [string, string][], origin: [string, string][], status: string[], xp: number,
+ *   xp_from: number,
  *   xp_next: number | null, gold: number }} Hero
  */
 
@@ -111,7 +112,7 @@ function drawHero(h, map) {
         ...h.abilities.map(([name, score, mod, save]) => tile(name, signed(mod), score, `save ${signed(save)}`)),
     );
     const attack = `${signed(h.to_hit)} · ${h.damage}` + (h.attacks > 1 ? ` ×${h.attacks}` : '');
-    byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources].map(([k, v]) => {
+    byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources, ...h.origin].map(([k, v]) => {
         const row = el('div', 'd-flex justify-content-between gap-3');
         row.append(el('dt', 'fw-normal text-body-secondary', k), el('dd', 'm-0 text-end', v));
         return row;

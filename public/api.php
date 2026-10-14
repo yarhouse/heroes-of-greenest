@@ -40,7 +40,7 @@ $lines = run_command($me, $cmd);
 $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
 $more = ['actions' => actions($me), 'commands' => my_commands($me)];
 if ($me['setup'] !== null) {
-    reply(['lines' => $lines] + $more); // no sheet while creating
+    reply(['lines' => $lines, 'choices' => choices($me)] + $more); // no sheet while creating
 }
 $me = with_stats($me);
 reply(['lines' => $lines, 'hero' => hero_sheet($me), 'map' => cmd_map($me), 'choices' => choices($me)] + $more);
