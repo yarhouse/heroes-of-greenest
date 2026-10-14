@@ -293,6 +293,7 @@ try {
     check(says(run_command(hero('Testa'), 'look'), a_an($name) . ' lies here.'), 'loot lands on the floor');
     check(q('SELECT cost FROM items WHERE name = ?', [$name])->fetchColumn() <= 0.125 * LOOT_GP_PER_CR
         && loot(0, START_ROOM) === null, 'loot costs at most LOOT_GP_PER_CR x CR');
+    check(loot(0, START_ROOM, '50') === 'Shield', "a monster's loot is its gear, whatever its CR");
 
     // Rests and Second Wind. Testa is in the town square, a safe room.
     q("UPDATE users SET hp = 3 WHERE name = 'Testa'");

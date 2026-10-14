@@ -1184,7 +1184,8 @@ function win(array &$me, array $foe, array &$lines): void
     }
     // A Cleave can kill a second foe in the same turn, so later writes must start from these.
     [$me['xp'], $me['level'], $me['max_hp'], $me['hp']] = [$xp, $level, $me['max_hp'] + $gain, $me['hp'] + $gain];
-    if (roll('1d' . LOOT_CHANCE) === 1 && ($item = loot((float) $foe['cr'], (int) $me['room_id'])) !== null) {
+    $item = roll('1d' . LOOT_CHANCE) === 1 ? loot((float) $foe['cr'], (int) $me['room_id'], $foe['gear']) : null;
+    if ($item !== null) {
         $lines[] = "The {$foe['name']} drops " . lcfirst(a_an($item)) . '.';
     }
 }
@@ -2429,10 +2430,15 @@ function sorcerous_restoration(array &$me): string
     return ", with Sorcerous Restoration bringing back $back Sorcery " . ($back === 1 ? 'Point' : 'Points');
 }
 
-/** Drops a random item a monster of $cr could have on $room_id's floor and returns its name (null if none can). */
-function loot(float $cr, int $room_id): ?string
+/**
+ * Drops on $room_id's floor one of the monster's $gear (item ids, '23,50') or, carrying none, a random item a monster of
+ * $cr could have. Returns its name (null if none can).
+ */
+function loot(float $cr, int $room_id, string $gear = ''): ?string
 {
-    $item = q('SELECT id, name FROM items WHERE cost <= ? ORDER BY RAND() LIMIT 1', [$cr * LOOT_GP_PER_CR])->fetch();
+    $item = $gear !== ''
+        ? q('SELECT id, name FROM items WHERE FIND_IN_SET(id, ?) ORDER BY RAND() LIMIT 1', [$gear])->fetch()
+        : q('SELECT id, name FROM items WHERE cost <= ? ORDER BY RAND() LIMIT 1', [$cr * LOOT_GP_PER_CR])->fetch();
     if (!$item) {
         return null;
     }

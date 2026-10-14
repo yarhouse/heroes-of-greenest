@@ -52,7 +52,8 @@ CREATE TABLE monsters (
         'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT '',
     size ENUM('tiny', 'small', 'medium', 'large', 'huge', 'gargantuan') NOT NULL,
     type ENUM('aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend',
-        'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NOT NULL
+        'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NOT NULL,
+    gear VARCHAR(100) NOT NULL DEFAULT '' -- items ids it carries, e.g. '23,50'; a kill's loot comes from these
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read

@@ -5,13 +5,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Converter maps by creature, not level.** `bin/convert-area.php` picks the SRD stat block nearest CR = Rift level / 12,
-   so Kobold Mines is Goblin Bosses, Ogres and Hobgoblin Captains under Rift names. Map Rift race to an SRD stat block
-   (kobold → Kobold Warrior, goblin → Goblin Minion/Warrior/Boss by level, hobgoblin → Hobgoblin Warrior, rat → Giant Rat,
-   ...), keeping the CR rule as the fallback. Map Rift gear by type to SRD items (the old object parsing is in fd6aa89's
-   converter). Regenerate Kobold Mines; expect it to land around 5e level 3-8. Stat blocks: SRD Monsters A–Z p.258,
-   Animals p.344.
-2. **Bridge areas.** Choose a Rift-level-to-hero-level target, then convert Haon Dor (Rift 5-10), maybe the Sewers
+1. **Bridge areas.** Choose a Rift-level-to-hero-level target, then convert Haon Dor (Rift 5-10), maybe the Sewers
    (Rift 5-30), each hung off a Greenest exit, so there's something between Greenest and Kobold Mines.
 
 Any time: **accounts for the friends**, once each:
@@ -30,4 +24,8 @@ Any time: **accounts for the friends**, once each:
 - 2026-10-13 **Character creation:** class and Standard Array on first login; no backgrounds or species yet.
 - 2026-10-13 **LuminariMUD not adopted:** 3.5/Pathfinder rules, needs a VPS, and the content built so far wouldn't carry
   over. Its rules map (`luminari-rules-map.md` in the Project) stays as a source of ideas.
+- 2026-10-14 **Converted monsters** take an SRD stat block by Rift race or name, tiered by Rift level (goblin: Minion,
+  Warrior from 20, Boss from 30; hobgoblin: Warrior, Captain from 30), with CR = Rift level / 12 as the fallback. Their
+  Rift weapons, body armor and shields map to SRD items, and a kill's loot comes from those. Kobold Mines is now
+  CR 1/8 to 3.
 - 2026-10-14 **Deployed** at https://yarhouse.dev/heroes-of-greenest with `bin/deploy.sh` (see README).

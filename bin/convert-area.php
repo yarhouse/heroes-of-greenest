@@ -7,8 +7,9 @@ declare(strict_types=1);
 // e.g.   php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600
 // links Greenest room 6 south to area room 24600, and 24600 back the opposite way.
 //
-// Kept: room text, exits inside the area and the monsters each reset places. Dropped: doors and keys, traps, extra
-// descriptions, scripts and flags, and all objects (d20 plan milestone 3 maps Rift gear to SRD items).
+// Kept: room text, exits inside the area, the monsters each reset places and the gear resets hand them (weapons, body
+// armor and shields, as the SRD items they're closest to). Dropped: doors and keys, traps, extra descriptions, scripts
+// and flags, floor objects, and gear the SRD items don't cover (helms, rings, potions...).
 // Riftshadow ids (vnums) are kept as ids; Greenest's own content stays below 1001 and 24000 isn't used.
 
 if (PHP_SAPI !== 'cli') {
@@ -18,9 +19,32 @@ if (PHP_SAPI !== 'cli') {
 const BACK = [
     'north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east', 'up' => 'down', 'down' => 'up',
 ];
-// shortcut: a monster's stats are the SRD stat block nearest CR = Rift level / this, whatever the monster is.
-// d20 plan milestone 3 maps Rift races to fitting stat blocks instead.
-const RIFT_LEVELS_PER_CR = 12; // Rift 10-35 lands at CR 1-3, fair fights for one hero of level 3-8
+// A monster's SRD stat block, by its Rift race or else a word of its name ("the great sewer rat" is race human): the
+// last tier at or below its Rift level. Every name must be a stat block in seed.sql.
+const CREATURES = [
+    'goblin' => [0 => 'Goblin Minion', 20 => 'Goblin Warrior', 30 => 'Goblin Boss'],
+    'hobgoblin' => [0 => 'Hobgoblin Warrior', 30 => 'Hobgoblin Captain'],
+    'kobold' => [0 => 'Kobold Warrior'],
+    'rat' => [0 => 'Giant Rat'],
+    'wolf' => [0 => 'Wolf', 20 => 'Dire Wolf'],
+    'spider' => [0 => 'Giant Spider'],
+    'boar' => [0 => 'Boar'],
+    'skeleton' => [0 => 'Skeleton'],
+    'zombie' => [0 => 'Zombie'],
+    'gnoll' => [0 => 'Gnoll Warrior'],
+    'bugbear' => [0 => 'Bugbear Warrior'],
+    'ogre' => [0 => 'Ogre'],
+    'troll' => [0 => 'Troll'],
+    'bandit' => [0 => 'Bandit', 30 => 'Bandit Captain'],
+];
+// Anything else gets the SRD stat block nearest CR = Rift level / this.
+const RIFT_LEVELS_PER_CR = 12;
+// A Rift weapon whose name names no SRD weapon becomes one by a word of its name, else by its weapon class.
+const WEAPON_WORDS = ['curved' => 'Scimitar', 'pickaxe' => 'War Pick'];
+const WEAPON_CLASSES = [
+    'axe' => 'Battleaxe', 'dagger' => 'Dagger', 'flail' => 'Flail', 'mace' => 'Mace', 'polearm' => 'Halberd',
+    'spear' => 'Spear', 'staff' => 'Quarterstaff', 'sword' => 'Longsword', 'whip' => 'Whip',
+];
 
 function fail(string $why): never
 {
@@ -79,7 +103,7 @@ $sec = [];
 for ($i = 1; $i < count($parts); $i += 2) {
     $sec[$parts[$i]] = $parts[$i + 1];
 }
-foreach (['AREA', 'MOBS', 'ROOMS', 'RESETS'] as $name) {
+foreach (['AREA', 'MOBS', 'OBJS', 'ROOMS', 'RESETS'] as $name) {
     $sec[$name] ?? fail("$file has no #$name section.");
 }
 
@@ -92,7 +116,25 @@ preg_match_all('/-?\d+/', $numbers, $n);
 $mobs = [];
 foreach (records($sec['MOBS']) as $vnum => $body) {
     $s = explode('~', $body);
-    $mobs[$vnum] = ['name' => title($s[1]), 'level' => (int) $s[5]];
+    $mobs[$vnum] = [
+        'name' => title($s[1]),
+        'race' => preg_split('/\s+/', trim($s[4]))[3] ?? '',
+        'level' => (int) $s[5],
+        'gear' => [],
+    ];
+}
+
+// Objects: name~ short~ long~ "type material~", a values line opening with a weapon's class, the level line, flags.
+$objs = [];
+foreach (records($sec['OBJS']) as $vnum => $body) {
+    $s = explode('~', $body, 5);
+    preg_match_all('/^WEAR (\w+)/m', $s[4], $wear);
+    $objs[$vnum] = [
+        'name' => clean($s[1]),
+        'type' => strtok(trim($s[3]), " \n"),
+        'class' => strtok(trim($s[4]), " \n"),
+        'wear' => $wear[1],
+    ];
 }
 
 // Rooms: name~ description~ sector, then flag lines; exits are "D <DIR> <to vnum> <flags> <key>".
@@ -118,8 +160,17 @@ foreach ($exits as $vnum => $list) {
 isset($rooms[$entrance]) || fail("Room $entrance isn't in $file.");
 $exits[$entrance][BACK[$link_dir]] = $link_room;
 
-// Resets: "MOB <vnum> TO <room> ..." places a monster.
+// Resets: "MOB <vnum> TO <room> ..." places a monster; the EQUIP and GIVE lines after it hand that monster gear.
 preg_match_all('/^M\w* (\d+) TO (\d+)/m', $sec['RESETS'], $placed, PREG_SET_ORDER);
+preg_match_all('/^(?:M\w* (\d+) TO|[EG]\w* (\d+))/m', $sec['RESETS'], $lines, PREG_SET_ORDER);
+$mob = null;
+foreach ($lines as $l) {
+    if ($l[1] !== '') {
+        $mob = (int) $l[1];
+    } elseif (isset($mobs[$mob], $objs[(int) $l[2]])) {
+        $mobs[$mob]['gear'][] = $objs[(int) $l[2]];
+    }
+}
 
 // The SRD stat blocks (monsters below Greenest's own 1001) from seed.sql, to borrow stats from by CR. Every column is
 // copied as seed.sql writes it, so a new monsters column needs no change here.
@@ -141,10 +192,30 @@ foreach ($tuples[1] as $tuple) {
 }
 $srd || fail('Found no SRD stat blocks in db/seed.sql.');
 
-/** The first SRD stat block nearest in CR to a Riftshadow level. */
-function borrow(int $level, array $srd): array
+// The SRD items from seed.sql, to map gear to: [id, name, slot].
+preg_match('/^INSERT INTO items \(.*?\nAS new/ms', file_get_contents(__DIR__ . '/../db/seed.sql'), $seed_items)
+    || fail('Found no items INSERT in db/seed.sql.');
+preg_match_all("/^\((\d+), '([^']+)', '(\w+)'/m", $seed_items[0], $items, PREG_SET_ORDER);
+
+/** The SRD stat block for a Rift monster: by race, then by a word of its name, then nearest in CR to its level. */
+function borrow(array $mob, array $srd): array
 {
-    $cr = $level / RIFT_LEVELS_PER_CR;
+    $words = preg_split('/[^a-z]+/', strtolower($mob['name']));
+    $tiers = CREATURES[$mob['race']] ?? null;
+    foreach ($words as $w) {
+        $tiers ??= CREATURES[$w] ?? null;
+    }
+    if ($tiers !== null) {
+        $name = array_filter($tiers, fn ($min) => $min <= $mob['level'], ARRAY_FILTER_USE_KEY);
+        $name = "'" . str_replace("'", "''", end($name) ?: reset($tiers)) . "'";
+        foreach ($srd as $r) {
+            if ($r['name'] === $name) {
+                return $r;
+            }
+        }
+        fail("CREATURES names $name, which isn't an SRD stat block in db/seed.sql.");
+    }
+    $cr = $mob['level'] / RIFT_LEVELS_PER_CR;
     $best = $srd[0];
     foreach ($srd as $r) {
         if (abs((float) $r['cr'] - $cr) < abs((float) $best['cr'] - $cr)) {
@@ -152,6 +223,43 @@ function borrow(int $level, array $srd): array
         }
     }
     return $best;
+}
+
+/**
+ * The SRD item ids for a monster's Rift gear: weapons by the SRD weapon their name names ("a curved scimitar") or else
+ * by weapon class, shields as the Shield, and body armor (not capes and cloaks) by the SRD armor their name names.
+ */
+function gear(array $gear, array $items): string
+{
+    $ids = [];
+    foreach ($gear as $o) {
+        $slot = match (true) { // by item type first: some shields are also flagged wieldable
+            $o['type'] === 'weapon' => 'weapon',
+            in_array('SHIELD', $o['wear'], true) => 'shield',
+            in_array('BODY', $o['wear'], true) && !in_array('ABOUT', $o['wear'], true) => 'armor',
+            default => null,
+        };
+        $name = str_replace('-', '', strtolower($o['name'])); // "battle-axe" is the Battleaxe
+        [$id, $key_len] = [null, 0];
+        foreach ($items as [, $item_id, $srd_name, $srd_slot]) {
+            $key = strtolower(preg_replace('/ Armor$/', '', $srd_name));
+            if ($srd_slot === $slot && ($slot === 'shield' || preg_match('/\b' . $key . '\b/', $name))
+                && strlen($key) > $key_len) { // "studded leather" over "leather"
+                [$id, $key_len] = [(int) $item_id, strlen($key)];
+            }
+        }
+        if ($id === null && $slot === 'weapon') {
+            $hint = array_intersect_key(WEAPON_WORDS, array_flip(explode(' ', $name)));
+            $hint = $hint ? reset($hint) : WEAPON_CLASSES[$o['class']] ?? null;
+            $by_class = array_filter($items, fn ($i) => $i[2] === $hint);
+            $id = $by_class ? (int) reset($by_class)[1] : null;
+        }
+        if ($id !== null) {
+            $ids[$id] = $id;
+        }
+    }
+    sort($ids);
+    return implode(',', $ids);
 }
 
 $sql_rooms = [];
@@ -179,10 +287,10 @@ ksort($used_mobs);
 $sql_mobs = [];
 foreach (array_keys($used_mobs) as $vnum) {
     $m = $mobs[$vnum];
-    $r = borrow($m['level'], $srd);
+    $r = borrow($m, $srd);
     $srd_name = str_replace("''", "'", substr($r['name'], 1, -1));
-    $r = ['id' => $vnum, 'name' => str($m['name'])] + $r;
-    $sql_mobs[] = '(' . implode(', ', $r) . ") /* SRD $srd_name, Rift level {$m['level']} */";
+    $r = ['id' => $vnum, 'name' => str($m['name'])] + $r + ['gear' => str(gear($m['gear'], $items))];
+    $sql_mobs[] = '(' . implode(', ', $r) . ") /* SRD $srd_name, Rift {$m['race']} level {$m['level']} */";
 }
 
 $base = basename($file, ".are");
@@ -197,7 +305,8 @@ echo <<<SQL
 -- International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
--- Monster stats are the SRD stat block nearest CR = Riftshadow level / 12.
+-- Monster stats are SRD stat blocks by Riftshadow race (the converter's CREATURES), else nearest CR = level / 12.
+-- A monster's gear is the SRD items its Riftshadow gear maps to; a kill's loot comes from it.
 SET NAMES utf8mb4;
 
 DELETE FROM spawns WHERE room_id BETWEEN $lo AND $hi;
@@ -208,7 +317,8 @@ SQL;
 echo insert('INSERT INTO rooms (id, name, description)', $sql_rooms,
     "AS new\nON DUPLICATE KEY UPDATE name = new.name, description = new.description");
 echo insert('INSERT INTO exits (room_id, dir, to_room)', $sql_exits, '');
-echo insert('INSERT INTO monsters (' . implode(', ', $columns) . ')', $sql_mobs, "AS new\n{$seed[3]}");
+echo insert('INSERT INTO monsters (' . implode(', ', $columns) . ', gear)', $sql_mobs,
+    "AS new\n{$seed[3]}, gear = new.gear");
 echo "-- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.\n";
 echo insert('INSERT INTO spawns (id, room_id, monster_id, dead_since)', $sql_spawns, '');
 
