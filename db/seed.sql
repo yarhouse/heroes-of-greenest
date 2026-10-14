@@ -132,7 +132,10 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
 -- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,
 -- Blindness/Deafness p.113 (as Blindness), Mass Healing Word p.148, Spirit Guardians p.164, Divine Favor p.125,
--- Divine Smite p.125, Shining Smite p.162, Hunter's Mark p.141, Ensnaring Strike p.128, Entangle p.128. Only the spells a fight
+-- Divine Smite p.125, Shining Smite p.162, Hunter's Mark p.141, Ensnaring Strike p.128, Entangle p.128, Fire Bolt
+-- p.131, Ray of Frost p.157, Shocking Grasp p.162, Chill Touch p.115, Acid Splash p.107, Poison Spray p.153, Magic
+-- Missile p.146, Burning Hands p.114, Thunderwave p.169, Mage Armor p.145, Scorching Ray p.159, Shatter p.161, Web
+-- p.174, Mind Spike p.149, Fireball p.131, Lightning Bolt p.144. Spells with an area hit only the foe you fight. Only the spells a fight
 -- here can use. Second line: targets, count and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
     targets, count, upcast_targets, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
@@ -183,7 +186,39 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
     'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 1,
     'attack; your first weapon hit makes it save (Str) or be Restrained'),
 (20, 'Entangle', 1, 'druid,ranger', 'action', 'save', FALSE, NULL, NULL, NULL, 'str', FALSE,
-    'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 1, 'Str save or it is Restrained by grasping plants')
+    'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 1, 'Str save or it is Restrained by grasping plants'),
+(21, 'Fire Bolt', 0, 'sorcerer,wizard', 'action', 'attack', TRUE, '1d10', NULL, 'fire', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d10 Fire'),
+(22, 'Ray of Frost', 0, 'sorcerer,wizard', 'action', 'attack', TRUE, '1d8', NULL, 'cold', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d8 Cold'),
+(23, 'Shocking Grasp', 0, 'sorcerer,wizard', 'action', 'attack', FALSE, '1d8', NULL, 'lightning', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'melee spell attack, 1d8 Lightning'),
+(24, 'Chill Touch', 0, 'sorcerer,warlock,wizard', 'action', 'attack', FALSE, '1d10', NULL, 'necrotic', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'melee spell attack, 1d10 Necrotic'),
+(25, 'Acid Splash', 0, 'sorcerer,wizard', 'action', 'save', FALSE, '1d6', NULL, 'acid', 'dex', FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 1d6 Acid'),
+(26, 'Poison Spray', 0, 'druid,sorcerer,warlock,wizard', 'action', 'attack', TRUE, '1d12', NULL, 'poison', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d12 Poison'),
+(27, 'Magic Missile', 1, 'sorcerer,wizard', 'action', 'auto', FALSE, '3d4+3', '1d4+1', 'force', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'three darts that never miss, 1d4 + 1 Force each'),
+(28, 'Burning Hands', 1, 'sorcerer,wizard', 'action', 'save', FALSE, '3d6', '1d6', 'fire', 'dex', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 3d6 Fire, half on a success'),
+(29, 'Thunderwave', 1, 'bard,druid,sorcerer,wizard', 'action', 'save', FALSE, '2d8', '1d8', 'thunder', 'con', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Con save or 2d8 Thunder, half on a success'),
+(30, 'Mage Armor', 1, 'sorcerer,wizard', 'action', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
+    'ally', 1, 0, NULL, 'base_ac', '13', FALSE, FALSE, 480, 'you or a hero here without armor: AC 13 + Dex for 8 hours'),
+(31, 'Scorching Ray', 2, 'sorcerer,wizard', 'action', 'attack', TRUE, '2d6', NULL, 'fire', NULL, FALSE,
+    'foe', 3, 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'three spell attacks, 2d6 Fire each'),
+(32, 'Shatter', 2, 'bard,sorcerer,wizard', 'action', 'save', FALSE, '3d8', '1d8', 'thunder', 'con', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Con save or 3d8 Thunder, half on a success'),
+(33, 'Web', 2, 'sorcerer,wizard', 'action', 'save', FALSE, NULL, NULL, NULL, 'dex', FALSE,
+    'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 60, 'Dex save or it is Restrained in sticky webs'),
+(34, 'Mind Spike', 2, 'sorcerer,warlock,wizard', 'action', 'save', FALSE, '3d8', '1d8', 'psychic', 'wis', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Wis save or 3d8 Psychic, half on a success'),
+(35, 'Fireball', 3, 'sorcerer,wizard', 'action', 'save', FALSE, '8d6', '1d6', 'fire', 'dex', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 8d6 Fire, half on a success'),
+(36, 'Lightning Bolt', 3, 'sorcerer,wizard', 'action', 'save', FALSE, '8d6', '1d6', 'lightning', 'dex', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 8d6 Lightning, half on a success')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

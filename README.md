@@ -54,7 +54,7 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
-login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin or Ranger) and assigns the Standard Array, and starts with
+login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger or Wizard) and assigns the Standard Array, and starts with
 that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
@@ -67,7 +67,11 @@ from level 2 spend Focus Points (back on a short rest) on `flurry`, `patient` an
 once a long rest, and Shining Smite), cast Divine Favor, Cure Wounds and the Cleric's Bless, Command, Shield of Faith
 and Aid, and gain Defense (2), Extra Attack (5), Aura of Protection on their own saves (6) and Radiant Strikes (11);
 Rangers cast Hunter's Mark (free a few times a long rest), Ensnaring Strike, Entangle, Cure Wounds and Aid, and gain
-Archery (2), Colossus Slayer (3), Extra Attack (5) and Multiattack Defense (7);
+Archery (2), Colossus Slayer (3), Extra Attack (5) and Multiattack Defense (7); Wizards know every Wizard cantrip
+and spell the game has (Fire Bolt, Ray of Frost, Shocking Grasp, Chill Touch, Acid Splash, Poison Spray, Magic Missile,
+Burning Hands, Thunderwave, Mage Armor, Scorching Ray, Shatter, Web, Mind Spike, Hold Person, Blindness, Fireball,
+Lightning Bolt), get slots back with Arcane Recovery on a short rest, and from 3 their cantrips deal half damage on a
+miss (Potent Cantrip); an area spell hits only the foe you fight;
 Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
 Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
 Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;

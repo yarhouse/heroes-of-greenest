@@ -61,7 +61,7 @@ try {
     $out = run_command(hero('Testc'), 'look');
     check(says($out, 'Choose your class') && says($out, 'barbarian') && !says($out, "There's no"),
         'a new hero chooses a class');
-    check(says(run_command(hero('Testc'), 'wizard'), "There's no 'wizard' class"), 'an unknown class is refused');
+    check(says(run_command(hero('Testc'), 'artificer'), "There's no 'artificer' class"), 'an unknown class is refused');
     check(says(run_command(hero('Testc'), 'n'), "no 'n' class") && hero('Testc')['room_id'] === START_ROOM,
         'no game commands during creation');
     $out = run_command(hero('Testc'), 'cle');
@@ -1013,6 +1013,58 @@ try {
     check(says(run_command(hero('Testh'), 'score'), 'Favored Enemy 2/3'), 'level 5 and up: 3 free Hunter\'s Marks');
     $dice_queue = [20, 1];
     run_command(hero('Testh'), 'flee');
+
+    // Wizard (Testi: Int 15: spell save DC 12, spell attack +4). The dummy: AC 10, saves +0.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testi', 'correct horse');
+    create('Testi', 'wizard');
+    $id = hero('Testi')['id'];
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testi'");
+    $score = run_command(hero('Testi'), 'score');
+    check(says($score, 'level 1 Wizard') && says($score, 'HP 7/7   AC 11')
+        && says($score, 'Quarterstaff +1 to hit, 1d8-1 damage') && says($score, 'Hit Dice 1/1 d6   Spell slots 2/2')
+        && says($score, 'Saves  Str -1  Dex +1  Con +1  Int +4  Wis +4  Cha +0')
+        && count(objects_here('user_id', (int) $id)) === 3 && hero('Testi')['gold'] === 5,
+        'Wizard: d6, a Quarterstaff and 2 Daggers, Int and Wis saves');
+    q('INSERT INTO objects (item_id, user_id) VALUES (24, ?)', [$id]);
+    check(says(run_command(hero('Testi'), 'equip shortsword'), 'no Proficiency Bonus'), 'Wizards use Simple weapons');
+    run_command(hero('Testi'), 'equip quarterstaff');
+    $out = run_command(hero('Testi'), 'cast');
+    check(says($out, 'fire bolt <monster>') && says($out, 'cantrip: spell attack, 1d10 Fire')
+        && says($out, 'magic missile') && says($out, 'mage armor [hero]'), 'Wizard cantrips and prepared spells');
+    check(says(run_command(hero('Testi'), 'cast mage'), 'You cast Mage Armor on you. Slots 1/2.')
+        && says(run_command(hero('Testi'), 'score'), 'AC 14'), 'Mage Armor: AC 13 + Dex');
+    $dice_queue = [10, 1, 1, 2, 3, 1];
+    $out = run_command(hero('Testi'), 'cast magic dummy');
+    check(says($out, 'Your Magic Missile strikes the Training Dummy for 9 damage.') && $dice_queue === [],
+        'Magic Missile: three darts, no attack roll');
+    $dice_queue = [12, 3, 1];
+    check(says(run_command(hero('Testi'), 'cast fire'), 'Your Fire Bolt misses the Training Dummy (7 vs AC 10, with '
+        . 'Disadvantage).') && $dice_queue === [], 'Fire Bolt: a ranged spell attack, Disadvantage next to the foe');
+    q("UPDATE users SET level = 3, slots_spent = '' WHERE name = 'Testi'");
+    $dice_queue = [3, 3, 8, 1];
+    check(says(run_command(hero('Testi'), 'cast fire'), 'but still deals 4 damage.') && $dice_queue === [],
+        'Potent Cantrip: a missed cantrip deals half damage');
+    run_command(hero('Testi'), 'prepare mage armor, magic missile, burning hands, thunderwave, scorching ray');
+    $dice_queue = [12, 15, 3, 4, 1, 1, 15, 15, 2, 2, 1]; // three rays: a hit, a miss, a hit
+    $out = run_command(hero('Testi'), 'cast scorching');
+    check(count(array_filter($out, fn ($l) => str_contains($l, 'Your Scorching Ray hits'))) === 2
+        && says($out, 'Your Scorching Ray misses') && $dice_queue === [] && hero('Testi')['slots_spent'] === '0,1',
+        'Scorching Ray: three rays, each its own attack roll');
+    q("UPDATE users SET level = 5, slots_spent = '' WHERE name = 'Testi'");
+    run_command(hero('Testi'), 'prepare mage, magic, burning, thunderwave, scorching, fireball');
+    $dice_queue = [5, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+    check(says(run_command(hero('Testi'), 'cast fireball'), 'fails its Dex save (5 vs DC 13) against your Fireball '
+        . 'and takes 8 damage.') && $dice_queue === [], 'Fireball: 8d6, Dex save for half');
+    $dice_queue = [20, 1];
+    run_command(hero('Testi'), 'flee');
+    q("UPDATE users SET slots_spent = '1,1,1', resting = 'short', rest_until = NOW() WHERE name = 'Testi'");
+    check(says(run_command(hero('Testi'), 'score'), 'with Arcane Recovery bringing back slots of level 3.')
+        && hero('Testi')['slots_spent'] === '1,1,0', 'Arcane Recovery: slots worth half your level, highest first');
+    q("UPDATE users SET resting = 'short', rest_until = NOW() WHERE name = 'Testi'");
+    check(!says(run_command(hero('Testi'), 'score'), 'Arcane Recovery'), 'once a long rest');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
