@@ -54,7 +54,7 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
-login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger or Wizard) and assigns the Standard Array, and starts with
+login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger, Sorcerer or Wizard) and assigns the Standard Array, and starts with
 that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
@@ -71,7 +71,10 @@ Archery (2), Colossus Slayer (3), Extra Attack (5) and Multiattack Defense (7); 
 and spell the game has (Fire Bolt, Ray of Frost, Shocking Grasp, Chill Touch, Acid Splash, Poison Spray, Magic Missile,
 Burning Hands, Thunderwave, Mage Armor, Scorching Ray, Shatter, Web, Mind Spike, Hold Person, Blindness, Fireball,
 Lightning Bolt), get slots back with Arcane Recovery on a short rest, and from 3 their cantrips deal half damage on a
-miss (Potent Cantrip); an area spell hits only the foe you fight;
+miss (Potent Cantrip); an area spell hits only the foe you fight; Sorcerers cast from the same arcane spells with
+Charisma, unleash `innate` sorcery in a fight (+1 save DC, Advantage on spell attacks), spend Sorcery Points on `font`
+(points into slots and back) and Metamagic (`cast heightened ...`, `cast seeking ...`), and as Draconic Sorcerers get
+more HP, AC 10 + Dex + Cha, Command, and Fire resistance and damage (6);
 Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
 Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
 Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;

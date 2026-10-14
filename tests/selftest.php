@@ -875,7 +875,7 @@ try {
         && hero('Testf')['uses_spent'] === 0, 'a short rest brings back every Focus Point');
     q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testf'");
     run_command(hero('Testf'), 'score');
-    check(hero('Testf')['once_used'] === 0 && hero('Testf')['wholeness_spent'] === 0,
+    check(hero('Testf')['once_used'] === 0 && hero('Testf')['feature_spent'] === 0,
         'a long rest brings back Uncanny Metabolism and Wholeness of Body');
     q("UPDATE users SET level = 14 WHERE name = 'Testf'");
     check(says(run_command(hero('Testf'), 'score'), 'Saves  Str +6  Dex +7  Con +6  Int +5  Wis +7  Cha +4'),
@@ -1065,6 +1065,62 @@ try {
         && hero('Testi')['slots_spent'] === '1,1,0', 'Arcane Recovery: slots worth half your level, highest first');
     q("UPDATE users SET resting = 'short', rest_until = NOW() WHERE name = 'Testi'");
     check(!says(run_command(hero('Testi'), 'score'), 'Arcane Recovery'), 'once a long rest');
+
+    // Sorcerer (Testj: Cha 15: spell save DC 12, spell attack +4). The dummy: AC 10, saves +0.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testj', 'correct horse');
+    create('Testj', 'sorcerer');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testj'");
+    $score = run_command(hero('Testj'), 'score');
+    check(says($score, 'level 1 Sorcerer') && says($score, 'HP 8/8   AC 11') && says($score, 'Spear +2 to hit')
+        && says($score, 'Hit Dice 1/1 d6   Innate Sorcery 2/2   Spell slots 2/2')
+        && says($score, 'Saves  Str +0  Dex +1  Con +4  Int -1  Wis +1  Cha +4')
+        && count(objects_here('user_id', (int) hero('Testj')['id'])) === 3 && hero('Testj')['gold'] === 28,
+        'Sorcerer: d6, a Spear and 2 Daggers, Con and Cha saves');
+    check(says(run_command(hero('Testj'), 'innate'), 'needs a fight'), 'Innate Sorcery needs a fight');
+    $dice_queue = [10, 1, 12, 5];
+    check(says(run_command(hero('Testj'), 'cast fire bolt dummy'), 'closes in!') && $dice_queue === [],
+        'a Fire Bolt opens a volley');
+    $out = run_command(hero('Testj'), 'innate');
+    $dice_queue = [12, 5, 1];
+    check(says($out, 'Magic surges up') && !says($out, 'Slam') && says(run_command(hero('Testj'), 'cast fire'),
+        'Your Fire Bolt hits the Training Dummy (16 vs AC 10) for 5 damage.') && $dice_queue === []
+        && says(run_command(hero('Testj'), 'cast'), 'save DC 13, spell attack +4'),
+        "Innate Sorcery: Advantage cancels the close foe's Disadvantage, and +1 to the save DC");
+    q("UPDATE users SET level = 2, slots_spent = '3' WHERE name = 'Testj'");
+    $out = run_command(hero('Testj'), 'font 1');
+    check(says($out, 'You shape 2 Sorcery Points into a level 1 spell slot. Slots 1/3.')
+        && hero('Testj')['uses_spent'] === 2, 'Font of Magic: Sorcery Points into a slot');
+    check(says(run_command(hero('Testj'), 'font points 1'), 'Sorcery Points: 1/2. Slots 0/3.'),
+        'and a slot back into points');
+    q("UPDATE users SET uses_spent = 0, slots_spent = '' WHERE name = 'Testj'");
+    $dice_queue = [15, 5, 1, 1, 1, 1];
+    $out = run_command(hero('Testj'), 'cast heightened burning');
+    check(says($out, 'fails its Dex save (5 vs DC 13, with Disadvantage) against your Burning Hands and takes 3 '
+        . 'damage.')
+        && hero('Testj')['uses_spent'] === 2 && $dice_queue === [], 'Heightened Spell: Disadvantage on the save');
+    check(says(run_command(hero('Testj'), 'cast heightened fire'), 'only on a spell with a saving throw')
+        && says(run_command(hero('Testj'), 'cast seeking fire'), 'You need 1 Sorcery Point'), 'Metamagic checks');
+    q("UPDATE users SET uses_spent = 1 WHERE name = 'Testj'");
+    $dice_queue = [1, 15, 5, 1];
+    $out = run_command(hero('Testj'), 'cast seeking fire');
+    check(says($out, 'Seeking Spell steers it back')
+        && says($out, 'Your Fire Bolt hits the Training Dummy (19 vs AC 10)')
+        && $dice_queue === [], 'Seeking Spell: a missed spell attack rolls again');
+    q("UPDATE users SET level = 6 WHERE name = 'Testj'");
+    $out = run_command(hero('Testj'), 'cast');
+    $dice_queue = [12, 5, 1, 1]; // two d10s at level 5, + Cha
+    check(says(run_command(hero('Testj'), 'cast fire'), 'for 8 damage.') && says($out, 'command <monster>')
+        && says(run_command(hero('Testj'), 'score'), 'AC 13') && $dice_queue === []
+        && str_contains(with_stats(hero('Testj'))['resistances'], 'fire'),
+        'Draconic Sorcery: AC 10 + Dex + Cha, Command always prepared, and Elemental Affinity with Fire');
+    $dice_queue = [20, 1];
+    run_command(hero('Testj'), 'flee');
+    q("UPDATE users SET uses_spent = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testj'");
+    check(says(run_command(hero('Testj'), 'score'), 'Sorcerous Restoration bringing back 3 Sorcery Points')
+        && hero('Testj')['uses_spent'] === 2, 'Sorcerous Restoration: half your level in points on a short rest');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
