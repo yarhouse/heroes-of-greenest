@@ -33,16 +33,16 @@ const FONT_COSTS = [1 => [2, 2], 2 => [3, 3], 3 => [5, 5], 4 => [6, 7], 5 => [7,
 const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
 
 /**
- * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Monk p.49, Paladin p.52,
- * Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level (both before the
- * Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw proficiencies,
- * Weapon Mastery, a caster's spellcasting ability and slot table (full or half), prepared spells by level, the ones a
- * new hero starts with and the ones always prepared (name => from level), armor training, and starting equipment A as
- * [item id, worn]. Kits leave out ammunition, packs, tools and focuses. Weapon training is trained()'s (the Fighter's
- * and Paladin's Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the subclasses
- * are the SRD's: Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Evoker, Draconic Sorcery
- * with Fire for its Elemental Affinity). shortcut: casters know every cantrip of their class, and a Wizard's
- * spellbook holds every Wizard spell, until there are more to choose from.
+ * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Bard p.30, Cleric p.36, Fighter p.47, Monk p.49,
+ * Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level (both
+ * before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw
+ * proficiencies, Weapon Mastery, a caster's spellcasting ability and slot table (full or half), prepared spells by
+ * level, the ones a new hero starts with and the ones always prepared (name => from level), armor training, and
+ * starting equipment A as [item id, worn]. Kits leave out ammunition, packs, tools and focuses. Weapon training is
+ * trained()'s (the Fighter's and Paladin's Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order
+ * is Protector, the subclasses are the SRD's: Lore, Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack
+ * Defense, Evoker, Draconic Sorcery with Fire for its Elemental Affinity). shortcut: casters know every cantrip of
+ * their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose from.
  */
 const CLASSES = [
     'fighter' => [
@@ -117,6 +117,16 @@ const CLASSES = [
         'kit' => [[8, true], [2, false], [2, false]], // Quarterstaff, 2 Daggers
         'about' => 'd6 HP, no armor. Fire Bolt, Magic Missile, Fireball: the most spells of all.',
     ],
+    'bard' => [
+        'name' => 'Bard', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [8, 14, 12, 13, 10, 15],
+        'saves' => ['dexterity', 'charisma'], 'casting' => 'charisma', 'slots' => 'slots',
+        'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
+        'spells' => ['Bane', 'Dissonant Whispers', 'Faerie Fire', 'Healing Word'], // the SRD suggests Charm Person and
+        // Color Spray, not modeled
+        'armor' => ['light'], 'gold' => 19,
+        'kit' => [[32, true], [2, true], [2, false]], // Leather Armor, 2 Daggers
+        'about' => 'd8 HP, light armor. Inspire other heroes, cut foes down with words, heal and hex.',
+    ],
     'sorcerer' => [
         'name' => 'Sorcerer', 'die' => 6, 'hp' => 6, 'per_level' => 4, 'scores' => [10, 13, 14, 8, 12, 15],
         'saves' => ['constitution', 'charisma'], 'casting' => 'charisma', 'slots' => 'slots',
@@ -148,6 +158,7 @@ const COMMANDS = [
     'stun <monster>' => 'Monk 5: attack; your first hit tries a Stunning Strike (1 Focus)',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
+    'inspire <hero>' => 'Bard: give a hero here a Bardic Inspiration die for a failed attack or save; costs no turn',
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
     'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
     'innate' => 'Sorcerer: Innate Sorcery for the fight, +1 spell save DC and Advantage on spell attacks; no turn',
@@ -208,8 +219,9 @@ function mod(int $score): int
 
 /**
  * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind, Rage, Focus Points, the
- * Lay On Hands pool, free Hunter's Marks or Sorcery Points, and 'slots' a caster's spell slots by spell level. A
- * Draconic Sorcerer has Draconic Resilience (level 3: +1 HP a level) and Elemental Affinity (6: Fire Resistance).
+ * Lay On Hands pool, free Hunter's Marks, Sorcery Points or Bardic Inspiration, and 'slots' a caster's spell slots by
+ * spell level. A Draconic Sorcerer has Draconic Resilience (level 3: +1 HP a level) and Elemental Affinity (6: Fire
+ * Resistance).
  */
 function with_stats(array $me): array
 {
@@ -230,8 +242,10 @@ function with_stats(array $me): array
             'paladin' => 5 * $me['level'], // Lay On Hands
             'ranger' => 2 + intdiv($me['level'] - 1, 4), // Favored Enemy: free Hunter's Marks
             'sorcerer' => $me['level'] >= 2 ? $me['level'] : 0, // Sorcery Points
+            'bard' => max(1, mod($me['charisma'])), // Bardic Inspiration
             default => 0,
         },
+        'bardic' => $me['level'] >= 15 ? 12 : ($me['level'] >= 10 ? 10 : ($me['level'] >= 5 ? 8 : 6)), // its die
         'rage_damage' => $lv['rage_damage'],
         'martial_arts' => $lv['martial_arts'],
         'slots' => $table === null ? [] : array_map('intval', explode(',', $lv[$table])),
@@ -297,6 +311,7 @@ function run_command(array $me, string $input): array
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
         $verb === 'lay' => cmd_lay($me, trim($arg)),
+        $verb === 'inspire' => cmd_inspire($me, trim($arg)),
         $verb === 'cast' => cmd_cast($me, trim($arg)),
         $verb === 'prepare' => cmd_prepare($me, trim($arg)),
         $verb === 'rest' => cmd_rest($me, 'short'),
@@ -550,6 +565,11 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         if ($me['class'] === 'monk' && $me['level'] >= 2) {
             focus_on_initiative($me, $lines);
         }
+        if ($me['class'] === 'bard' && $me['level'] >= 18 && $me['uses_spent'] > max(0, $me['uses'] - 2)) {
+            $me['uses_spent'] = max(0, $me['uses'] - 2); // Superior Inspiration
+            q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
+            $lines[] = 'Superior Inspiration: you have ' . ($me['uses'] - $me['uses_spent']) . ' Bardic Inspiration.';
+        }
         // My effects from earlier fights now last only their own time, even if I'm back against the same spawn.
         q('UPDATE effects SET during = NULL WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
         $foe['effects'] = effects_on('spawn_id', $foe['id']);
@@ -667,7 +687,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             isset($w['strike']) => ['Your Unarmed Strike', 'es'],
             default => ['You', ''],
         };
-        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+        if (misses($me, $d20, $total, $foe['ac'], $with)) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "$you miss$s the {$foe['name']} ($why$with).";
             if ($w['mastery'] === 'graze' && $w['attack_mod'] > 0) { // the modifier only: no Rage, no dice
@@ -768,7 +788,7 @@ function cleave(array &$me, array $w, array $foe, array &$lines): void
     $aim = has($me, 'reckless') && $w['str_based'];
     [$d20, $edge, $bonus, $with] = attack_d20($me, $other, $aim);
     $total = $d20 + $w['to_hit'] + $bonus;
-    if ($d20 === 1 || ($d20 < 20 && $total < $other['ac'])) {
+    if (misses($me, $d20, $total, $other['ac'], $with)) {
         $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$other['ac']}";
         $lines[] = "You cleave at the {$other['name']} and miss ($why$with).";
         return;
@@ -822,6 +842,46 @@ function attack_d20(array &$me, array &$foe, bool $adv = false, bool $dis = fals
     return [$d20, $edge, $bonus, with($edge) . $note];
 }
 
+/**
+ * True if my attack roll misses AC $ac: a natural 1, or a total under it that isn't a natural 20, once inspired() has
+ * had its chance to add to $total and the line's note $with.
+ */
+function misses(array &$me, int $d20, int &$total, int $ac, string &$with): bool
+{
+    if ($d20 === 1 || $d20 === 20 || $total >= $ac) {
+        return $d20 === 1;
+    }
+    [$add, $note] = inspired($me, $ac - $total);
+    [$total, $with] = [$total + $add, $with . $note];
+    return $total < $ac;
+}
+
+/**
+ * $who (a hero) failed a D20 Test by $short: a Bardic Inspiration die they hold rolls and adds, when it could make up
+ * the difference (it's spent once rolled). Failing that, an attack roll may use a Lore Bard's Peerless Skill (14): one
+ * of their own uses, spent only if its die makes up the difference. Returns [what it adds, a note for the line].
+ */
+function inspired(array &$who, int $short, bool $attack = true): array
+{
+    foreach ($who['effects'] ?? [] as $i => $e) {
+        // Deleting first means a copy of $who that still lists the die (save() takes one) can't spend it twice.
+        if ($e['effect'] === 'inspiration' && $short <= (int) substr($e['value'], 2)
+            && q('DELETE FROM effects WHERE id = ?', [$e['id']])->rowCount() === 1) {
+            unset($who['effects'][$i]);
+            $n = roll($e['value']);
+            return [$n, ", +$n Bardic Inspiration"];
+        }
+    }
+    $peerless = $attack && ($who['class'] ?? '') === 'bard' && $who['level'] >= 14;
+    if ($peerless && $who['uses_spent'] < $who['uses'] && $short <= $who['bardic']) {
+        $n = roll('1d' . $who['bardic']);
+        if ($n >= $short && spend_uses($who)) {
+            return [$n, ", +$n Peerless Skill"];
+        }
+    }
+    return [0, ''];
+}
+
 /** The dice $who's effects add to a d20 test, rolled (Bless +1d4, Bane -1d4), and a note like ', +3 Bless'. */
 function d20_bonus(array $who): array
 {
@@ -857,7 +917,7 @@ function with(int $edge): string
  * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed and Stunned fail
  * Str and Dex saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
  * Incapacitated; Restrained gives Disadvantage on Dex saves, as does $dis (Heightened Spell). Effects like Bless add
- * their dice.
+ * their dice, and a hero who fails may be inspired().
  */
 function save(array $who, string $ability, int $dc, bool $dis = false): array
 {
@@ -869,6 +929,9 @@ function save(array $who, string $ability, int $dc, bool $dis = false): array
         || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed')))
         <=> ($dis || ($ability === 'dex' && has($who, 'restrained')));
     $total = d20($edge) + $who[$ability . '_save'] + d20_bonus($who)[0];
+    if ($total < $dc && isset($who['class'])) {
+        $total += inspired($who, $dc - $total, false)[0];
+    }
     return [$total, $total >= $dc, $edge];
 }
 
@@ -1072,6 +1135,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
     $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
     $deflect = $me['class'] === 'monk' && $me['level'] >= 3; // my Reaction, once a turn of theirs
+    $cutting = $me['class'] === 'bard' && $me['level'] >= 3; // Cutting Words, my Reaction too
     $hit_me = false; // Multiattack Defense (Ranger 7): after one hit, its other attacks this turn have Disadvantage
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
         $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held || has($foe, 'sapped') || has($foe, 'blinded')
@@ -1087,6 +1151,16 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         if ($d20 === 1 || ($d20 < 20 && $total < $me['ac'])) {
             $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . "$with).";
             continue;
+        }
+        // Cutting Words: when my die could turn the hit, spend a Bardic Inspiration and take it off the roll.
+        if ($cutting && $d20 < 20 && $total - $me['ac'] < $me['bardic'] && spend_uses($me)) {
+            $cutting = false;
+            $cut = roll('1d' . $me['bardic']);
+            [$total, $with] = [$total - $cut, "$with, -$cut Cutting Words"];
+            if ($total < $me['ac']) {
+                $lines[] = "$its misses you ($total vs AC {$me['ac']}$with).";
+                continue;
+            }
         }
         [$dmg, $note] = typed(max(0, roll($foe['damage'], $d20 === 20)), $foe['damage_type'], $me);
         if ($foe['extra_damage'] !== null) {
@@ -1351,6 +1425,38 @@ function cmd_wholeness(array $me): array
 }
 
 /**
+ * Bardic Inspiration (Bard 1): a Bonus Action, so it costs no turn. Gives a hero here (not me) my Bardic Inspiration
+ * die for the next hour, to add to an attack roll or save they fail when it could make the difference (inspired()). One
+ * die at a time per hero; Charisma modifier (at least 1) uses a long rest, and from level 5 a short rest too.
+ */
+function cmd_inspire(array $me, string $target): array
+{
+    if ($me['class'] !== 'bard') {
+        return ['Only Bards give Bardic Inspiration.'];
+    }
+    $others = q('SELECT * FROM users WHERE room_id = ? AND id <> ? AND setup IS NULL ORDER BY name',
+        [$me['room_id'], $me['id']])->fetchAll();
+    $who = array_values(array_filter($others, fn ($o) => names($target, $o['name'])))[0] ?? null;
+    if ($who === null) {
+        return [$target === '' ? 'Inspire whom? Another hero here.' : "There's no hero called '$target' here."];
+    }
+    if (in_array('inspiration', array_column(effects_on('user_id', (int) $who['id']), 'effect'), true)) {
+        return ["{$who['name']} already holds a Bardic Inspiration die."];
+    }
+    if ($me['uses_spent'] >= $me['uses']) {
+        return ['You have no Bardic Inspiration left. Rest to recover it.'];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    spend_uses($me);
+    $spell = q("SELECT * FROM spells WHERE name = 'Bardic Inspiration'")->fetch();
+    start_effect($me, $spell, 0, 'user_id', [$who], null, "1d{$me['bardic']}");
+    return ["You inspire {$who['name']} with a d{$me['bardic']} of Bardic Inspiration. "
+        . ($me['uses'] - $me['uses_spent']) . ' left.'];
+}
+
+/**
  * Innate Sorcery (Sorcerer 1): a Bonus Action, so it costs no turn. For the rest of the fight (the SRD's 1 minute) my
  * spell save DC is 1 higher and my spell attack rolls have Advantage. Twice a long rest, and from level 7 (Sorcery
  * Incarnate) for 2 Sorcery Points once those are gone.
@@ -1602,10 +1708,10 @@ function cmd_cast(array $me, string $arg): array
             return ['Only Sorcerers of level 2 or more know Metamagic.'];
         }
     }
-    $known = q( // cantrips and my prepared spells I have slots for, and the ones always prepared
-        'SELECT * FROM spells WHERE level <= ? AND ((FIND_IN_SET(?, classes) AND (level = 0 OR FIND_IN_SET(id, ?)))
-         OR FIND_IN_SET(id, ?)) ORDER BY level, name',
-        [count($me['slots']), $me['class'], implode(',', prepared_ids($me)), implode(',', always_ids($me))]
+    $known = q( // my class's cantrips, my prepared spells I have slots for, and the ones always prepared
+        'SELECT * FROM spells WHERE level <= ? AND ((level = 0 AND FIND_IN_SET(?, classes)) OR FIND_IN_SET(id, ?))
+         ORDER BY level, name',
+        [count($me['slots']), $me['class'], implode(',', [...prepared_ids($me), ...always_ids($me)])]
     )->fetchAll();
     [$spell, $target] = find_spell($known, $arg);
     $mod = mod($me[$ability]);
@@ -1769,7 +1875,9 @@ function cmd_cast(array $me, string $arg): array
             }
             [$save, $saved, $edge] = save($foe, $ability, $dc, $meta === 'heightened');
             $roll = ucfirst($ability) . ' save (' . vs($save, $dc) . with($edge) . ") against your $name";
-            if ($spell['effect'] !== null && !$saved) {
+            if ($spell['effect'] === 'condition' && $spell['minutes'] === null && !$saved) {
+                set_condition($foe, $spell['value']); // Vicious Mockery: until its next attack roll, like Sap
+            } elseif ($spell['effect'] !== null && !$saved) {
                 start_effect($me, $spell, $dc, 'spawn_id', [$foe], $foe['id']);
                 $foe['effects'] = effects_on('spawn_id', $foe['id']);
             }
@@ -1801,7 +1909,7 @@ function cmd_cast(array $me, string $arg): array
                 $d20 = roll('1d20');
                 $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
             }
-            if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+            if ($missed = misses($me, $d20, $total, $foe['ac'], $with)) {
                 $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
                 if (!$potent) {
                     $lines[] = "Your $name misses the {$foe['name']} ($why$with).";
@@ -1819,7 +1927,7 @@ function cmd_cast(array $me, string $arg): array
                 return true;
             }
         }
-        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+        if ($missed) {
             return false;
         }
         if ($spell['name'] === 'Guiding Bolt') { // its rider: Advantage on the next attack roll against it
@@ -1887,7 +1995,10 @@ function spell_ids(array $names): array
 /**
  * prepare <spell>, <spell>...: my list of prepared spells of level 1+ (cantrips are always ready), up to my class's
  * count for my level, of levels I have slots for (SRD 5.2.1 Cleric p.36). It can change after a long rest; between
- * rests I can only add to it, as when a new level raises the count. prepare alone lists what I can choose.
+ * rests I can only add to it, as when a new level raises the count. prepare alone lists what I can choose. A Lore
+ * Bard may also choose Cleric, Druid and Wizard spells: two that don't count against the others from level 6
+ * (Magical Discoveries; shortcut: they're prepared like the others, not fixed), and any number from 10 (Magical
+ * Secrets).
  */
 function cmd_prepare(array $me, string $arg): array
 {
@@ -1895,10 +2006,12 @@ function cmd_prepare(array $me, string $arg): array
     if ($max === null) {
         return ["You don't prepare spells."];
     }
+    $secrets = $me['class'] === 'bard' && $me['level'] >= 6;
+    $lists = [$me['class'], ...($secrets ? ['cleric', 'druid', 'wizard'] : [])];
     $all = q(
-        'SELECT * FROM spells WHERE FIND_IN_SET(?, classes) AND level BETWEEN 1 AND ? AND NOT FIND_IN_SET(id, ?)
-         ORDER BY level, name',
-        [$me['class'], count($me['slots']), implode(',', always_ids($me))]
+        'SELECT * FROM spells WHERE (' . implode(' OR ', array_fill(0, count($lists), 'FIND_IN_SET(?, classes)'))
+            . ') AND level BETWEEN 1 AND ? AND NOT FIND_IN_SET(id, ?) ORDER BY level, name',
+        [...$lists, count($me['slots']), implode(',', always_ids($me))]
     )->fetchAll();
     $now = prepared_ids($me);
     if ($arg === '') {
@@ -1909,16 +2022,23 @@ function cmd_prepare(array $me, string $arg): array
         }
         return $lines;
     }
-    $chosen = [];
+    [$chosen, $foreign] = [[], []];
     foreach (preg_split('/\s*,\s*/', $arg, -1, PREG_SPLIT_NO_EMPTY) as $part) {
         [$spell, $rest] = find_spell($all, $part);
         if ($spell === null || $rest !== '') {
             return ["You can't prepare '$part'. Type 'prepare' for the list."];
         }
         $chosen[$spell['id']] = $spell['name'];
+        $foreign[$spell['id']] = !in_array($me['class'], explode(',', $spell['classes']), true);
     }
-    if (count($chosen) > $max) {
-        return ["You can prepare $max spells at your level, not " . count($chosen) . '.'];
+    $foreign = count(array_filter($foreign));
+    if ($foreign > 2 && $me['level'] < 10) {
+        return ['Until level 10, only two of your spells can come from other lists.'];
+    }
+    $extra = min(2, $foreign); // Magical Discoveries
+    if (count($chosen) - $extra > $max) {
+        return ["You can prepare $max spells at your level" . ($secrets ? ' (and two from other lists)' : '')
+            . ', not ' . count($chosen) . '.'];
     }
     if (!$me['may_prepare'] && array_diff($now, array_keys($chosen))) {
         return ['You can only add spells until your next long rest.'];
@@ -1984,8 +2104,8 @@ function finish_rest(array &$me): array
         return [];
     }
     $use = $me['uses'] ? ['fighter' => 'Second Wind', 'barbarian' => 'Rage', 'monk' => 'Focus Points',
-        'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks", 'sorcerer' => 'Sorcery Points'][$me['class']]
-        : null;
+        'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks", 'sorcerer' => 'Sorcery Points',
+        'bard' => 'Bardic Inspiration'][$me['class']] : null;
     if ($me['resting'] === 'long') {
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
@@ -2005,14 +2125,16 @@ function finish_rest(array &$me): array
             $me['class'] === 'sorcerer' && $me['level'] >= 5 => sorcerous_restoration($me),
             default => '',
         };
-        // One Second Wind or Rage comes back, every Focus Point, and nothing else.
-        $back = match ($me['class']) { 'fighter', 'barbarian' => 1, 'monk' => $me['uses_spent'], default => 0 };
-        $me['uses_spent'] = max(0, $me['uses_spent'] - $back);
+        // One Second Wind or Rage comes back, every Focus Point, from Bard 5 every Bardic Inspiration (Font of
+        // Inspiration), and nothing else.
+        $all = $me['class'] === 'monk' || ($me['class'] === 'bard' && $me['level'] >= 5);
+        $one = in_array($me['class'], ['fighter', 'barbarian'], true);
+        $me['uses_spent'] = $all ? 0 : max(0, $me['uses_spent'] - ($one ? 1 : 0));
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice') . $recovered
             . match (true) {
-                !$use || !in_array($me['class'], ['fighter', 'barbarian', 'monk'], true) => '.',
-                $me['class'] === 'monk' => " and regaining your $use.",
-                default => " and regaining a $use.",
+                $use && $all => " and regaining your $use.",
+                $use && $one => " and regaining a $use.",
+                default => '.',
             };
     }
     $me['resting'] = null;
@@ -2159,7 +2281,7 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
 
 /**
  * If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons,
- * Monks Simple or Light ones, Wizards and Sorcerers Simple ones, the rest every weapon.
+ * Monks Simple or Light ones, Wizards, Sorcerers and Bards Simple ones, the rest every weapon.
  */
 function trained(array $me, array $o): bool
 {
@@ -2169,7 +2291,7 @@ function trained(array $me, array $o): bool
         'weapon' => !$o['martial'] || match ($me['class']) {
             'rogue' => $o['finesse'] || $o['light'],
             'monk' => $o['light'],
-            'wizard', 'sorcerer' => false,
+            'wizard', 'sorcerer', 'bard' => false,
             default => true,
         },
         'potion' => true,
@@ -2372,6 +2494,7 @@ function hero_sheet(array $me): array
                 'paladin' => [['Lay On Hands', $uses], ['Spell slots', slots_left($me)]],
                 'ranger' => [['Favored Enemy', $uses], ['Spell slots', slots_left($me)]],
                 'wizard' => [['Spell slots', slots_left($me)]],
+                'bard' => [['Bardic Inspiration', "$uses d{$me['bardic']}"], ['Spell slots', slots_left($me)]],
                 'sorcerer' => [
                     ['Innate Sorcery', max(0, 2 - $me['feature_spent']) . '/2'],
                     ...($me['uses'] ? [['Sorcery Points', $uses]] : []),

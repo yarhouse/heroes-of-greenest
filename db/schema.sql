@@ -125,7 +125,7 @@ CREATE TABLE users (
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
-    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer')
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard')
         NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
@@ -138,7 +138,8 @@ CREATE TABLE users (
     wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
-    -- Second Wind, Rage, Focus Points, Lay On Hands HP, a Ranger's free Hunter's Marks or Sorcery Points
+    -- Second Wind, Rage, Focus Points, Lay On Hands HP, a Ranger's free Hunter's Marks, Sorcery Points or Bardic
+    -- Inspiration
     uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
     -- A once-a-long-rest feature used since the last one: a Monk's Uncanny Metabolism, a Paladin's free Divine Smite,
     -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration.
@@ -196,7 +197,8 @@ CREATE TABLE delve (
 
 -- Spells the game can resolve (SRD 5.2.1 p.107+), by kind: a spell attack roll against AC, a saving throw, healing
 -- (dice + the spellcasting modifier), or a buff that needs no roll. Attacks and saves may deal damage, and a spell may
--- leave an effect (see effects). Which classes cast what, and their spellcasting ability, is CLASSES in game.php.
+-- leave an effect (see effects). Which classes cast what, and their spellcasting ability, is CLASSES in game.php. A row
+-- with no classes is a class feature that leaves an effect (Bardic Inspiration), never cast.
 CREATE TABLE spells (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(40) NOT NULL UNIQUE,
@@ -222,8 +224,8 @@ CREATE TABLE spells (
     -- What it leaves on a failed save, a hit, or a buff's targets: a condition, a die added to d20 tests ('1d4',
     -- '-1d4'), an AC bonus, a base AC + Dex without armor (Mage Armor), a Hit Point maximum bonus, an aura (`value`
     -- dice, `save` for half) that hurts the foe at the end of each of its turns, or extra damage dice of its
-    -- damage_type on my weapon hits.
-    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage') NULL,
+    -- damage_type on my weapon hits, or a Bardic Inspiration die.
+    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration') NULL,
     value VARCHAR(20) NULL,
     repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
     concentration BOOLEAN NOT NULL DEFAULT FALSE,
@@ -240,7 +242,7 @@ CREATE TABLE effects (
     spawn_id INT UNSIGNED NULL,
     caster_id INT UNSIGNED NOT NULL,
     spell_id INT UNSIGNED NOT NULL,
-    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage') NOT NULL,
+    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration') NOT NULL,
     value VARCHAR(20) NOT NULL,
     -- The save the target repeats at the end of each of its turns, or an aura's save for half.
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,

@@ -135,8 +135,10 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 -- Divine Smite p.125, Shining Smite p.162, Hunter's Mark p.141, Ensnaring Strike p.128, Entangle p.128, Fire Bolt
 -- p.131, Ray of Frost p.157, Shocking Grasp p.162, Chill Touch p.115, Acid Splash p.107, Poison Spray p.153, Magic
 -- Missile p.146, Burning Hands p.114, Thunderwave p.169, Mage Armor p.145, Scorching Ray p.159, Shatter p.161, Web
--- p.174, Mind Spike p.149, Fireball p.131, Lightning Bolt p.144. Spells with an area hit only the foe you fight. Only the spells a fight
--- here can use. Second line: targets, count and more per slot level, a required creature type, then the effect.
+-- p.174, Mind Spike p.149, Fireball p.131, Lightning Bolt p.144, Vicious Mockery p.171, Starry Wisp p.165, Dissonant
+-- Whispers p.124 (no flight), Faerie Fire p.129. Spells with an area hit only the foe you fight. Only the spells a fight
+-- here can use. Bardic Inspiration (p.31) is a Bard feature, kept here for its effect. Second line: targets, count
+-- and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
     targets, count, upcast_targets, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
 (1, 'Sacred Flame', 0, 'cleric', 'action', 'save', FALSE, '1d8', NULL, 'radiant', 'dex', FALSE,
@@ -144,9 +146,9 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'spell attack, 4d6 Radiant, and Advantage on your next attack'),
-(3, 'Cure Wounds', 1, 'cleric,paladin,ranger', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
+(3, 'Cure Wounds', 1, 'bard,cleric,paladin,ranger', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you or a hero here regain 2d8 + your modifier'),
-(4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
+(4, 'Healing Word', 1, 'bard,cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'you or a hero here regain 2d4 + your modifier; a Bonus Action'),
 (5, 'Bless', 1, 'cleric,paladin', 'action', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
@@ -218,7 +220,18 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (35, 'Fireball', 3, 'sorcerer,wizard', 'action', 'save', FALSE, '8d6', '1d6', 'fire', 'dex', TRUE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 8d6 Fire, half on a success'),
 (36, 'Lightning Bolt', 3, 'sorcerer,wizard', 'action', 'save', FALSE, '8d6', '1d6', 'lightning', 'dex', TRUE,
-    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 8d6 Lightning, half on a success')
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 8d6 Lightning, half on a success'),
+(37, 'Vicious Mockery', 0, 'bard', 'action', 'save', FALSE, '1d6', NULL, 'psychic', 'wis', FALSE,
+    'foe', 1, 0, NULL, 'condition', 'sapped', FALSE, FALSE, NULL,
+    'Wis save or 1d6 Psychic, and Disadvantage on its next attack'),
+(38, 'Starry Wisp', 0, 'bard', 'action', 'attack', TRUE, '1d8', NULL, 'radiant', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d8 Radiant'),
+(39, 'Dissonant Whispers', 1, 'bard', 'action', 'save', FALSE, '3d6', '1d6', 'psychic', 'wis', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Wis save or 3d6 Psychic, half on a success'),
+(40, 'Faerie Fire', 1, 'bard', 'action', 'save', FALSE, NULL, NULL, NULL, 'dex', FALSE,
+    'foe', 1, 0, NULL, 'condition', 'outlined', FALSE, TRUE, 1, 'Dex save or attacks on it have Advantage'),
+(41, 'Bardic Inspiration', 0, '', 'bonus', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
+    'ally', 1, 0, NULL, 'inspiration', '1d6', FALSE, FALSE, 60, 'a die to add to a failed attack roll or save')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

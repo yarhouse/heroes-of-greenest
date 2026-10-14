@@ -1122,6 +1122,63 @@ try {
     check(says(run_command(hero('Testj'), 'score'), 'Sorcerous Restoration bringing back 3 Sorcery Points')
         && hero('Testj')['uses_spent'] === 2, 'Sorcerous Restoration: half your level in points on a short rest');
 
+    // Bard (Testk: Cha 15: spell save DC 12; Dagger +4). The dummy: AC 10, saves +0, Slam +3.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testk', 'correct horse');
+    create('Testk', 'bard');
+    q("UPDATE users SET room_id = 2 WHERE name IN ('Testk', 'Testj')");
+    $score = run_command(hero('Testk'), 'score');
+    check(says($score, 'level 1 Bard') && says($score, 'HP 9/9   AC 13') && says($score, 'Dagger +4 to hit, 1d4+2')
+        && says($score, 'Hit Dice 1/1 d8   Bardic Inspiration 2/2 d6   Spell slots 2/2')
+        && says($score, 'Saves  Str -1  Dex +4  Con +1  Int +1  Wis +0  Cha +4')
+        && count(objects_here('user_id', (int) hero('Testk')['id'])) === 3 && hero('Testk')['gold'] === 19,
+        'Bard: d8, Leather Armor and 2 Daggers, Dex and Cha saves');
+    $out = run_command(hero('Testk'), 'cast');
+    check(says($out, 'vicious mockery <monster>') && says($out, 'healing word [hero]') && says($out, 'faerie fire'),
+        'Bard cantrips and prepared spells');
+    check(says(run_command(hero('Testk'), 'inspire'), 'Inspire whom?')
+        && says(run_command(hero('Testk'), 'inspire testj'), 'You inspire Testj with a d6 of Bardic Inspiration. 1 '
+            . 'left.') && says(run_command(hero('Testk'), 'inspire testj'), 'already holds')
+        && says(run_command(hero('Testj'), 'score'), 'Bardic Inspiration'),
+        'Bardic Inspiration: a die for another hero');
+    $dice_queue = [10, 1, 4, 3, 1, 1]; // an opening volley: 9 vs AC 10, so the die is rolled
+    check(says(run_command(hero('Testj'), 'cast fire dummy'), 'hits the Training Dummy (12 vs AC 10, +3 Bardic '
+        . 'Inspiration) for 4 damage.') && $dice_queue === [] && !effects_on('user_id', (int) hero('Testj')['id']),
+        'an inspired hero adds the die to a missed attack roll, and it is spent');
+    $dice_queue = [20, 1];
+    run_command(hero('Testj'), 'flee');
+    $dice_queue = [10, 1, 5, 4, 15, 2];
+    $out = run_command(hero('Testk'), 'cast vicious dummy');
+    check(says($out, 'fails its Wis save (5 vs DC 12) against your Vicious Mockery and takes 4 damage.')
+        && says($out, 'misses you (5 vs AC 13, with Disadvantage)') && $dice_queue === [],
+        'Vicious Mockery: Psychic damage and Disadvantage on its next attack');
+    q("UPDATE users SET level = 3 WHERE name = 'Testk'");
+    $dice_queue = [10, 1, 12, 5];
+    $out = run_command(hero('Testk'), 'kill');
+    check(says($out, 'misses you (10 vs AC 13, -5 Cutting Words).') && $dice_queue === []
+        && hero('Testk')['uses_spent'] === 2, 'Cutting Words: a Bardic Inspiration die off a hit that it could turn');
+    $dice_queue = [20, 1];
+    run_command(hero('Testk'), 'flee');
+    q("UPDATE users SET level = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testk'");
+    check(says(run_command(hero('Testk'), 'score'), 'regaining your Bardic Inspiration')
+        && says(run_command(hero('Testk'), 'score'), 'Bardic Inspiration 2/2 d8'),
+        'Font of Inspiration: every use back on a short rest; a d8 from level 5');
+    q("UPDATE users SET level = 6 WHERE name = 'Testk'");
+    check(says(run_command(hero('Testk'), 'prepare bane, command, cure, dissonant, faerie, healing, thunderwave, aid, '
+        . 'shatter, mass, fireball, spirit'), 'You prepare') && says(run_command(hero('Testk'), 'cast'), 'fireball'),
+        'Magical Discoveries: two spells from the Cleric, Druid or Wizard lists, on top of the others');
+    check(says(run_command(hero('Testk'), 'prepare bane, fireball, spirit, inflict'), 'only two')
+        && says(run_command(hero('Testk'), 'prepare bane, command, cure, dissonant, faerie, healing, thunderwave, aid, '
+        . 'shatter, mass, hold'), 'not 11'), 'and no more until Magical Secrets');
+    q("UPDATE users SET level = 14, room_id = 2 WHERE name = 'Testk'");
+    $dice_queue = [10, 1, 2, 4, 1]; // a thrown Dagger's opening volley
+    check(says(run_command(hero('Testk'), 'kill dummy'), 'You hit the Training Dummy (13 vs AC 10, +4 Peerless Skill)')
+        && $dice_queue === [] && hero('Testk')['uses_spent'] === 1, 'Peerless Skill: your own die on a missed attack');
+    $dice_queue = [20, 1];
+    run_command(hero('Testk'), 'flee');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');
