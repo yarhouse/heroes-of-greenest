@@ -19,7 +19,7 @@ const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 /** The Weapon Mastery properties the game models (SRD 5.2.1 p.89); items list each weapon's own. */
-const MASTERIES = ['nick', 'topple', 'vex'];
+const MASTERIES = ['cleave', 'graze', 'nick', 'sap', 'topple', 'vex'];
 /** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
 const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = '', bonus_used = FALSE";
 const BONUS_USED = "You've already used your Bonus Action this round.";
@@ -454,6 +454,9 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
     $over = !$me['volley'] && $me['foe_first'] && monster_turn($me, $foe, $lines);
     if (!$over) {
         start_turn($me);
+        if (has($foe, 'sapped')) { // shortcut: Sap ends at the start of my turn, though another hero may have sapped it
+            set_condition($foe, 'sapped', false);
+        }
         $over = $act($me, $foe, $lines);
         if ($me['bonus_used'] && !$over) { // my turn is over; a Bonus Action before my next one counts for that one
             $me['bonus_used'] = false;
@@ -523,6 +526,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         $swings[] = ['off' => true] + $me['offhand'];
     }
     $sneak = $me['class'] === 'rogue';
+    $cleaved = false;
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $w) {
         $off = isset($w['off']);
@@ -538,6 +542,13 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "$you miss$s the {$foe['name']} ($why$with).";
+            if ($w['mastery'] === 'graze' && $w['attack_mod'] > 0) { // the modifier only: no Rage, no dice
+                [$dmg, $note] = typed($w['attack_mod'], $w['damage_type'], $foe);
+                $lines[] = "The blow grazes it for $dmg damage$note.";
+                if (hurt_foe($me, $foe, $dmg, $lines)) {
+                    return true;
+                }
+            }
             continue;
         }
         $crit = $d20 === 20;
@@ -561,8 +572,15 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             $lines[] = $saved ? "The {$foe['name']} keeps its feet (Con save $save vs DC $dc)."
                 : "The {$foe['name']} topples over, Prone (Con save $save vs DC $dc).";
             if (!$saved) {
-                knock_prone($foe);
+                set_condition($foe, 'prone');
             }
+        }
+        if ($w['mastery'] === 'sap' && !has($foe, 'sapped')) {
+            set_condition($foe, 'sapped');
+        }
+        if ($w['mastery'] === 'cleave' && !$w['ranged'] && !$me['volley'] && !$cleaved) {
+            $cleaved = true;
+            cleave($me, $w, $foe, $lines);
         }
         if ($w['mastery'] === 'vex' && !$me['advantage']) {
             $me['advantage'] = true;
@@ -570,6 +588,35 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         }
     }
     return false;
+}
+
+/**
+ * Cleave: after a melee hit, one attack a turn with the same weapon at a second monster here (shortcut: no
+ * positions, so every monster in the room is within 5 feet of the first). Its damage adds no ability modifier unless
+ * negative. The second monster doesn't join the fight.
+ */
+function cleave(array &$me, array $w, array $foe, array &$lines): void
+{
+    $other = array_values(array_filter(room_monsters((int) $me['room_id']), fn ($m) => $m['id'] !== $foe['id']))[0]
+        ?? null;
+    if ($other === null) {
+        return;
+    }
+    $aim = has($me, 'reckless') && $w['str_based'];
+    [$d20, $edge] = attack_d20($me, $other, $aim);
+    $total = $d20 + $w['to_hit'];
+    $with = with($edge);
+    if ($d20 === 1 || ($d20 < 20 && $total < $other['ac'])) {
+        $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$other['ac']}";
+        $lines[] = "You cleave at the {$other['name']} and miss ($why$with).";
+        return;
+    }
+    $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
+    $dmg = roll($w['damage'], $d20 === 20) + min(0, $w['attack_mod']) + $rage;
+    [$dmg, $note] = typed(max(0, $dmg), $w['damage_type'], $other);
+    $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "You cleave into the {$other['name']} ($total vs AC "
+        . "{$other['ac']}$with) for $dmg damage$note.";
+    hurt_foe($me, $other, $dmg, $lines);
 }
 
 /** Spends my Bonus Action for this round of a fight, or returns false if it's spent. Outside a fight it's free. */
@@ -632,11 +679,12 @@ function has(array $who, string $condition): bool
     return in_array($condition, explode(',', $who['conditions']), true);
 }
 
-/** $foe has the Prone condition until the start of its next turn, when it gets up. */
-function knock_prone(array &$foe): void
+/** Gives $foe (a spawn) $condition, or takes it away. */
+function set_condition(array &$foe, string $condition, bool $on = true): void
 {
-    $foe['conditions'] = 'prone';
-    q("UPDATE spawns SET conditions = 'prone' WHERE id = ?", [$foe['id']]);
+    $set = array_diff(array_filter(explode(',', $foe['conditions'])), [$condition]);
+    $foe['conditions'] = implode(',', $on ? [...$set, $condition] : $set);
+    q('UPDATE spawns SET conditions = ? WHERE id = ?', [$foe['conditions'], $foe['id']]);
 }
 
 /**
@@ -662,7 +710,7 @@ function cmd_maneuver(array $me, string $how, string $target): array
             $lines[] = "The {$foe['name']} " . ($how === 'shove' ? 'stands firm' : 'slips your grip') . " ($roll).";
         } elseif ($how === 'shove') {
             $lines[] = "You shove the {$foe['name']} to the ground, Prone ($roll).";
-            knock_prone($foe);
+            set_condition($foe, 'prone');
         } else {
             $lines[] = "You grab hold of the {$foe['name']}, Grappled ($roll).";
             $foe['grappled_by'] = $me['id'];
@@ -712,7 +760,7 @@ function typed(int $dmg, string $type, array $who): array
 }
 
 /** Deals $dmg to $foe. Returns true if that killed it. */
-function hurt_foe(array $me, array &$foe, int $dmg, array &$lines): bool
+function hurt_foe(array &$me, array &$foe, int $dmg, array &$lines): bool
 {
     q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
     $foe['hp'] -= $dmg;
@@ -731,7 +779,7 @@ function hurt_foe(array $me, array &$foe, int $dmg, array &$lines): bool
 }
 
 /** The killer's reward: the stat block's full XP, a little gold by CR, levels, and maybe loot. */
-function win(array $me, array $foe, array &$lines): void
+function win(array &$me, array $foe, array &$lines): void
 {
     q('UPDATE users SET ' . END_FIGHT . ' WHERE fighting = ?', [$foe['id']]);
     $cr = max(1, (int) ceil((float) $foe['cr']));
@@ -747,6 +795,8 @@ function win(array $me, array $foe, array &$lines): void
     if ($level > $me['level']) {
         $lines[] = "You reach level $level! +$gain max HP.";
     }
+    // A Cleave can kill a second foe in the same turn, so later writes must start from these.
+    [$me['xp'], $me['level'], $me['max_hp'], $me['hp']] = [$xp, $level, $me['max_hp'] + $gain, $me['hp'] + $gain];
     if (roll('1d' . LOOT_CHANCE) === 1 && ($item = loot((float) $foe['cr'], (int) $me['room_id'])) !== null) {
         $lines[] = "The {$foe['name']} drops " . lcfirst(a_an($item)) . '.';
     }
@@ -756,15 +806,17 @@ function win(array $me, array $foe, array &$lines): void
 function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): bool
 {
     if ($n === null && has($foe, 'prone')) { // its turn starts (a free attack when I flee is a Reaction, not a turn)
-        $foe['conditions'] = '';
-        q("UPDATE spawns SET conditions = '' WHERE id = ?", [$foe['id']]);
+        set_condition($foe, 'prone', false);
         $lines[] = "The {$foe['name']} gets back up.";
     }
     // Held by another hero still fighting it, it has Disadvantage against me.
     $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
-        $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held);
+        $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held || has($foe, 'sapped'));
+        if (has($foe, 'sapped')) { // Sap: only its next attack roll
+            set_condition($foe, 'sapped', false);
+        }
         $d20 = d20($edge);
         $total = $d20 + $foe['to_hit'];
         $its = "The {$foe['name']}'s {$foe['attack']}";

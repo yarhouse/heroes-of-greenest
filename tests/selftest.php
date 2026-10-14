@@ -166,7 +166,7 @@ try {
     // Gear. New heroes carry the SRD Fighter's starting equipment A.
     $inv = run_command(hero('Testa'), 'i');
     check(str_contains(line($inv, 'Chain Mail'), 'heavy armor, AC 16  (equipped)')
-        && str_contains(line($inv, 'Greatsword'), 'weapon, 2d6, two-handed  (equipped)')
+        && str_contains(line($inv, 'Greatsword'), 'weapon, 2d6, two-handed, graze  (equipped)')
         && str_contains(line($inv, 'Flail'), 'weapon, 1d8') && !str_contains(line($inv, 'Flail'), 'equipped')
         && hero('Testa')['gold'] === 4, 'a new hero has Kit A: Chain Mail and Greatsword worn, a Flail, 4 gp');
     check(count(objects_here('user_id', (int) hero('Testa')['id'])) === 11 && str_contains(line($inv, 'Javelin'),
@@ -287,6 +287,8 @@ try {
     check(says($round, 'You miss the Training Dummy (natural 1)')
         && says($round, "Critical hit! The Training Dummy's Slam hits you (23 vs AC 17) for 5 damage.")
         && hero('Testa')['hp'] === 6, 'a natural 1 misses and a natural 20 crits');
+    check(says($round, 'The blow grazes it for 2 damage.') && says($round, 'Training Dummy: 1 HP'),
+        "Graze: the Greatsword's miss still deals the Str modifier");
     check(says(run_command(hero('Testa'), 'look'), 'Training Dummy is here, fighting you.'), 'look shows your foe');
     check(says(run_command(hero('Testa'), 's'), 'Flee first'), "can't walk out of a fight");
     check(says(run_command(hero('Testa'), 'rest'), 'middle of a fight'), "can't rest in a fight");
@@ -301,6 +303,7 @@ try {
         && hero('Testa')['hp'] === 7, 'a failed flee draws one attack');
 
     q("UPDATE users SET hp = 1, gold = 100 WHERE name = 'Testa'");
+    q('UPDATE spawns SET hp = 30 WHERE id = 9999'); // so the Greatsword's Graze doesn't finish it
     $dice_queue = [2, 15, 1];
     $out = run_command(hero('Testa'), 'kill');
     $t = hero('Testa');
@@ -557,6 +560,32 @@ try {
         'Topple: a hit can knock the foe Prone');
     $dice_queue = [20, 1];
     run_command(hero('Testa'), 'flee');
+    q('INSERT INTO objects (item_id, user_id) VALUES (7, ?)', [hero('Testa')['id']]);
+    run_command(hero('Testa'), 'equip mace');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
+    $dice_queue = [10, 1, 15, 3, 1, 2, 12]; // a Mace hit saps it, so its Slam rolls twice and takes the 2
+    check(says(run_command(hero('Testa'), 'kill dummy'), 'misses you (5 vs AC 17, with Disadvantage)')
+        && $dice_queue === [], 'Sap: a hit gives Disadvantage on its next attack');
+    $dice_queue = [1, 1, 12];
+    check(says(run_command(hero('Testa'), 'kill'), 'misses you (15 vs AC 17).') && $dice_queue === [],
+        'and it wears off by the start of my next turn');
+    $dice_queue = [20, 1];
+    run_command(hero('Testa'), 'flee');
+    q('INSERT INTO objects (item_id, user_id) VALUES (14, ?)', [hero('Testa')['id']]);
+    run_command(hero('Testa'), 'equip greataxe');
+    $dummy = q('SELECT hp, dead_since FROM spawns WHERE id = 9999')->fetch();
+    q('UPDATE spawns SET hp = 3, dead_since = NULL WHERE id = 9999');
+    q('INSERT INTO spawns (id, room_id, monster_id, hp) VALUES (9998, 2, 9999, 10)'); // first in the room: the foe
+    q("UPDATE users SET room_id = 2, xp = 6500 WHERE name = 'Testa'");
+    // A hit for 5; Cleave kills the other dummy (gold 4, no loot); the second attack kills the first.
+    $dice_queue = [10, 1, 15, 3, 14, 3, 4, 2, 15, 6, 4, 2];
+    $out = run_command(hero('Testa'), 'kill dummy');
+    check(says($out, 'You cleave into the Training Dummy (19 vs AC 10) for 3 damage.')
+        && count(array_filter($out, fn ($l) => str_contains($l, 'dies!'))) === 2 && hero('Testa')['xp'] === 6550
+        && $dice_queue === [], 'Cleave: a hit carries on to a second monster here, and both kills count');
+    q('DELETE FROM spawns WHERE id = 9998');
+    q('UPDATE spawns SET hp = ?, dead_since = ? WHERE id = 9999', [$dummy['hp'], $dummy['dead_since']]);
+    run_command(hero('Testa'), 'equip greatsword');
     run_command(hero('Testa'), 'equip greatsword');
 
     save_hero('Teste', 'correct horse');

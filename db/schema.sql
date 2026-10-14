@@ -61,7 +61,8 @@ CREATE TABLE spawns (
     respawn_secs INT UNSIGNED NOT NULL DEFAULT 600,
     hp SMALLINT NOT NULL DEFAULT 0,
     dead_since DATETIME NULL,
-    conditions SET('prone') NOT NULL DEFAULT '', -- each ends at the start of its next turn
+    -- Prone ends at the start of its next turn, Sapped at its next attack roll or the start of my next turn.
+    conditions SET('prone', 'sapped') NOT NULL DEFAULT '',
     grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
     KEY (room_id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
