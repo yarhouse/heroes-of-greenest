@@ -14,8 +14,8 @@ fi
 php tests/selftest.php > /dev/null || { echo 'Local selftest failed: php tests/selftest.php' >&2; exit 1; }
 
 # The code lives outside the web root; only public/ is exposed, by a symlink. Excluded paths are never deleted on the
-# server, so config.php and var/sessions survive.
-rsync -az --delete --exclude=/.git/ --exclude=/config.php --exclude=/var/ --exclude=/ref/ --exclude=/deploy.env \
+# server, so config.php and var/sessions survive. --chmod: Apache must read public/, whatever the Mac's permissions are.
+rsync -az --chmod=D755,F644 --delete --exclude=/.git/ --exclude=/config.php --exclude=/var/ --exclude=/ref/ --exclude=/deploy.env \
     --exclude=.DS_Store ./ "$DEPLOY_HOST:$DEPLOY_DIR/"
 
 # -T refuses to replace a real folder there. seed.sql never touches heroes; it respawns monsters and rerolls the Delve.

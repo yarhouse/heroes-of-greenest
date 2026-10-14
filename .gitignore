@@ -3,3 +3,4 @@ var/
 ref/
 .DS_Store
 deploy.env
+.vscode
