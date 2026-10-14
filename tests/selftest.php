@@ -609,6 +609,15 @@ try {
     check(says($out, 'save DC 12, spell attack +4; slots 2/2') && says($out, 'sacred flame <monster>'),
         'cast lists spells');
     check(says(run_command(hero('Testa'), 'cast sacred flame dummy'), "don't know any spells"), 'only Clerics cast');
+    $out = run_command(hero('Teste'), 'prepare');
+    check(says($out, 'Prepared spells (4/4)') && str_contains(line($out, 'shield of faith'), '*')
+        && !str_contains(line($out, 'healing word'), '*'), "a new Cleric starts with the SRD's suggested four");
+    check(says(run_command(hero('Teste'), 'prepare bless, cure, guiding, healing, shield'), 'You can prepare 4 spells')
+        && says(run_command(hero('Teste'), 'prepare bless, sacred flame'), "can't prepare 'sacred flame'"),
+        'no more than the count, and only spells of level 1+');
+    check(says(run_command(hero('Teste'), 'prepare guiding, cure, healing word, bless'), 'You prepare Guiding Bolt, '
+        . 'Cure Wounds, Healing Word, Bless.') && says(run_command(hero('Teste'), 'prepare bless'), 'only add spells'),
+        'prepare replaces the list once a long rest allows it, then only adds');
     check(says(run_command(hero('Teste'), 'cast fireball'), "don't know a spell called 'fireball'"), 'unknown spell');
     check(says(run_command(hero('Teste'), 'cast sacred'), 'Cast it at what?'), 'an attack spell needs a target');
     q('UPDATE spawns SET hp = 30 WHERE id = 9999');
@@ -648,6 +657,8 @@ try {
     q("UPDATE users SET level = 3 WHERE name = 'Teste'");
     q("INSERT INTO spells (id, name, level, classes, casting, kind, dice, upcast, damage_type, save, half, about)
         VALUES (9999, 'Test Burst', 1, 'cleric', 'action', 'save', '2d6', '1d6', 'fire', 'dex', TRUE, 'a test')");
+    check(says(run_command(hero('Teste'), 'prepare guiding, cure, healing, bless, test burst'), 'You prepare'),
+        'a higher level allows more, added between rests');
     $dice_queue = [15, 2, 3, 4, 1]; // a made save; a level 2 slot adds 1d6, so half of 9
     check(says(run_command(hero('Teste'), 'cast test b'), 'makes its Dex save (15 vs DC 12) against your Test Burst '
         . '(level 2) and takes 4 damage.') && $dice_queue === [], 'upcast dice, and half damage on a made save');
@@ -666,6 +677,8 @@ try {
     q("UPDATE users SET room_id = 2, fighting = NULL, hp = max_hp, level = 3, advantage = FALSE
        WHERE name IN ('Teste', 'Testb')");
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Teste'), 'prepare shield, bless, hold, cure'), 'You prepare'),
+        'a long rest lets you swap prepared spells');
     check(says(run_command(hero('Teste'), 'cast shield'), 'You cast Shield of Faith on you. Slots 3/4 2/2.')
         && says($score = run_command(hero('Teste'), 'score'), 'AC 16')
         && says($score, 'concentrating on Shield of Faith'), 'Shield of Faith: +2 AC, with Concentration');
@@ -699,9 +712,12 @@ try {
         && says(run_command(hero('Teste'), 'score'), 'AC 14') && $dice_queue === [],
         'damage calls for a Con save to keep Concentration');
     run_command(hero('Teste'), 'cast shield');
+    q('UPDATE effects SET until = NOW() - INTERVAL 1 SECOND'); // its 10 minutes are up, but the fight goes on
+    check(says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'an effect lasts at least the fight it was '
+        . 'cast in');
     $dice_queue = [20, 1];
     run_command(hero('Teste'), 'flee');
-    check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'an effect cast in a fight ends with it');
+    check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'then only its own time');
     q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
     $dice_queue = [10, 1, 1, 1];
     run_command(hero('Teste'), 'kill dummy');
@@ -712,6 +728,49 @@ try {
     q("UPDATE monsters SET type = 'aberration' WHERE id = 9999");
     $dice_queue = [20, 1];
     run_command(hero('Testb'), 'flee');
+
+    // Step 3 spells (Teste at level 5: Wis +2, PB +3, DC 13; nine prepared).
+    q("UPDATE users SET room_id = 2, fighting = NULL, level = 5, slots_spent = '', may_prepare = TRUE, hp = 5
+       WHERE name = 'Teste'");
+    q("UPDATE users SET room_id = 2, fighting = NULL, hp = 5 WHERE name = 'Testb'");
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Teste'), 'prepare bane, command, inflict, aid, blindness, mass healing, spirit, '
+        . 'healing word, cure'), 'You prepare'), 'level 5: nine prepared spells');
+    check(says(run_command(hero('Teste'), 'cast cure nobody'), "There's no hero called 'nobody' here."),
+        'a heal names a hero who is here');
+    $dice_queue = [3, 4];
+    check(says(run_command(hero('Teste'), 'cast cure testb'), 'You cast Cure Wounds: Testb regains 6 HP.')
+        && hero('Testb')['hp'] === 11, 'Cure Wounds heals another hero, up to their max');
+    q("UPDATE users SET hp = 5 WHERE name = 'Testb'");
+    $dice_queue = [2, 2];
+    check(says(run_command(hero('Teste'), 'cast mass'), 'You cast Mass Healing Word: you regain 4 HP, Testb regains '
+        . '6 HP.'),
+        'Mass Healing Word: one roll heals every hero here');
+    check(says(run_command(hero('Teste'), 'cast aid'), 'You cast Aid on you, Testb.')
+        && says(run_command(hero('Testb'), 'score'), 'HP 16/16'), 'Aid: +5 HP and max HP');
+    $dice_queue = [10, 1, 15, 6, 4, 1]; // its Con save 15 is made: half of 10
+    check(says(run_command(hero('Teste'), 'cast inflict dummy'), 'makes its Con save (15 vs DC 13) against your '
+        . 'Inflict Wounds and takes 5 damage.') && $dice_queue === [], 'Inflict Wounds: half damage on a made save');
+    $dice_queue = [2, 12, 3]; // Cha save 2 fails; the Slam rolls 12 + 3, minus Bane's 3
+    $out = run_command(hero('Teste'), 'cast bane');
+    check(says($out, 'fails its Cha save (2 vs DC 13) against your Bane and is under your Bane.')
+        && says($out, 'misses you (12 vs AC 14, -3 Bane)') && $dice_queue === [], 'Bane: -1d4 on its attack rolls');
+    // Its saves lose Bane's 1d4 too. Blinded, its Slam has Disadvantage; at the end of its turn it saves (20 - 1).
+    $dice_queue = [1, 1, 15, 2, 1, 20, 1];
+    $out = run_command(hero('Teste'), 'cast blind');
+    check(says($out, 'and is Blinded.') && says($out, 'misses you (4 vs AC 14, with Disadvantage, -1 Bane)')
+        && says($out, 'shakes off your Blindness/Deafness (Con save 19 vs DC 13)') && $dice_queue === [],
+        'Blindness: Disadvantage on its attacks until it saves');
+    $dice_queue = [1, 1];
+    check(says(run_command(hero('Teste'), 'cast command'), "is halted and can't act") && $dice_queue === [],
+        'Command: a failed Wis save costs it a turn');
+    $dice_queue = [1, 1, 1];
+    check(says(run_command(hero('Teste'), 'kill'), 'Slam misses') && $dice_queue === [], 'only the one turn');
+    $dice_queue = [1, 5, 1, 2, 3]; // the Slam misses; then the spirits: Wis save 5 fails, 3d8
+    check(says(run_command(hero('Teste'), 'cast spirit'), 'Your Spirit Guardians sear the Training Dummy (Wis save 5 '
+        . 'vs DC 13) for 6 damage.') && $dice_queue === [], 'Spirit Guardians hurt the foe after each of its turns');
+    $dice_queue = [20, 1];
+    run_command(hero('Teste'), 'flee');
     check($dice_queue === [], 'every queued die was used by the classes');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.

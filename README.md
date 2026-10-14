@@ -60,20 +60,21 @@ blocks, and XP and levels follow Character Advancement. Heroes make saving throw
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
 Advantage on Str saves), Unarmored Defense and from level 2 Reckless Attack and Danger Sense (Advantage on Dex saves);
 Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with `flee`;
-Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds, Healing Word, Bless, Shield of Faith and Hold Person. Spells
-are rows of the `spells` table; their lasting effects last while the caster stays in the fight (or for their real
-duration outside one), and Concentration breaks on a failed Con save when hurt. Anyone can `shove` a foe Prone or
-`grapple` it in place of an attack. With a Light weapon in each hand (`equip dagger offhand`) you get an extra attack
-each round, using your Bonus Action unless the off-hand weapon has Nick; in a fight you get one Bonus Action a round
-(Rage, Second Wind, a potion, Healing Word or that attack). Weapon masteries: Cleave carries a hit on to a second
-monster in the room, Graze deals your modifier on a miss, Nick frees the off-hand attack, Sap gives the foe
-Disadvantage on its next attack, Topple can knock it Prone and Vex gives Advantage on your next attack (Push and Slow
-need distances). Damage has SRD types, and Resistance, Immunity and Vulnerability apply both ways. Gear is the SRD's
-weapons, armor, Shield and Potion of Healing; AC and attacks come from what you wear, and you can wear only the armor
-your class is trained in. There are no distances: a fight started with a ranged or thrown weapon opens with a free
-volley while the foe closes in, and after that ranged attacks have Disadvantage. Rest with `rest` (short) or `sleep`
-(long) in a safe room: the town square or the Swaying Lantern. The plan and what's left out are in the project's
-`d20-plan.md`. "5E compatible."
+Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
+Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
+Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;
+their effects last their real duration and at least the fight they were cast in, and Concentration breaks on a failed
+Con save when hurt. Anyone can `shove` a foe Prone or `grapple` it in place of an attack. With a Light weapon in each
+hand (`equip dagger offhand`) you get an extra attack each round, using your Bonus Action unless the off-hand weapon
+has Nick; in a fight you get one Bonus Action a round (Rage, Second Wind, a potion, Healing Word or that attack).
+Weapon masteries: Cleave carries a hit on to a second monster in the room, Graze deals your modifier on a miss, Nick
+frees the off-hand attack, Sap gives the foe Disadvantage on its next attack, Topple can knock it Prone and Vex gives
+Advantage on your next attack (Push and Slow need distances). Damage has SRD types, and Resistance, Immunity and
+Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
+from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
+with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
+Disadvantage. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. The
+plan and what's left out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
 available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0

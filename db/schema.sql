@@ -140,6 +140,8 @@ CREATE TABLE users (
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
     conditions SET('reckless') NOT NULL DEFAULT '',
     bonus_used BOOLEAN NOT NULL DEFAULT FALSE, -- my Bonus Action this round of a fight; my turn's end clears it
+    prepared VARCHAR(255) NOT NULL DEFAULT '', -- spell ids, e.g. '5,2'; empty means the class's defaults
+    may_prepare BOOLEAN NOT NULL DEFAULT TRUE, -- a long rest lets me change them
     gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
@@ -191,37 +193,43 @@ CREATE TABLE spells (
     classes SET('bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard') NOT NULL,
     casting ENUM('action', 'bonus') NOT NULL, -- a Bonus Action costs no turn
     kind ENUM('attack', 'save', 'heal', 'buff') NOT NULL,
-    targets ENUM('foe', 'self', 'allies') NOT NULL DEFAULT 'foe', -- allies: you and up to `count` - 1 heroes here
+    -- ally: you or a hero here you name; allies: you and up to `count` - 1 heroes here
+    targets ENUM('foe', 'self', 'ally', 'allies') NOT NULL DEFAULT 'foe',
     count TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    upcast_targets TINYINT UNSIGNED NOT NULL DEFAULT 0, -- more targets per slot level above its own
     creature ENUM('aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend',
         'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NULL, -- a foe must be this type
     ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a ranged spell attack: Disadvantage next to a foe
     dice VARCHAR(20) NULL, -- damage or healing at its own level; a cantrip's dice multiply at levels 5, 11 and 17
-    upcast VARCHAR(20) NULL, -- per slot level above its own: more dice, or for allies more targets ('1')
+    upcast VARCHAR(20) NULL, -- per slot level above its own: more dice, or more of a max_hp effect
     damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
         'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL,
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,
     half BOOLEAN NOT NULL DEFAULT FALSE, -- a made save still takes half the damage
-    effect ENUM('condition', 'd20', 'ac') NULL, -- what it leaves on a failed save, a hit, or a buff's targets
-    value VARCHAR(20) NULL, -- the condition, the die added to d20 tests ('1d4', '-1d4'), or the AC bonus
+    -- What it leaves on a failed save, a hit, or a buff's targets: a condition, a die added to d20 tests ('1d4',
+    -- '-1d4'), an AC bonus, a Hit Point maximum bonus, or an aura (`value` dice, `save` for half) that hurts the foe at
+    -- the end of each of its turns.
+    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura') NULL,
+    value VARCHAR(20) NULL,
     repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
     concentration BOOLEAN NOT NULL DEFAULT FALSE,
-    minutes SMALLINT UNSIGNED NULL, -- how long its effect lasts outside a fight; in one, until that fight ends
+    minutes SMALLINT UNSIGNED NULL, -- how long its effect lasts, and at least until the fight it was cast in ends
     about VARCHAR(100) NOT NULL -- for the spell list
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- A spell's lasting effect on a hero (user_id) or a monster (spawn_id). Cast in a fight (during: the spawn fought), it
--- lasts while its caster is still in that fight; cast outside one, until `until`. No ticks: effects past that are
--- ignored when read (LIVE_EFFECT in game.php). Concentration ones also end when the caster's Concentration does.
+-- A spell's lasting effect on a hero (user_id) or a monster (spawn_id). It lasts until `until`, and also while its
+-- caster is still in the fight it was cast in (during: the spawn fought). No ticks: effects past both are ignored when
+-- read (LIVE_EFFECT in game.php). Concentration ones also end when the caster's Concentration does.
 CREATE TABLE effects (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNSIGNED NULL,
     spawn_id INT UNSIGNED NULL,
     caster_id INT UNSIGNED NOT NULL,
     spell_id INT UNSIGNED NOT NULL,
-    effect ENUM('condition', 'd20', 'ac') NOT NULL,
+    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura') NOT NULL,
     value VARCHAR(20) NOT NULL,
-    save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL, -- repeated at the end of each of the target's turns
+    -- The save the target repeats at the end of each of its turns, or an aura's save for half.
+    save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,
     dc TINYINT UNSIGNED NULL,
     concentration BOOLEAN NOT NULL,
     during INT UNSIGNED NULL,

@@ -128,30 +128,50 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
     rages = new.rages, rage_damage = new.rage_damage, slots = new.slots;
 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
--- Shield of Faith p.162, Hold Person p.141. Second line: targets and count, a required creature type, then the effect.
+-- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,
+-- Blindness/Deafness p.113 (as Blindness), Mass Healing Word p.148, Spirit Guardians p.164. Only the spells a fight
+-- here can use. Second line: targets, count and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
-    targets, count, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
+    targets, count, upcast_targets, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
 (1, 'Sacred Flame', 0, 'cleric', 'action', 'save', FALSE, '1d8', NULL, 'radiant', 'dex', FALSE,
-    'foe', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 1d8 Radiant damage'),
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 1d8 Radiant damage'),
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
-    'foe', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 4d6 Radiant, and Advantage on your next attack'),
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
+    'spell attack, 4d6 Radiant, and Advantage on your next attack'),
 (3, 'Cure Wounds', 1, 'cleric', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
-    'self', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'heal 2d8 + your modifier; takes your turn in a fight'),
+    'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you or a hero here regain 2d8 + your modifier'),
 (4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
-    'self', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'heal 2d4 + your modifier; a Bonus Action, so it costs no turn'),
-(5, 'Bless', 1, 'cleric,paladin', 'action', 'buff', FALSE, NULL, '1', NULL, NULL, FALSE,
-    'allies', 3, NULL, 'd20', '1d4', FALSE, TRUE, 1, 'you and two heroes here add 1d4 to attack rolls and saves'),
+    'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
+    'you or a hero here regain 2d4 + your modifier; a Bonus Action'),
+(5, 'Bless', 1, 'cleric,paladin', 'action', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
+    'allies', 3, 1, NULL, 'd20', '1d4', FALSE, TRUE, 1, 'you and two heroes here add 1d4 to attack rolls and saves'),
 (6, 'Shield of Faith', 1, 'cleric,paladin', 'bonus', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
-    'self', 1, NULL, 'ac', '2', FALSE, TRUE, 10, '+2 AC; a Bonus Action'),
+    'ally', 1, 0, NULL, 'ac', '2', FALSE, TRUE, 10, 'you or a hero here get +2 AC; a Bonus Action'),
 (7, 'Hold Person', 2, 'bard,cleric,druid,sorcerer,warlock,wizard', 'action', 'save', FALSE, NULL, NULL, NULL, 'wis',
-    FALSE, 'foe', 1, 'humanoid', 'condition', 'paralyzed', TRUE, TRUE, 1,
-    'Wis save or a Humanoid is Paralyzed; it saves again after each of its turns')
+    FALSE, 'foe', 1, 1, 'humanoid', 'condition', 'paralyzed', TRUE, TRUE, 1,
+    'Wis save or a Humanoid is Paralyzed; it saves again after each of its turns'),
+(8, 'Bane', 1, 'bard,cleric,warlock', 'action', 'save', FALSE, NULL, NULL, NULL, 'cha', FALSE,
+    'foe', 3, 1, NULL, 'd20', '-1d4', FALSE, TRUE, 1, 'Cha save or it subtracts 1d4 from attack rolls and saves'),
+(9, 'Command', 1, 'bard,cleric,paladin', 'action', 'save', FALSE, NULL, NULL, NULL, 'wis', FALSE,
+    'foe', 1, 1, NULL, 'condition', 'incapacitated', FALSE, FALSE, 1, 'Wis save or it halts and loses its next turn'),
+(10, 'Inflict Wounds', 1, 'cleric', 'action', 'save', FALSE, '2d10', '1d10', 'necrotic', 'con', TRUE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Con save or 2d10 Necrotic damage, half on a success'),
+(11, 'Aid', 2, 'bard,cleric,druid,paladin,ranger', 'action', 'buff', FALSE, NULL, '5', NULL, NULL, FALSE,
+    'allies', 3, 0, NULL, 'max_hp', '5', FALSE, FALSE, 480, 'you and two heroes here get +5 HP and max HP for 8 hours'),
+(12, 'Blindness/Deafness', 2, 'bard,cleric,sorcerer,wizard', 'action', 'save', FALSE, NULL, NULL, NULL, 'con', FALSE,
+    'foe', 1, 1, NULL, 'condition', 'blinded', TRUE, FALSE, 1,
+    'Con save or it is Blinded; it saves again after each of its turns'),
+(13, 'Mass Healing Word', 3, 'bard,cleric', 'bonus', 'heal', FALSE, '2d4', '1d4', NULL, NULL, FALSE,
+    'allies', 6, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you and five heroes here regain 2d4 + your modifier'),
+(14, 'Spirit Guardians', 3, 'cleric', 'action', 'buff', FALSE, NULL, '1d8', 'radiant', 'wis', TRUE,
+    'self', 1, 0, NULL, 'aura', '3d8', FALSE, TRUE, 10,
+    'spirits around you: a foe takes 3d8 Radiant after each of its turns, Wis save for half')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
-    save = new.save, half = new.half, targets = new.targets, count = new.count, creature = new.creature,
-    effect = new.effect, value = new.value, repeat_save = new.repeat_save, concentration = new.concentration,
-    minutes = new.minutes, about = new.about;
+    save = new.save, half = new.half, targets = new.targets, count = new.count, upcast_targets = new.upcast_targets,
+    creature = new.creature, effect = new.effect, value = new.value, repeat_save = new.repeat_save,
+    concentration = new.concentration, minutes = new.minutes, about = new.about;
 
 -- SRD 5.2.1 Weapons (p.90; ranges and ammunition left out), Armor (p.92) and Potion of Healing (p.99).
 -- Ids are fixed: the class kits (CLASSES in game.php) and the finds below use them. Every weapon has its mastery;
