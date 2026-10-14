@@ -46,7 +46,7 @@ async function send(cmd) {
 /**
  * hero_sheet() in game.php.
  * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, ac: number, prof: number,
- *   abilities: [string, number, number][], weapon: string, to_hit: number, damage: string, attacks: number,
+ *   abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string, attacks: number,
  *   resources: [string, string][], status: string[], xp: number, xp_from: number, xp_next: number | null,
  *   gold: number }} Hero
  */
@@ -67,12 +67,12 @@ const signed = (n) => (n < 0 ? '' : '+') + n;
 
 /**
  * One labelled box; every number on the sheet that isn't a bar or a row is one of these.
- * @param {string} label @param {string | number} value @param {number} [sub]
+ * @param {string} label @param {string | number} value @param {(string | number)[]} subs smaller lines below
  */
-function tile(label, value, sub) {
+function tile(label, value, ...subs) {
     const box = el('div', 'stat border rounded-1 text-center h-100 py-1');
     box.append(el('small', 'd-block text-body-secondary text-uppercase', label), el('span', 'd-block fs-5', value));
-    if (sub !== undefined) box.append(el('small', 'd-block text-body-secondary', sub));
+    box.append(...subs.map((sub) => el('small', 'd-block text-body-secondary', sub)));
     const col = el('div', 'col');
     col.append(box);
     return col;
@@ -96,7 +96,9 @@ function drawHero(h, map) {
     const hp = h.hp / h.max_hp;
     bar('hp-bar', h.hp, h.max_hp, hp > 0.5 ? 'bg-success' : hp > 0.25 ? 'bg-warning' : 'bg-danger');
     byId('tiles').replaceChildren(tile('AC', h.ac), tile('Prof', signed(h.prof)), tile('Gold', h.gold));
-    byId('abilities').replaceChildren(...h.abilities.map(([name, score, mod]) => tile(name, signed(mod), score)));
+    byId('abilities').replaceChildren(
+        ...h.abilities.map(([name, score, mod, save]) => tile(name, signed(mod), score, `save ${signed(save)}`)),
+    );
     const attack = `${signed(h.to_hit)} · ${h.damage}` + (h.attacks > 1 ? ` ×${h.attacks}` : '');
     byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources].map(([k, v]) => {
         const row = el('div', 'd-flex justify-content-between gap-3');

@@ -118,8 +118,10 @@ try {
     check(says($score, 'Greatsword +4 to hit, 2d6+2 damage') && says($score, 'Hit Dice 1/1 d10   Second Wind 2/2')
         && says($score, 'XP 0 (300 for level 2)'), 'score: attack, Hit Dice, Second Wind and XP');
     $sheet = hero_sheet(with_stats(hero('Testa')));
-    check($sheet['xp_from'] === 0 && $sheet['xp_next'] === 300 && $sheet['abilities'][0] === ['Str', 15, 2]
+    check($sheet['xp_from'] === 0 && $sheet['xp_next'] === 300 && $sheet['abilities'][0] === ['Str', 15, 2, 4]
         && $sheet['resources'][1] === ['Second Wind', '2/2'], 'hero sheet: the score panel gets numbers, not text');
+    check(says($score, 'Saves  Str +4  Dex +2  Con +3  Int -1  Wis +0  Cha +1'),
+        "hero saves: the ability modifier, plus PB for the class's two (a Fighter's Str and Con)");
 
     // Map: Town Square (safe) has Market Lane west, the inn (safe) east, the keep north, the Mill Bridge (stair down) south.
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
@@ -458,7 +460,10 @@ try {
     q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
     q("UPDATE users SET room_id = 2, level = 1, advantage = FALSE WHERE name = 'Testd'");
     run_command(hero('Testd'), 'equip shortbow');
-    check(says(run_command(hero('Testd'), 'score'), 'Shortbow +4 to hit, 1d6+2 damage'), 'a ranged weapon uses Dex');
+    $score = run_command(hero('Testd'), 'score');
+    check(says($score, 'Shortbow +4 to hit, 1d6+2 damage'), 'a ranged weapon uses Dex');
+    check(says($score, 'Saves  Str +1  Dex +4  Con +1  Int +4  Wis +0  Cha -1'),
+        'a Rogue is proficient in Dex and Int');
     $dice_queue = [10, 1, 12, 3]; // initiative 12 vs 1, then one shot: 16 vs AC 10 for 3 + 2
     $out = run_command(hero('Testd'), 'kill dummy');
     check(says($out, '(16 vs AC 10) for 5 damage.') && says($out, 'The Training Dummy closes in!')
@@ -526,6 +531,12 @@ try {
     run_command(hero('Testc'), 'flee');
     check(count(array_filter(run_command(hero('Testc'), 'equip greataxe'), fn ($l) => str_contains($l, 'put away')))
         === 2, 'a two-handed weapon puts away both hands');
+    $dice_queue = [3, 15, 4, 12];
+    $barbarian = with_stats(hero('Testc'));
+    check(save($barbarian, 'dex', 16) === [16, true, 1] && save($barbarian, 'str', 16) === [8, false, 0],
+        'Danger Sense: a level 2 Barbarian has Advantage on Dex saves');
+    $dice_queue = [4, 12];
+    check(save(['raging' => 1] + $barbarian, 'str', 16) === [16, true, 1], 'Rage: Advantage on Str saves');
 
     // Shove and grapple in place of one attack (Testa: level 5, two attacks, Str +2, PB +3: DC 13).
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
@@ -610,7 +621,7 @@ try {
         'a made save takes nothing; in a fight a spell goes at your foe');
     $ogre = q('SELECT * FROM monsters WHERE id = 13')->fetch();
     $dice_queue = [9, 9];
-    check(save($ogre, 'con', 12) === [12, true] && save($ogre, 'wis', 8) === [7, false],
+    check(save($ogre, 'con', 12) === [12, true, 0] && save($ogre, 'wis', 8) === [7, false, 0],
         'six saves per stat block (Ogre: Con +3, Wis -2)');
     $dice_queue = [11, 15, 2, 3, 4, 5, 1]; // a ranged spell attack next to a foe: the lower of 11 and 15; Slam misses
     $out = run_command(hero('Teste'), 'cast guiding');

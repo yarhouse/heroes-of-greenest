@@ -27,13 +27,14 @@ const BONUS_USED = "You've already used your Bonus Action this round.";
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
  * level 1 HP and fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con
- * Int Wis Cha order, armor training, and starting equipment A as [item id, worn]. Kits leave out ammunition,
- * packs, tools and focuses. Every class but the Rogue is trained with every weapon (the Fighter's Fighting Style is
- * Defense, the Cleric's Divine Order is Protector).
+ * Int Wis Cha order, saving throw proficiencies, armor training, and starting equipment A as [item id, worn]. Kits
+ * leave out ammunition, packs, tools and focuses. Every class but the Rogue is trained with every weapon (the
+ * Fighter's Fighting Style is Defense, the Cleric's Divine Order is Protector).
  */
 const CLASSES = [
     'fighter' => [
         'name' => 'Fighter', 'die' => 10, 'hp' => 10, 'per_level' => 6, 'scores' => [15, 14, 13, 8, 10, 12],
+        'saves' => ['strength', 'constitution'],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 4,
         'kit' => [ // Chain Mail, Greatsword, Flail, 8 Javelins
             [40, true], [15, true], [12, false], [5, false], [5, false], [5, false], [5, false], [5, false], [5, false],
@@ -43,12 +44,14 @@ const CLASSES = [
     ],
     'barbarian' => [
         'name' => 'Barbarian', 'die' => 12, 'hp' => 12, 'per_level' => 7, 'scores' => [15, 13, 14, 10, 12, 8],
+        'saves' => ['strength', 'constitution'],
         'armor' => ['light', 'medium', 'shield'], 'gold' => 15,
         'kit' => [[14, true], [4, false], [4, false], [4, false], [4, false]], // Greataxe, 4 Handaxes
         'about' => 'd12 HP, tough even unarmored. Rage to hit harder and shrug off weapon blows.',
     ],
     'rogue' => [
         'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
+        'saves' => ['dexterity', 'intelligence'],
         'armor' => ['light'], 'gold' => 8,
         'kit' => [[32, true], [24, true], [2, false], [2, false], [72, false]], // Leather Armor, Shortsword, 2 Daggers,
         // Shortbow
@@ -56,6 +59,7 @@ const CLASSES = [
     ],
     'cleric' => [
         'name' => 'Cleric', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [14, 8, 13, 10, 15, 12],
+        'saves' => ['wisdom', 'charisma'],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
         'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
         'about' => 'd8 HP, armor and shield. Spells that burn foes and heal you.',
@@ -163,6 +167,10 @@ function with_stats(array $me): array
         'immunities' => '',
         'vulnerabilities' => '',
     ];
+    foreach (ABILITIES as $a) { // str_save to cha_save, as on a monster, so save() takes either
+        $proficient = in_array($a, CLASSES[$class]['saves'], true);
+        $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0);
+    }
     $me += gear($me);
     $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
     return $me;
@@ -666,11 +674,18 @@ function with(int $edge): string
     return [-1 => ', with Disadvantage', 0 => '', 1 => ', with Advantage'][$edge];
 }
 
-/** $foe's saving throw against $dc with its 'str' to 'cha' save: [the total, whether it saved]. No natural 1 or 20. */
-function save(array $foe, string $ability, int $dc): array
+/**
+ * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total, whether it saved,
+ * its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Rage gives Advantage on Str saves, and a Barbarian's Danger Sense
+ * (level 2) on Dex saves (shortcut: nothing Incapacitates yet, which would turn Danger Sense off).
+ */
+function save(array $who, string $ability, int $dc): array
 {
-    $total = roll('1d20') + $foe[$ability . '_save'];
-    return [$total, $total >= $dc];
+    $barbarian = ($who['class'] ?? null) === 'barbarian';
+    $edge = (int) (($ability === 'str' && ($who['raging'] ?? false))
+        || ($ability === 'dex' && $barbarian && $who['level'] >= 2));
+    $total = d20($edge) + $who[$ability . '_save'];
+    return [$total, $total >= $dc, $edge];
 }
 
 /** True if $who (a hero or a monster) has $condition. */
@@ -1336,7 +1351,7 @@ function hero_sheet(array $me): array
         'ac' => $me['ac'],
         'prof' => $me['prof_bonus'],
         'abilities' => array_map(
-            fn ($a) => [ucfirst(substr($a, 0, 3)), $me[$a], mod($me[$a])],
+            fn ($a) => [ucfirst(substr($a, 0, 3)), $me[$a], mod($me[$a]), $me[substr($a, 0, 3) . '_save']],
             ABILITIES
         ),
         'weapon' => $me['weapon'],
@@ -1373,6 +1388,7 @@ function cmd_score(array $me): array
     return [
         "{$s['name']}, level {$s['level']} {$s['class']}",
         implode('  ', array_map(fn ($a) => sprintf('%s %d (%+d)', ...$a), $s['abilities'])),
+        'Saves  ' . implode('  ', array_map(fn ($a) => sprintf('%s %+d', $a[0], $a[3]), $s['abilities'])),
         "HP {$s['hp']}/{$s['max_hp']}   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
         sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
             . ($s['attacks'] > 1 ? ", {$s['attacks']} attacks a round" : ''),
