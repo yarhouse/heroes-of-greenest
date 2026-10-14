@@ -73,9 +73,11 @@ server never needs Riftshadow. To add or regenerate one, name the Greenest room 
 
 ```sh
 php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600 > db/areas/koboldmines.sql
+php bin/convert-area.php ../riftshadow/area/haon.are 6 west 6000 > db/areas/haon.sql
 ```
 
-That links Southern Fields (6) south to the mines' entrance (24600), and back north.
+The first links Southern Fields (6) south to the mines' entrance (24600), and back north; the second links it west to
+the edge of Haon Dor (6000).
 
 Each monster gets an SRD stat block by its Riftshadow race, or a word of its name, with tiers by Rift level
 (`CREATURES` in the converter: a Rift 23 goblin is a Goblin Warrior, a Rift 30 one a Goblin Boss); a race not listed

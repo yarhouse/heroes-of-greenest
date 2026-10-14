@@ -5,8 +5,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Bridge areas.** Choose a Rift-level-to-hero-level target, then convert Haon Dor (Rift 5-10), maybe the Sewers
-   (Rift 5-30), each hung off a Greenest exit, so there's something between Greenest and Kobold Mines.
+Nothing queued: pick the next task from `BACKLOG.md`.
 
 Any time: **accounts for the friends**, once each:
 `ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php <Name>"`.
@@ -28,4 +27,7 @@ Any time: **accounts for the friends**, once each:
   Warrior from 20, Boss from 30; hobgoblin: Warrior, Captain from 30), with CR = Rift level / 12 as the fallback. Their
   Rift weapons, body armor and shields map to SRD items, and a kill's loot comes from those. Kobold Mines is now
   CR 1/8 to 3.
+- 2026-10-14 **Haon Dor** instead of bridge areas: with Kobold Mines at CR 1/8 to 3 there was no gap to bridge, so Haon
+  Dor is a second area at the same tier (CR 0 to 2, a Green Dragon Wyrmling as its boss), west of Southern Fields.
+  The Sewers wait for an area past the mines.
 - 2026-10-14 **Deployed** at https://yarhouse.dev/heroes-of-greenest with `bin/deploy.sh` (see README).

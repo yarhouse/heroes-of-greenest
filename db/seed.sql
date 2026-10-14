@@ -40,7 +40,7 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 DELETE FROM delve;
 INSERT INTO delve (seed) VALUES (0);
 
--- Monsters 1-23 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
+-- Monsters 1-31 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
 -- Beasts are a Druid's Wild Shape forms (17-23 are here for that, and share CRs with 1-16, which the converter
 -- prefers); a Multiattack of two kinds keeps one of them.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
@@ -96,6 +96,22 @@ INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, dam
     'piercing', NULL, NULL, '', '', '', 'large', 'beast'),
 (23, 'Giant Spider', 14, '4d10+4', 3, 'Bite', 1, 5, '1d8+3', 1, 200, 2, 3, 1, -4, 0, -3,              -- p.353
     'piercing', '2d6', 'poison', '', '', '', 'large', 'beast'),
+(24, 'Brown Bear', 11, '3d10+6', 1, 'Bite', 2, 5, '1d8+3', 1, 200, 3, 1, 2, -4, 1, -2,                -- p.346
+    'piercing', NULL, NULL, '', '', '', 'large', 'beast'),
+(25, 'Deer', 13, '1d8', 3, 'Ram', 1, 2, '1d4', 0, 10, 0, 3, 0, -4, 2, -3,                              -- p.347
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast'),
+(26, 'Jackal', 12, '1d6', 2, 'Bite', 1, 1, '1d4-1', 0, 10, -1, 2, 0, -4, 1, -2,                        -- p.356
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
+(27, 'Worg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1,                     -- p.342
+    'piercing', NULL, NULL, '', '', '', 'large', 'fey'),
+(28, 'Green Dragon Wyrmling', 17, '7d8+7', 3, 'Rend', 2, 4, '1d10+2', 2, 450, 2, 3, 1, 2, 2, 1,        -- p.293
+    'slashing', '1d6', 'poison', '', 'poison', '', 'medium', 'dragon'),
+(29, 'Commoner', 10, '1d8', 0, 'Club', 1, 2, '1d4', 0, 10, 0, 0, 0, 0, 0, 0,                           -- p.275
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(30, 'Druid', 13, '8d8+8', 1, 'Vine Staff', 2, 5, '1d8+3', 2, 450, 0, 1, 1, 1, 3, 0,                   -- p.282
+    'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid'),
+(31, 'Sprite', 15, '4d4', 4, 'Needle Sword', 1, 6, '1d4+4', 0.25, 50, -4, 4, 0, 2, 1, 0,               -- p.329
+    'piercing', NULL, NULL, '', '', '', 'tiny', 'fey'),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
     'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior

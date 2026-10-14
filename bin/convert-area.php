@@ -19,7 +19,7 @@ if (PHP_SAPI !== 'cli') {
 const BACK = [
     'north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east', 'up' => 'down', 'down' => 'up',
 ];
-// A monster's SRD stat block, by its Rift race or else a word of its name ("the great sewer rat" is race human): the
+// A monster's SRD stat block, by its Rift race or else words of its names ("the great sewer rat" is race human): the
 // last tier at or below its Rift level. Every name must be a stat block in seed.sql.
 const CREATURES = [
     'goblin' => [0 => 'Goblin Minion', 20 => 'Goblin Warrior', 30 => 'Goblin Boss'],
@@ -36,6 +36,14 @@ const CREATURES = [
     'ogre' => [0 => 'Ogre'],
     'troll' => [0 => 'Troll'],
     'bandit' => [0 => 'Bandit', 30 => 'Bandit Captain'],
+    'bear' => [0 => 'Brown Bear'],
+    'deer' => [0 => 'Deer'],
+    'fox' => [0 => 'Jackal'], // the SRD has no fox
+    'warg' => [0 => 'Worg'],
+    'green dragon' => [0 => 'Green Dragon Wyrmling'],
+    'druid' => [0 => 'Druid'],
+    'lumberjack' => [0 => 'Commoner'],
+    'brownie' => [0 => 'Sprite'],
 ];
 // Anything else gets the SRD stat block nearest CR = Rift level / this.
 const RIFT_LEVELS_PER_CR = 12;
@@ -118,6 +126,7 @@ foreach (records($sec['MOBS']) as $vnum => $body) {
     $s = explode('~', $body);
     $mobs[$vnum] = [
         'name' => title($s[1]),
+        'words' => strtolower(clean("$s[0] $s[1]")), // its keywords and short name
         'race' => preg_split('/\s+/', trim($s[4]))[3] ?? '',
         'level' => (int) $s[5],
         'gear' => [],
@@ -197,14 +206,17 @@ preg_match('/^INSERT INTO items \(.*?\nAS new/ms', file_get_contents(__DIR__ . '
     || fail('Found no items INSERT in db/seed.sql.');
 preg_match_all("/^\((\d+), '([^']+)', '(\w+)'/m", $seed_items[0], $items, PREG_SET_ORDER);
 
-/** The SRD stat block for a Rift monster: by race, then by a word of its name, then nearest in CR to its level. */
+/** The SRD stat block for a Rift monster: by race, then by words of its names, then nearest in CR to its level. */
 function borrow(array $mob, array $srd): array
 {
-    $words = preg_split('/[^a-z]+/', strtolower($mob['name']));
     $tiers = CREATURES[$mob['race']] ?? null;
-    foreach ($words as $w) {
-        $tiers ??= CREATURES[$w] ?? null;
+    $key_len = 0;
+    foreach (CREATURES as $key => $t) { // the longest match: "green dragon" over a plain "dragon"
+        if ($tiers === null && preg_match("/\\b$key\\b/", $mob['words']) && strlen($key) > $key_len) {
+            [$found, $key_len] = [$t, strlen($key)];
+        }
     }
+    $tiers ??= $found ?? null;
     if ($tiers !== null) {
         $name = array_filter($tiers, fn ($min) => $min <= $mob['level'], ARRAY_FILTER_USE_KEY);
         $name = "'" . str_replace("'", "''", end($name) ?: reset($tiers)) . "'";
