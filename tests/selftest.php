@@ -140,10 +140,33 @@ try {
                 ORDER BY s.id LIMIT 1')->fetch();
     q('UPDATE users SET room_id = ? WHERE name = ?', [$spawn['room_id'], 'Testa']);
     run_command(hero('Testa'), 'look'); // spawns it
-    check(in_array('kill ' . strtolower($spawn['name']), actions(hero('Testa')), true), 'buttons: kill what is here');
+    $foe = strtolower($spawn['name']);
+    $c = choices(with_stats(hero('Testa')));
+    check(in_array('kill ', actions(hero('Testa')), true) && $c['kill'] === [[$foe, "kill $foe"]]
+        && in_array(['greatsword', 'drop greatsword'], $c['drop'], true) && !isset($c['cast']),
+        'buttons: kill, then what is here to kill; drop what I carry; no cast for a Fighter');
+    q('UPDATE users SET room_id = ? WHERE name = ?', [$spawn['room_id'], 'Gate']); // Gate ended as a Sorcerer 6
+    $c = choices(with_stats(hero('Gate')));
+    check(in_array(['magic missile', 'cast magic missile '], $c['cast'], true)
+        && $c['cast magic missile'] === [[$foe, "cast magic missile $foe"]],
+        "cast's buttons: my spells, then a monster for one that needs one");
+    save_hero('Healer', 'correct horse');
+    create('Healer', 'cleric');
+    q('UPDATE users SET room_id = ? WHERE name = ?', [$spawn['room_id'], 'Healer']);
+    $c = choices(with_stats(hero('Healer')));
+    check(in_array(['bless', 'cast bless'], $c['cast'], true)
+        && in_array(['cure wounds', 'cast cure wounds '], $c['cast'], true)
+        && $c['cast cure wounds'][0] === ['yourself', 'cast cure wounds']
+        && in_array(['gate', 'cast cure wounds gate'], $c['cast cure wounds'], true),
+        'a spell for the party needs no name; a healing one, myself or a hero here');
     q('UPDATE users SET fighting = ? WHERE name = ?', [$spawn['id'], 'Testa']);
-    check(actions(hero('Testa')) === ['kill', 'shove', 'grapple', 'second', 'drink ', 'flee'],
-        "buttons in a fight: a Fighter's moves, no targets needed");
+    check(actions(hero('Testa')) === ['kill', 'shove', 'grapple', 'second', 'flee'],
+        "buttons in a fight: a Fighter's moves, no targets needed, and drink only with a potion");
+    q('INSERT INTO objects (item_id, user_id) VALUES (60, ?)', [hero('Testa')['id']]); // a Potion of Healing
+    check(in_array('drink ', actions(hero('Testa')), true)
+        && choices(with_stats(hero('Testa')))['drink'] === [['potion of healing', 'drink potion of healing']],
+        'with a potion, drink, then the potions I carry');
+    q('DELETE FROM objects WHERE item_id = 60 AND user_id = ?', [hero('Testa')['id']]);
     q("UPDATE users SET fighting = NULL, room_id = 1 WHERE name = 'Testa'");
     check(actions(hero('Testa')) === ['north', 'south', 'east', 'west', 'rest', 'sleep', 'look', 'inventory'],
         'buttons in the Town Square: exits, and rests since it is safe');

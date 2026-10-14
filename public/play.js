@@ -10,6 +10,10 @@ const heroToggle = /** @type {HTMLButtonElement} */ (document.getElementById('he
 const actions = /** @type {HTMLElement} */ (document.getElementById('actions'));
 /** @type {Record<string, string>} usage => what it does, from my_commands() in game.php */
 let commands = JSON.parse(input.dataset.commands ?? '{}');
+/** @type {string[]} actions() in game.php: the buttons while nothing that has choices() is typed */
+let base = [];
+/** @type {Record<string, [string, string][]>} choices() in game.php: prefix => [label, command] */
+let choices = {};
 
 /** @type {string[]} */
 const history = [];
@@ -33,12 +37,14 @@ async function send(cmd) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cmd }),
         });
-        /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>, hero?: Hero,
-         *   map?: string[], logout?: boolean }} */
+        /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>,
+         *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], logout?: boolean }} */
         const data = await res.json();
         for (const line of data.lines ?? []) print(line);
         if (data.commands) commands = data.commands;
-        drawActions(data.actions ?? []);
+        base = data.actions ?? [];
+        choices = data.choices ?? {};
+        drawActions();
         sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
         if (data.hero) drawHero(data.hero, data.map ?? []);
         if (data.logout) setTimeout(() => location.reload(), 800);
@@ -133,23 +139,38 @@ form.addEventListener('submit', (e) => {
     if (cmd) run(cmd);
 });
 
-/** actions() in game.php. One ending in a space needs more typed, so it goes in the prompt. @param {string[]} list */
-function drawActions(list) {
-    actions.replaceChildren(...list.map((cmd) => {
-        const button = el('button', 'btn btn-sm', cmd.endsWith(' ') ? cmd.trim() + '…' : cmd);
-        button.setAttribute('type', 'button');
-        button.dataset.cmd = cmd;
-        return button;
-    }));
+/** @param {string} label @param {string} cmd sent, or put in the prompt if it ends in a space (it needs more) */
+function button(label, cmd) {
+    const b = el('button', 'btn btn-sm', cmd.endsWith(' ') ? label + '…' : label);
+    b.setAttribute('type', 'button');
+    b.dataset.cmd = cmd;
+    return b;
+}
+
+/**
+ * The buttons follow the prompt: once it starts with a prefix from choices() ("cast ", "cast fire bolt "), they are
+ * what can follow it, narrowed by anything typed after it, with ✕ to clear it. Otherwise actions().
+ */
+function drawActions() {
+    const typed = input.value.trimStart().toLowerCase().replace(/\s+/g, ' ');
+    const prefix = Object.keys(choices).filter((k) => typed.startsWith(k + ' ')).sort((a, b) => b.length - a.length)[0];
+    if (prefix === undefined) {
+        actions.replaceChildren(...base.map((cmd) => button(cmd.trim(), cmd)));
+        return;
+    }
+    const clear = button('✕', '');
+    clear.setAttribute('aria-label', 'Clear the command');
+    const fit = choices[prefix].filter(([, cmd]) => cmd.startsWith(typed) || typed.startsWith(cmd));
+    actions.replaceChildren(clear, ...fit.map(([label, cmd]) => button(label, cmd)));
 }
 
 actions.addEventListener('click', (e) => {
     const cmd = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.cmd;
-    if (!cmd) return;
-    if (!cmd.endsWith(' ')) return run(cmd); // no focus, so a phone keyboard stays down
-    input.value = cmd;
+    if (cmd === undefined) return;
+    input.value = cmd.endsWith(' ') ? cmd : '';
     showHints();
-    input.focus();
+    if (cmd.endsWith(' ')) input.focus();
+    else if (cmd) run(cmd); // no focus, so a phone keyboard stays down
 });
 
 /** Usages whose command word starts with what's typed. Only while typing the first word. */
@@ -172,6 +193,7 @@ function showHints() {
     }));
     hints.hidden = found.length === 0;
     input.setAttribute('aria-expanded', String(!hints.hidden));
+    drawActions(); // the buttons follow the prompt too
 }
 
 /** Fills in a command word; commands that take text get a trailing space to keep typing. */

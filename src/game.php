@@ -1561,9 +1561,7 @@ function cmd_wild(array $me, string $arg): array
         q('UPDATE users SET shape = NULL WHERE id = ?', [$me['id']]);
         return ["You shed the {$me['shape_name']}'s form and stand as yourself again."];
     }
-    $cr = $me['level'] >= 8 ? 1 : ($me['level'] >= 4 ? 0.5 : 0.25);
-    $forms = q("SELECT * FROM monsters WHERE type = 'beast' AND id < 1001 AND cr <= ? ORDER BY cr, name", [$cr])
-        ->fetchAll();
+    $forms = wild_forms($me);
     $form = array_values(array_filter($forms, fn ($f) => names($arg, $f['name'])))[0] ?? null;
     $left = $me['uses'] - $me['uses_spent'];
     if ($form === null) {
@@ -1594,6 +1592,14 @@ function cmd_wild(array $me, string $arg): array
  * spell save DC or takes 2d6 Necrotic (half on a success), and I regain 2d6 HP; 3d6 from level 10, 4d6 from 14.
  * shortcut: the Sphere holds only the foe I fight and me.
  */
+/** The Beasts my Wild Shape can take at my level. */
+function wild_forms(array $me): array
+{
+    $cr = $me['level'] >= 8 ? 1 : ($me['level'] >= 4 ? 0.5 : 0.25);
+    return q("SELECT * FROM monsters WHERE type = 'beast' AND id < 1001 AND cr <= ? ORDER BY cr, name", [$cr])
+        ->fetchAll();
+}
+
 function cmd_land(array $me, string $target): array
 {
     if ($me['class'] !== 'druid' || $me['level'] < 3) {
@@ -1883,11 +1889,7 @@ function cmd_cast(array $me, string $arg): array
             return ['Only Sorcerers of level 2 or more know Metamagic.'];
         }
     }
-    $known = q( // my class's cantrips, my prepared spells I have slots for, and the ones always prepared
-        'SELECT * FROM spells WHERE level <= ? AND ((level = 0 AND FIND_IN_SET(?, classes)) OR FIND_IN_SET(id, ?))
-         ORDER BY level, name',
-        [count($me['slots']), $me['class'], implode(',', [...prepared_ids($me), ...always_ids($me)])]
-    )->fetchAll();
+    $known = known_spells($me);
     [$spell, $target] = find_spell($known, $arg);
     $mod = mod($me[$ability]);
     $dc = spell_dc($me);
@@ -2158,6 +2160,16 @@ function start_effect(
 }
 
 /** The ids of my prepared spells: my own list, or the class's suggested ones until I make one. */
+/** My class's cantrips, my prepared spells I have slots for, and the ones always prepared. */
+function known_spells(array $me): array
+{
+    return q(
+        'SELECT * FROM spells WHERE level <= ? AND ((level = 0 AND FIND_IN_SET(?, classes)) OR FIND_IN_SET(id, ?))
+         ORDER BY level, name',
+        [count($me['slots']), $me['class'], implode(',', [...prepared_ids($me), ...always_ids($me)])]
+    )->fetchAll();
+}
+
 function prepared_ids(array $me): array
 {
     $ids = array_map('intval', array_filter(explode(',', $me['prepared'])));
@@ -2930,26 +2942,72 @@ function actions(array $me): array
     $cast = in_array('cast', $mine, true) ? ['cast '] : [];
     if ($me['fighting'] !== null) {
         // Every attack goes at the monster I'm fighting, so none of these needs a name.
-        return ['kill', ...array_diff($mine, ['cast']), ...$cast, 'drink ', 'flee'];
+        $potions = array_filter(objects_here('user_id', (int) $me['id']), fn ($o) => $o['slot'] === 'potion');
+        return ['kill', ...array_diff($mine, ['cast']), ...$cast, ...($potions ? ['drink '] : []), 'flee'];
     }
-    // shortcut: not room_monsters(), which respawns (and rolls); a monster due back shows after the next look
-    $foes = q(
-        'SELECT DISTINCT m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id
-         WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY m.name',
-        [$me['room_id']]
-    )->fetchAll(PDO::FETCH_COLUMN);
-    $items = array_unique(array_column(objects_here('room_id', (int) $me['room_id']), 'name'));
     $exits = q('SELECT dir FROM exits WHERE room_id = ?', [$me['room_id']])->fetchAll(PDO::FETCH_COLUMN);
     $safe = q('SELECT safe FROM rooms WHERE id = ?', [$me['room_id']])->fetchColumn();
     return [
-        ...array_map(fn ($name) => 'kill ' . strtolower($name), $foes),
-        ...array_map(fn ($name) => 'get ' . strtolower($name), $items),
+        ...(monsters_here($me) ? ['kill '] : []),
+        ...(objects_here('room_id', (int) $me['room_id']) ? ['get '] : []),
         ...array_values(array_intersect(DIRS, $exits)),
         ...$cast,
         ...($safe ? ['rest', 'sleep'] : []),
         'look',
         'inventory',
     ];
+}
+
+/**
+ * What can follow a command, for the buttons once it's typed: [prefix => [[label, command], ...]]. As in actions(), a
+ * command ending in a space needs more, and is then a prefix itself (a spell at a monster outside a fight, say).
+ */
+function choices(array $me): array
+{
+    $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
+    $has = fn (string $verb): bool => in_array($verb, $mine, true);
+    $pick = fn (string $verb, array $names): array => array_map(fn ($n) => [$n, "$verb $n"], array_values($names));
+    $names = fn (array $objects): array => array_unique(array_map('strtolower', array_column($objects, 'name')));
+    $foes = monsters_here($me);
+    $heroes = $names(q('SELECT name FROM users WHERE room_id = ? AND id <> ? AND setup IS NULL ORDER BY name',
+        [$me['room_id'], $me['id']])->fetchAll());
+    $carried = objects_here('user_id', (int) $me['id']);
+    $c = [
+        'get' => $pick('get', $names(objects_here('room_id', (int) $me['room_id']))),
+        'drop' => $pick('drop', $names($carried)),
+        'equip' => $pick('equip', $names(array_filter($carried, fn ($o) => !$o['worn'] && $o['slot'] !== 'potion'))),
+        'drink' => $pick('drink', $names(array_filter($carried, fn ($o) => $o['slot'] === 'potion'))),
+        'inspire' => $has('inspire') ? $pick('inspire', $heroes) : [],
+        'lay' => $has('lay') ? [['yourself', 'lay'], ...$pick('lay', $heroes)] : [],
+        'wild' => $has('wild') ? [...($me['shape'] !== null ? [['your own form', 'wild']] : []),
+            ...$pick('wild', $names(wild_forms($me)))] : [],
+    ];
+    foreach (['kill', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land'] as $verb) {
+        $c[$verb] = $verb === 'kill' || $has($verb) ? $pick($verb, $foes) : [];
+    }
+    foreach ($has('cast') ? known_spells($me) : [] as $k) {
+        $cast = 'cast ' . strtolower($k['name']);
+        // In a fight a spell goes at the monster I'm fighting; an ally spell with no name is on myself.
+        $more = match (true) {
+            $k['targets'] === 'foe' && $me['fighting'] === null => $pick($cast, $foes),
+            $k['targets'] === 'ally' && $heroes !== [] => [['yourself', $cast], ...$pick($cast, $heroes)],
+            default => [],
+        };
+        $c['cast'][] = [strtolower($k['name']), $cast . ($more ? ' ' : '')];
+        $c[$cast] = $more;
+    }
+    return array_filter($c);
+}
+
+/** The names of the living monsters here, lowercase, each once. */
+function monsters_here(array $me): array
+{
+    // shortcut: not room_monsters(), which respawns (and rolls); a monster due back shows after the next look
+    return q(
+        'SELECT DISTINCT LOWER(m.name) FROM spawns s JOIN monsters m ON m.id = s.monster_id
+         WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY 1',
+        [$me['room_id']]
+    )->fetchAll(PDO::FETCH_COLUMN);
 }
 
 function ago(int $mins): string

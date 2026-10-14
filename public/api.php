@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-// api.php :: runs one player command; replies { lines, actions, commands, hero?, map?, logout? } as JSON.
+// api.php :: runs one player command; replies { lines, actions, commands, choices?, hero?, map?, logout? }
+// as JSON.
 
 require __DIR__ . '/../src/boot.php';
 require __DIR__ . '/../src/game.php';
@@ -41,4 +42,5 @@ $more = ['actions' => actions($me), 'commands' => my_commands($me)];
 if ($me['setup'] !== null) {
     reply(['lines' => $lines] + $more); // no sheet while creating
 }
-reply(['lines' => $lines, 'hero' => hero_sheet(with_stats($me)), 'map' => cmd_map($me)] + $more);
+$me = with_stats($me);
+reply(['lines' => $lines, 'hero' => hero_sheet($me), 'map' => cmd_map($me), 'choices' => choices($me)] + $more);
