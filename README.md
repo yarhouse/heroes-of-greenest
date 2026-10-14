@@ -54,7 +54,7 @@ heroes left inside offline wake on the stair. Re-running `db/seed.sql` also rebu
 ## Rules
 
 The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC_v5.2.1.pdf`, gitignored). On first
-login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger, Sorcerer, Wizard or Bard) and assigns the Standard Array, and starts with
+login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger, Sorcerer, Wizard, Bard or Druid) and assigns the Standard Array, and starts with
 that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
@@ -77,7 +77,11 @@ Charisma, unleash `innate` sorcery in a fight (+1 save DC, Advantage on spell at
 more HP, AC 10 + Dex + Cha, Command, and Fire resistance and damage (6); Bards `inspire` another hero with a die for a
 missed attack or failed save, cast Vicious Mockery, Starry Wisp, Dissonant Whispers, Faerie Fire and the Cleric's
 healing and hexes, and as College of Lore Bards spend that die on Cutting Words (3), get it back on short rests (5),
-prepare Cleric, Druid and Wizard spells (6) and use it on their own misses (14);
+prepare Cleric, Druid and Wizard spells (6) and use it on their own misses (14); Druids cast Starry Wisp, Produce
+Flame, Faerie Fire, Entangle, Thunderwave, Moonbeam and healing, take `wild` shape as an SRD beast (its AC and attacks,
+Temporary Hit Points, no spells), and as Circle of the Land (Arid) Druids always have Fire Bolt, Burning Hands and
+Fireball, spend a Wild Shape on `land` (Land's Aid), recover slots on a short rest (6), add a Primal Strike (7) and
+resist Fire (10);
 Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
 Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
 Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;

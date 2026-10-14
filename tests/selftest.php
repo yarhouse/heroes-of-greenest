@@ -1179,6 +1179,64 @@ try {
     $dice_queue = [20, 1];
     run_command(hero('Testk'), 'flee');
 
+    // Druid (Testl: Wis 15: spell save DC 12; Sickle +1). The dummy: AC 10, saves +0, Slam +3.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testl', 'correct horse');
+    create('Testl', 'druid');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testl'");
+    $score = run_command(hero('Testl'), 'score');
+    check(says($score, 'level 1 Druid') && says($score, 'HP 10/10   AC 14') && says($score, 'Sickle +1 to hit, 1d4-1')
+        && says($score, 'Hit Dice 1/1 d8   Spell slots 2/2')
+        && says($score, 'Saves  Str -1  Dex +1  Con +2  Int +3  Wis +4  Cha +0')
+        && count(objects_here('user_id', (int) hero('Testl')['id'])) === 4 && hero('Testl')['gold'] === 9,
+        'Druid: d8, Leather Armor, Shield, Sickle and Quarterstaff, Int and Wis saves');
+    check(says(run_command(hero('Testl'), 'cast'), 'starry wisp <monster>')
+        && says(run_command(hero('Testl'), 'wild wolf'), 'level 2 or more'), 'Druid spells; no Wild Shape at level 1');
+    q("UPDATE users SET level = 2 WHERE name = 'Testl'");
+    $out = run_command(hero('Testl'), 'wild');
+    check(says($out, 'Wild Shape forms (2/2 uses left)') && says($out, 'wolf') && says($out, 'giant rat')
+        && !says($out, '  ape '), 'Wild Shape forms: SRD Beasts up to CR 1/4 at level 2');
+    check(says(run_command(hero('Testl'), 'wild wolf'), 'You shift into a Wolf! AC 12, 2 temporary HP, 1 Wild Shape '
+        . 'left.')
+        && says($score = run_command(hero('Testl'), 'score'), 'HP 10/10 +2 temp   AC 12')
+        && says($score, 'Bite +4 to hit, 1d6+2 damage') && says($score, 'Wild Shape: Wolf')
+        && says(run_command(hero('Testl'), 'cast cure'), "can't cast spells in Wild Shape"),
+        "Wild Shape: the Beast's AC and attack, Temporary Hit Points, and no spells");
+    $dice_queue = [10, 1, 10, 3, 15, 4];
+    $out = run_command(hero('Testl'), 'kill dummy');
+    check(says($out, 'You hit the Training Dummy (14 vs AC 10) for 5 damage.')
+        && says($out, 'hits you (18 vs AC 12) for 4 damage (2 to temporary HP).') && hero('Testl')['hp'] === 8
+        && hero('Testl')['temp_hp'] === 0 && $dice_queue === [], 'a Bite as a Wolf; Temporary Hit Points go first');
+    check(says(run_command(hero('Testl'), 'wild'), 'stand as yourself again')
+        && says(run_command(hero('Testl'), 'score'), 'AC 14'), 'wild alone leaves the form');
+    q("UPDATE users SET level = 3 WHERE name = 'Testl'");
+    $dice_queue = [5, 3, 4, 2, 2, 1];
+    check(says(run_command(hero('Testl'), 'land'), 'fails its Con save (5 vs DC 12) and takes 7 damage, and you '
+        . 'regain 2 HP.') && $dice_queue === [] && hero('Testl')['uses_spent'] === 2,
+        "Land's Aid: a Wild Shape for 2d6 Necrotic and 2d6 HP");
+    check(says(run_command(hero('Testl'), 'cast'), 'fire bolt <monster>') && says(run_command(hero('Testl'), 'cast'),
+        'burning hands'), 'Circle of the Land (Arid): Fire Bolt and Burning Hands always prepared');
+    $dice_queue = [20, 1];
+    run_command(hero('Testl'), 'flee');
+    q("UPDATE users SET level = 6, slots_spent = '1,1,1', resting = 'short', rest_until = NOW() WHERE name = 'Testl'");
+    check(says(run_command(hero('Testl'), 'score'), 'with Natural Recovery bringing back slots of level 3 and '
+        . 'regaining a Wild Shape.') && hero('Testl')['uses_spent'] === 1 && hero('Testl')['slots_spent'] === '1,1,0',
+        'Natural Recovery: slots on a short rest, and a Wild Shape back');
+    q("UPDATE users SET level = 7, room_id = 2 WHERE name = 'Testl'");
+    $dice_queue = [10, 1, 15, 2, 5, 1];
+    check(says(run_command(hero('Testl'), 'kill dummy'), 'for 6 damage (+5 cold Primal Strike).') && $dice_queue === [],
+        'Primal Strike: 1d8 more of a type it takes in full');
+    q("UPDATE users SET level = 10 WHERE name = 'Testl'");
+    check(str_contains(with_stats(hero('Testl'))['resistances'], 'fire'), "Nature's Ward: Fire Resistance (Arid)");
+    $dice_queue = [20, 1];
+    run_command(hero('Testl'), 'flee');
+    run_command(hero('Testl'), 'wild dire');
+    q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testl'");
+    run_command(hero('Testl'), 'score');
+    check(hero('Testl')['shape'] === null && hero('Testl')['temp_hp'] === 0, 'a long rest ends Wild Shape');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

@@ -125,12 +125,14 @@ CREATE TABLE users (
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
-    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard')
-        NOT NULL DEFAULT 'fighter',
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard',
+        'druid') NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,
     max_hp SMALLINT UNSIGNED NOT NULL DEFAULT 11,
+    temp_hp SMALLINT UNSIGNED NOT NULL DEFAULT 0, -- Temporary Hit Points, lost first; gone after a long rest
+    shape INT UNSIGNED NULL, -- a Druid's Wild Shape: the monsters row (a Beast) whose form I'm in
     strength TINYINT UNSIGNED NOT NULL DEFAULT 15,
     dexterity TINYINT UNSIGNED NOT NULL DEFAULT 14,
     constitution TINYINT UNSIGNED NOT NULL DEFAULT 13,
@@ -139,10 +141,10 @@ CREATE TABLE users (
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
     -- Second Wind, Rage, Focus Points, Lay On Hands HP, a Ranger's free Hunter's Marks, Sorcery Points or Bardic
-    -- Inspiration
+    -- Inspiration or Wild Shape
     uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0,
     -- A once-a-long-rest feature used since the last one: a Monk's Uncanny Metabolism, a Paladin's free Divine Smite,
-    -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration.
+    -- a Wizard's Arcane Recovery, a Sorcerer's Sorcerous Restoration, a Druid's Natural Recovery.
     once_used BOOLEAN NOT NULL DEFAULT FALSE,
     feature_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body or a Sorcerer's Innate Sorcery
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'

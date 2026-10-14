@@ -33,16 +33,17 @@ const FONT_COSTS = [1 => [2, 2], 2 => [3, 3], 3 => [5, 5], 4 => [6, 7], 5 => [7,
 const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
 
 /**
- * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Bard p.30, Cleric p.36, Fighter p.47, Monk p.49,
- * Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level (both
- * before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw
+ * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Bard p.30, Cleric p.36, Druid p.41, Fighter p.47, Monk
+ * p.49, Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Wizard p.77): Hit Die, level 1 HP and fixed HP per level
+ * (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha order, saving throw
  * proficiencies, Weapon Mastery, a caster's spellcasting ability and slot table (full or half), prepared spells by
  * level, the ones a new hero starts with and the ones always prepared (name => from level), armor training, and
  * starting equipment A as [item id, worn]. Kits leave out ammunition, packs, tools and focuses. Weapon training is
  * trained()'s (the Fighter's and Paladin's Fighting Style is Defense, the Ranger's Archery, the Cleric's Divine Order
- * is Protector, the subclasses are the SRD's: Lore, Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack
- * Defense, Evoker, Draconic Sorcery with Fire for its Elemental Affinity). shortcut: casters know every cantrip of
- * their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose from.
+ * is Protector, the Druid's Primal Order is Warden, the subclasses are the SRD's: Lore, Land (Arid) with Primal Strike,
+ * Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Evoker, Draconic Sorcery with Fire for its
+ * Elemental Affinity). shortcut: casters know every cantrip of their class, and a Wizard's spellbook holds every Wizard
+ * spell, until there are more to choose from.
  */
 const CLASSES = [
     'fighter' => [
@@ -127,6 +128,16 @@ const CLASSES = [
         'kit' => [[32, true], [2, true], [2, false]], // Leather Armor, 2 Daggers
         'about' => 'd8 HP, light armor. Inspire other heroes, cut foes down with words, heal and hex.',
     ],
+    'druid' => [
+        'name' => 'Druid', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [8, 12, 14, 13, 15, 10],
+        'saves' => ['intelligence', 'wisdom'], 'casting' => 'wisdom', 'slots' => 'slots',
+        'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
+        'spells' => ['Cure Wounds', 'Entangle', 'Faerie Fire', 'Thunderwave'], // the SRD suggests Animal Friendship
+        'always' => ['Burning Hands' => 3, 'Fire Bolt' => 3, 'Fireball' => 5], // Circle of the Land Spells (Arid)
+        'armor' => ['light', 'medium', 'shield'], 'gold' => 9,
+        'kit' => [[32, true], [50, true], [9, true], [8, false]], // Leather Armor, Shield, Sickle, Quarterstaff
+        'about' => 'd8 HP, light armor and shield. Nature spells, and Wild Shape into beasts.',
+    ],
     'sorcerer' => [
         'name' => 'Sorcerer', 'die' => 6, 'hp' => 6, 'per_level' => 4, 'scores' => [10, 13, 14, 8, 12, 15],
         'saves' => ['constitution', 'charisma'], 'casting' => 'charisma', 'slots' => 'slots',
@@ -159,6 +170,8 @@ const COMMANDS = [
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
     'inspire <hero>' => 'Bard: give a hero here a Bardic Inspiration die for a failed attack or save; costs no turn',
+    'wild [beast]' => 'Druid 2: Wild Shape into a beast (wild alone lists them, or leaves the form); costs no turn',
+    'land <monster>' => "Druid 3: Land's Aid, a Con save or 2d6 Necrotic, and you regain 2d6 HP (1 Wild Shape)",
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
     'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
     'innate' => 'Sorcerer: Innate Sorcery for the fight, +1 spell save DC and Advantage on spell attacks; no turn',
@@ -220,8 +233,8 @@ function mod(int $score): int
 /**
  * Adds the stats derived from class, level and gear to a `users` row. 'uses' is Second Wind, Rage, Focus Points, the
  * Lay On Hands pool, free Hunter's Marks, Sorcery Points or Bardic Inspiration, and 'slots' a caster's spell slots by
- * spell level. A Draconic Sorcerer has Draconic Resilience (level 3: +1 HP a level) and Elemental Affinity (6: Fire
- * Resistance).
+ * spell level, with a Wild Shape's form in place of my gear. A Draconic Sorcerer has Draconic Resilience (level 3: +1
+ * HP a level) and Elemental Affinity (6: Fire Resistance).
  */
 function with_stats(array $me): array
 {
@@ -243,6 +256,7 @@ function with_stats(array $me): array
             'ranger' => 2 + intdiv($me['level'] - 1, 4), // Favored Enemy: free Hunter's Marks
             'sorcerer' => $me['level'] >= 2 ? $me['level'] : 0, // Sorcery Points
             'bard' => max(1, mod($me['charisma'])), // Bardic Inspiration
+            'druid' => $me['level'] >= 2 ? ($me['level'] >= 17 ? 4 : ($me['level'] >= 6 ? 3 : 2)) : 0, // Wild Shape
             default => 0,
         },
         'bardic' => $me['level'] >= 15 ? 12 : ($me['level'] >= 10 ? 10 : ($me['level'] >= 5 ? 8 : 6)), // its die
@@ -251,7 +265,8 @@ function with_stats(array $me): array
         'slots' => $table === null ? [] : array_map('intval', explode(',', $lv[$table])),
         'resistances' => match (true) {
             (bool) $me['raging'] => 'bludgeoning,piercing,slashing',
-            $class === 'sorcerer' && $me['level'] >= 6 => 'fire',
+            // Elemental Affinity, Nature's Ward (Arid)
+            ($class === 'sorcerer' && $me['level'] >= 6) || ($class === 'druid' && $me['level'] >= 10) => 'fire',
             default => '',
         },
         'immunities' => '',
@@ -263,6 +278,9 @@ function with_stats(array $me): array
         $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0) + $aura;
     }
     $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
+    if ($me['shape'] !== null) {
+        $me = beast_form($me);
+    }
     $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
     $me['max_hp'] += $class === 'sorcerer' && $me['level'] >= 3 ? $me['level'] : 0; // Draconic Resilience
     foreach ($me['effects'] as $e) { // Mage Armor first: a base AC, if it beats mine
@@ -312,6 +330,8 @@ function run_command(array $me, string $input): array
         $verb === 'rage' => cmd_rage($me),
         $verb === 'lay' => cmd_lay($me, trim($arg)),
         $verb === 'inspire' => cmd_inspire($me, trim($arg)),
+        $verb === 'wild' => cmd_wild($me, trim($arg)),
+        $verb === 'land' => cmd_land($me, trim($arg)),
         $verb === 'cast' => cmd_cast($me, trim($arg)),
         $verb === 'prepare' => cmd_prepare($me, trim($arg)),
         $verb === 'rest' => cmd_rest($me, 'short'),
@@ -671,6 +691,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     }
     $sneak = $me['class'] === 'rogue';
     $colossus = $me['class'] === 'ranger' && $me['level'] >= 3; // Colossus Slayer, once a turn
+    $primal = $me['class'] === 'druid' && $me['level'] >= 7; // Primal Strike, once a turn
     $cleaved = false;
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $w) {
@@ -717,11 +738,19 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         [$dmg, $note] = $typed;
         $melee = !$w['ranged'] && !$me['volley'];
         $slayer = $colossus && $foe['hp'] < $foe['max_hp'];
-        foreach (extra_damage($me, $foe, $melee, $crit, $slayer ? $w['damage_type'] : null) as [$more, $more_note]) {
+        $adds = $slayer ? [['1d8', $w['damage_type'], 'Colossus Slayer']] : [];
+        if ($primal) {
+            $type = primal_type($foe);
+            $adds[] = [$me['level'] >= 15 ? '2d8' : '1d8', $type, "$type Primal Strike"];
+        }
+        if (($me['beast_extra'] ?? null) !== null) { // a Giant Spider's venom
+            $adds[] = [...$me['beast_extra'], $me['beast_extra'][1]];
+        }
+        foreach (extra_damage($me, $foe, $melee, $crit, $adds) as [$more, $more_note]) {
             $dmg += $more;
             $note .= $more_note;
         }
-        $colossus = $colossus && !$slayer;
+        [$colossus, $primal] = [$colossus && !$slayer, false];
         $lines[] = ($crit ? 'Critical hit! ' : '') . "$you hit" . ($s === '' ? '' : 's') . " the {$foe['name']} "
             . "($total vs AC {$foe['ac']}$with) for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
         if (($me['smite'] ?? null) !== null && ($melee || $me['smite']['ranged'])) {
@@ -1176,10 +1205,16 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             $deflected = min($dmg, roll('1d10') + mod($me['dexterity']) + $me['level']);
             $dmg -= $deflected;
         }
-        $me['hp'] -= $dmg;
+        $soaked = min($me['temp_hp'], $dmg); // Temporary Hit Points go first
+        if ($soaked > 0) {
+            $me['temp_hp'] -= $soaked;
+            q('UPDATE users SET temp_hp = ? WHERE id = ?', [$me['temp_hp'], $me['id']]);
+        }
+        $me['hp'] -= $dmg - $soaked;
         $hit_me = $me['class'] === 'ranger' && $me['level'] >= 7;
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg "
-            . "damage$note" . ($deflected ? ", $deflected deflected." : '.');
+            . "damage$note" . ($soaked ? " ($soaked to temporary HP)" : '')
+            . ($deflected ? ", $deflected deflected." : '.');
         if ($deflected && $dmg === 0 && spend_uses($me) && redirect($me, $foe, $lines)) {
             q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
             return true;
@@ -1188,7 +1223,8 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             // Dragon Knight's death, kept for async play: back to town with a quarter of your HP and half your gold.
             $me['hp'] = (int) ceil($me['max_hp'] / 4);
             q(
-                'UPDATE users SET hp = ?, gold = gold - gold DIV 2, ' . END_FIGHT . ', room_id = ? WHERE id = ?',
+                'UPDATE users SET hp = ?, temp_hp = 0, shape = NULL, gold = gold - gold DIV 2, ' . END_FIGHT
+                    . ', room_id = ? WHERE id = ?',
                 [$me['hp'], START_ROOM, $me['id']]
             );
             end_concentration($me);
@@ -1457,6 +1493,82 @@ function cmd_inspire(array $me, string $target): array
 }
 
 /**
+ * Wild Shape (Druid 2): wild <beast> shifts me into a Beast form, a Bonus Action that costs no turn (beast_form()). I
+ * keep my HP and gain Temporary Hit Points equal to my level, and can't cast spells until level 18. Forms are the SRD
+ * Beasts in `monsters` of CR 1/4 or less (1/2 from level 4, 1 from 8; none of them fly). wild alone leaves the form
+ * (a Bonus Action too) or lists the forms. Two uses (three at 6, four at 17), one back on a short rest. shortcut: I
+ * know every eligible form, and a form lasts until I leave it, drop to 0 HP or finish a long rest.
+ */
+function cmd_wild(array $me, string $arg): array
+{
+    if ($me['class'] !== 'druid' || $me['level'] < 2) {
+        return ['Only Druids of level 2 or more have Wild Shape.'];
+    }
+    if ($arg === '' && $me['shape'] !== null) {
+        if (!spend_bonus($me)) {
+            return [BONUS_USED];
+        }
+        q('UPDATE users SET shape = NULL WHERE id = ?', [$me['id']]);
+        return ["You shed the {$me['shape_name']}'s form and stand as yourself again."];
+    }
+    $cr = $me['level'] >= 8 ? 1 : ($me['level'] >= 4 ? 0.5 : 0.25);
+    $forms = q("SELECT * FROM monsters WHERE type = 'beast' AND id < 1001 AND cr <= ? ORDER BY cr, name", [$cr])
+        ->fetchAll();
+    $form = array_values(array_filter($forms, fn ($f) => names($arg, $f['name'])))[0] ?? null;
+    $left = $me['uses'] - $me['uses_spent'];
+    if ($form === null) {
+        $lines = $arg === '' ? [] : ["You know no '$arg' form."];
+        $lines[] = "Your Wild Shape forms ($left/{$me['uses']} uses left):";
+        foreach ($forms as $f) {
+            $lines[] = sprintf('  %-14s AC %d, %s%s +%d, %s %s', strtolower($f['name']), $f['ac'],
+                $f['attacks'] > 1 ? "{$f['attacks']} x " : '', $f['attack'], $f['to_hit'], $f['damage'],
+                ucfirst($f['damage_type']));
+        }
+        return $lines;
+    }
+    if ($left <= 0) {
+        return ['You have no Wild Shape left. Rest to recover it.'];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    spend_uses($me);
+    $temp = max($me['temp_hp'], $me['level']);
+    q('UPDATE users SET shape = ?, temp_hp = ? WHERE id = ?', [$form['id'], $temp, $me['id']]);
+    return ["You shift into " . lcfirst(a_an($form['name'])) . "! AC {$form['ac']}, $temp temporary HP, "
+        . ($left - 1) . ' Wild Shape left.'];
+}
+
+/**
+ * Land's Aid (Circle of the Land 3): my turn's action and a use of Wild Shape. The foe makes a Con save against my
+ * spell save DC or takes 2d6 Necrotic (half on a success), and I regain 2d6 HP; 3d6 from level 10, 4d6 from 14.
+ * shortcut: the Sphere holds only the foe I fight and me.
+ */
+function cmd_land(array $me, string $target): array
+{
+    if ($me['class'] !== 'druid' || $me['level'] < 3) {
+        return ["Only Druids of level 3 or more know Land's Aid."];
+    }
+    if ($me['uses_spent'] >= $me['uses']) {
+        return ['You have no Wild Shape left. Rest to recover it.'];
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        spend_uses($me);
+        $dice = (2 + ($me['level'] >= 10 ? 1 : 0) + ($me['level'] >= 14 ? 1 : 0)) . 'd6';
+        $dc = spell_dc($me);
+        [$save, $saved] = save($foe, 'con', $dc);
+        $dmg = roll($dice);
+        [$dmg, $note] = typed($saved ? intdiv($dmg, 2) : $dmg, 'necrotic', $foe);
+        $hp = min($me['max_hp'], $me['hp'] + roll($dice));
+        $lines[] = "Flowers and thorns bloom: the {$foe['name']} " . ($saved ? 'makes' : 'fails') . ' its Con save ('
+            . vs($save, $dc) . ") and takes $dmg damage$note, and you regain " . ($hp - $me['hp']) . ' HP.';
+        $me['hp'] = $hp;
+        q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+        return hurt_foe($me, $foe, $dmg, $lines);
+    }, "Land's Aid at what?");
+}
+
+/**
  * Innate Sorcery (Sorcerer 1): a Bonus Action, so it costs no turn. For the rest of the fight (the SRD's 1 minute) my
  * spell save DC is 1 higher and my spell attack rolls have Advantage. Twice a long rest, and from level 7 (Sorcery
  * Incarnate) for 2 Sorcery Points once those are gone.
@@ -1659,25 +1771,33 @@ function smite(array &$me, array &$foe, bool $crit, array &$lines): int
     return $dmg;
 }
 
+/** Primal Strike's damage type against $foe: Cold, Fire, Lightning or Thunder, whichever hurts it most. */
+function primal_type(array $foe): string
+{
+    $hurts = [];
+    foreach (['cold', 'fire', 'lightning', 'thunder'] as $type) {
+        $hurts[$type] = typed(8, $type, $foe)[0];
+    }
+    return array_search(max($hurts), $hurts, true);
+}
+
 /**
  * Damage my effects and features add to a weapon hit on $foe, each [damage, note]: Divine Favor's and Hunter's Mark's
  * dice (a d10 for a level 20 Ranger's Foe Slayer), from Paladin level 11 Radiant Strikes' 1d8 Radiant on a $melee
- * hit, and Colossus Slayer's 1d8 of the weapon's damage type $slayer. Twice the dice on a $crit. shortcut: Hunter's
- * Mark marks whatever I fight, and moving it costs no Bonus Action.
+ * hit, and $more as [dice, damage type, name] (Colossus Slayer, Primal Strike, a Beast form's second damage). Twice
+ * the dice on a $crit. shortcut: Hunter's Mark marks whatever I fight, and moving it costs no Bonus Action.
  */
-function extra_damage(array $me, array $foe, bool $melee, bool $crit, ?string $slayer = null): array
+function extra_damage(array $me, array $foe, bool $melee, bool $crit, array $more = []): array
 {
     $extra = array_map(fn ($e) => [$e['value'], $e['damage_type'], $e['spell']],
         array_filter($me['effects'], fn ($e) => $e['effect'] === 'damage'));
+    $extra = [...$extra, ...$more];
     foreach ($extra as &$x) {
         $x[0] = $x[2] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['level'] >= 20 ? '1d10' : $x[0];
     }
     unset($x);
     if ($me['class'] === 'paladin' && $me['level'] >= 11 && $melee) {
         $extra[] = ['1d8', 'radiant', 'Radiant Strikes'];
-    }
-    if ($slayer !== null) {
-        $extra[] = ['1d8', $slayer, 'Colossus Slayer'];
     }
     return array_map(function ($x) use ($foe, $crit) {
         [$dmg, $note] = typed(roll($x[0], $crit), $x[1], $foe);
@@ -1700,6 +1820,9 @@ function cmd_cast(array $me, string $arg): array
     $ability = CLASSES[$me['class']]['casting'] ?? null;
     if ($ability === null) {
         return ["You don't know any spells."];
+    }
+    if ($me['shape'] !== null && $me['level'] < 18) { // Beast Spells (Druid 18)
+        return ["You can't cast spells in Wild Shape. 'wild' returns you to your own form."];
     }
     $meta = null;
     if (preg_match('/^(' . implode('|', array_keys(METAMAGIC)) . ')\s+(.*)$/i', $arg, $m)) {
@@ -2105,12 +2228,13 @@ function finish_rest(array &$me): array
     }
     $use = $me['uses'] ? ['fighter' => 'Second Wind', 'barbarian' => 'Rage', 'monk' => 'Focus Points',
         'paladin' => 'Lay On Hands', 'ranger' => "free Hunter's Marks", 'sorcerer' => 'Sorcery Points',
-        'bard' => 'Bardic Inspiration'][$me['class']] : null;
+        'bard' => 'Bardic Inspiration', 'druid' => 'Wild Shape'][$me['class']] : null;
     if ($me['resting'] === 'long') {
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent']] = [$me['max_hp'], 0, 0, ''];
         $line = 'You finish a long rest: full HP, all Hit Dice' . ($use ? " and $use" : '')
             . ($me['slots'] ? ' and spell slots back, and you may change your prepared spells' : ' back') . '.';
-        q('UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0 WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0, shape = NULL
+           WHERE id = ?', [$me['id']]); // shortcut: a Wild Shape lasts until now, not half my level in hours
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
@@ -2121,14 +2245,15 @@ function finish_rest(array &$me): array
         }
         $recovered = match (true) {
             (bool) $me['once_used'] => '',
-            $me['class'] === 'wizard' => arcane_recovery($me),
+            $me['class'] === 'wizard' => arcane_recovery($me, 'Arcane Recovery'),
+            $me['class'] === 'druid' && $me['level'] >= 6 => arcane_recovery($me, 'Natural Recovery'),
             $me['class'] === 'sorcerer' && $me['level'] >= 5 => sorcerous_restoration($me),
             default => '',
         };
-        // One Second Wind or Rage comes back, every Focus Point, from Bard 5 every Bardic Inspiration (Font of
-        // Inspiration), and nothing else.
+        // One Second Wind, Rage or Wild Shape comes back, every Focus Point, from Bard 5 every Bardic Inspiration (Font
+        // of Inspiration), and nothing else.
         $all = $me['class'] === 'monk' || ($me['class'] === 'bard' && $me['level'] >= 5);
-        $one = in_array($me['class'], ['fighter', 'barbarian'], true);
+        $one = in_array($me['class'], ['fighter', 'barbarian', 'druid'], true);
         $me['uses_spent'] = $all ? 0 : max(0, $me['uses_spent'] - ($one ? 1 : 0));
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice') . $recovered
             . match (true) {
@@ -2146,10 +2271,11 @@ function finish_rest(array &$me): array
 }
 
 /**
- * Arcane Recovery (Wizard 1), on a short rest once a long rest: spent slots back, highest first, up to a combined level
- * of half my Wizard level (rounded up), none of level 6 or more. Returns how the rest line says it.
+ * Arcane Recovery (Wizard 1) or Natural Recovery (Circle of the Land 6), named $feature, on a short rest once a long
+ * rest: spent slots back, highest first, up to a combined level of half my level (rounded up), none of level 6 or
+ * more. Returns how the rest line says it.
  */
-function arcane_recovery(array &$me): string
+function arcane_recovery(array &$me, string $feature): string
 {
     $spent = slots_spent($me);
     $budget = intdiv($me['level'] + 1, 2);
@@ -2167,7 +2293,7 @@ function arcane_recovery(array &$me): string
     $me['slots_spent'] = implode(',', $spent);
     $me['once_used'] = 1;
     q('UPDATE users SET once_used = TRUE WHERE id = ?', [$me['id']]); // slots_spent is saved with the rest
-    return ', with Arcane Recovery bringing back slots of level ' . implode(', ', $back);
+    return ", with $feature bringing back slots of level " . implode(', ', $back);
 }
 
 /**
@@ -2238,6 +2364,27 @@ function gear(array $me): array
     ];
 }
 
+/**
+ * $me in a Wild Shape form: the Beast's AC, attack and Str, Dex and Con saves replace mine, as if wielding nothing
+ * (its damage dice, which include its modifier, are split back into dice and modifier). shortcut: Initiative stays
+ * mine, and my save proficiencies and Proficiency Bonus aren't weighed against the stat block's.
+ */
+function beast_form(array $me): array
+{
+    $b = q('SELECT * FROM monsters WHERE id = ?', [$me['shape']])->fetch();
+    preg_match('/^(\d+d\d+)([+-]\d+)?$/', $b['damage'], $dmg);
+    return [
+        'shape_name' => $b['name'],
+        'ac' => $b['ac'], 'armored' => false, 'shield_ac' => 0,
+        'weapon' => $b['attack'], 'damage' => $dmg[1], 'attack_mod' => (int) ($dmg[2] ?? 0), 'to_hit' => $b['to_hit'],
+        'damage_type' => $b['damage_type'], 'attacks' => $b['attacks'],
+        'beast_extra' => $b['extra_damage'] === null ? null : [$b['extra_damage'], $b['extra_type']],
+        'finesse' => false, 'str_based' => true, 'ranged' => false, 'thrown' => false, 'loading' => false,
+        'mastery' => null, 'monk' => false, 'offhand' => null, 'arts' => false,
+        'str_save' => $b['str_save'], 'dex_save' => $b['dex_save'], 'con_save' => $b['con_save'],
+    ] + $me;
+}
+
 /** A Monk weapon (or none): a Simple melee weapon, or a Martial melee one that's Light. */
 function monk_weapon(?array $weapon): bool
 {
@@ -2281,7 +2428,7 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
 
 /**
  * If my class is trained with an item: armor and shields per CLASSES; Rogues use Simple, Finesse or Light weapons,
- * Monks Simple or Light ones, Wizards, Sorcerers and Bards Simple ones, the rest every weapon.
+ * Monks Simple or Light ones, Wizards, Sorcerers and Bards Simple ones, the rest (a Druid as a Warden) every weapon.
  */
 function trained(array $me, array $o): bool
 {
@@ -2473,6 +2620,7 @@ function hero_sheet(array $me): array
         'class' => $c['name'],
         'hp' => $me['hp'],
         'max_hp' => $me['max_hp'],
+        'temp_hp' => $me['temp_hp'],
         'ac' => $me['ac'],
         'prof' => $me['prof_bonus'],
         'abilities' => array_map(
@@ -2495,6 +2643,7 @@ function hero_sheet(array $me): array
                 'ranger' => [['Favored Enemy', $uses], ['Spell slots', slots_left($me)]],
                 'wizard' => [['Spell slots', slots_left($me)]],
                 'bard' => [['Bardic Inspiration', "$uses d{$me['bardic']}"], ['Spell slots', slots_left($me)]],
+                'druid' => [...($me['uses'] ? [['Wild Shape', $uses]] : []), ['Spell slots', slots_left($me)]],
                 'sorcerer' => [
                     ['Innate Sorcery', max(0, 2 - $me['feature_spent']) . '/2'],
                     ...($me['uses'] ? [['Sorcery Points', $uses]] : []),
@@ -2508,6 +2657,7 @@ function hero_sheet(array $me): array
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
             $me['innate'] ? 'Innate Sorcery' : null,
+            isset($me['shape_name']) ? "Wild Shape: {$me['shape_name']}" : null,
             $me['class'] === 'monk' && !$me['arts'] ? 'no Martial Arts' : null,
             ...explode(',', $me['conditions']),
             ...array_column($me['effects'], 'spell'),
@@ -2528,7 +2678,8 @@ function cmd_score(array $me): array
         "{$s['name']}, level {$s['level']} {$s['class']}",
         implode('  ', array_map(fn ($a) => sprintf('%s %d (%+d)', ...$a), $s['abilities'])),
         'Saves  ' . implode('  ', array_map(fn ($a) => sprintf('%s %+d', $a[0], $a[3]), $s['abilities'])),
-        "HP {$s['hp']}/{$s['max_hp']}   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
+        "HP {$s['hp']}/{$s['max_hp']}" . ($s['temp_hp'] ? " +{$s['temp_hp']} temp" : '')
+            . "   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
         sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
             . ($s['attacks'] > 1 ? ", {$s['attacks']} attacks a round" : ''),
         implode('   ', [...array_map(fn ($r) => implode(' ', $r), $s['resources']), ...$s['status']]),

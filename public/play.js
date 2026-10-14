@@ -45,10 +45,10 @@ async function send(cmd) {
 
 /**
  * hero_sheet() in game.php.
- * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, ac: number, prof: number,
- *   abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string, attacks: number,
- *   resources: [string, string][], status: string[], xp: number, xp_from: number, xp_next: number | null,
- *   gold: number }} Hero
+ * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, temp_hp: number, ac: number,
+ *   prof: number, abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string,
+ *   attacks: number, resources: [string, string][], status: string[], xp: number, xp_from: number,
+ *   xp_next: number | null, gold: number }} Hero
  */
 
 /** @param {string} id */
@@ -92,7 +92,7 @@ function bar(id, now, max, color = '') {
 function drawHero(h, map) {
     byId('hero-name').textContent = h.name;
     byId('hero-class').textContent = `Level ${h.level} ${h.class}`;
-    byId('hp-text').textContent = `${h.hp}/${h.max_hp}`;
+    byId('hp-text').textContent = `${h.hp}/${h.max_hp}` + (h.temp_hp ? ` +${h.temp_hp} temp` : '');
     const hp = h.hp / h.max_hp;
     bar('hp-bar', h.hp, h.max_hp, hp > 0.5 ? 'bg-success' : hp > 0.25 ? 'bg-warning' : 'bg-danger');
     byId('tiles').replaceChildren(tile('AC', h.ac), tile('Prof', signed(h.prof)), tile('Gold', h.gold));

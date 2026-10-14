@@ -40,7 +40,9 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 DELETE FROM delve;
 INSERT INTO delve (seed) VALUES (0);
 
--- Monsters 1-16 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
+-- Monsters 1-23 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
+-- Beasts are a Druid's Wild Shape forms (17-23 are here for that, and share CRs with 1-16, which the converter
+-- prefers); a Multiattack of two kinds keeps one of them.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
 -- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
@@ -80,6 +82,20 @@ INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, dam
     'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey'),
 (16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2,                  -- p.333
     'slashing', NULL, NULL, '', '', '', 'large', 'giant'),
+(17, 'Boar', 11, '2d8+4', 0, 'Gore', 1, 3, '1d6+1', 0.25, 50, 1, 0, 2, -4, -1, -3,                    -- p.346
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
+(18, 'Panther', 13, '3d8', 3, 'Rend', 1, 5, '1d6+3', 0.25, 50, 2, 3, 0, -4, 2, -2,                    -- p.358
+    'slashing', NULL, NULL, '', '', '', 'medium', 'beast'),
+(19, 'Riding Horse', 11, '2d10+2', 1, 'Hooves', 1, 5, '1d8+3', 0.25, 50, 3, 1, 1, -4, 0, -2,          -- p.360
+    'bludgeoning', NULL, NULL, '', '', '', 'large', 'beast'),
+(20, 'Black Bear', 11, '3d8+6', 1, 'Rend', 2, 4, '1d6+2', 0.5, 100, 2, 1, 2, -4, 1, -2,               -- p.345
+    'slashing', NULL, NULL, '', '', '', 'medium', 'beast'),
+(21, 'Ape', 12, '3d8+6', 2, 'Fist', 2, 5, '1d4+3', 0.5, 100, 3, 2, 2, -2, 1, -2,                      -- p.344
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast'),
+(22, 'Dire Wolf', 14, '3d10+6', 2, 'Bite', 1, 5, '1d10+3', 1, 200, 3, 2, 2, -4, 1, -2,                -- p.347
+    'piercing', NULL, NULL, '', '', '', 'large', 'beast'),
+(23, 'Giant Spider', 14, '4d10+4', 3, 'Bite', 1, 5, '1d8+3', 1, 200, 2, 3, 1, -4, 0, -3,              -- p.353
+    'piercing', '2d6', 'poison', '', '', '', 'large', 'beast'),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
     'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior
@@ -136,7 +152,8 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 -- p.131, Ray of Frost p.157, Shocking Grasp p.162, Chill Touch p.115, Acid Splash p.107, Poison Spray p.153, Magic
 -- Missile p.146, Burning Hands p.114, Thunderwave p.169, Mage Armor p.145, Scorching Ray p.159, Shatter p.161, Web
 -- p.174, Mind Spike p.149, Fireball p.131, Lightning Bolt p.144, Vicious Mockery p.171, Starry Wisp p.165, Dissonant
--- Whispers p.124 (no flight), Faerie Fire p.129. Spells with an area hit only the foe you fight. Only the spells a fight
+-- Whispers p.124 (no flight), Faerie Fire p.129, Produce Flame p.156 (hurled as it appears), Moonbeam p.150 (only
+-- after each of its turns). Spells with an area hit only the foe you fight. Only the spells a fight
 -- here can use. Bardic Inspiration (p.31) is a Bard feature, kept here for its effect. Second line: targets, count
 -- and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
@@ -146,9 +163,9 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'spell attack, 4d6 Radiant, and Advantage on your next attack'),
-(3, 'Cure Wounds', 1, 'bard,cleric,paladin,ranger', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
+(3, 'Cure Wounds', 1, 'bard,cleric,druid,paladin,ranger', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you or a hero here regain 2d8 + your modifier'),
-(4, 'Healing Word', 1, 'bard,cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
+(4, 'Healing Word', 1, 'bard,cleric,druid', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'you or a hero here regain 2d4 + your modifier; a Bonus Action'),
 (5, 'Bless', 1, 'cleric,paladin', 'action', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
@@ -224,14 +241,19 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (37, 'Vicious Mockery', 0, 'bard', 'action', 'save', FALSE, '1d6', NULL, 'psychic', 'wis', FALSE,
     'foe', 1, 0, NULL, 'condition', 'sapped', FALSE, FALSE, NULL,
     'Wis save or 1d6 Psychic, and Disadvantage on its next attack'),
-(38, 'Starry Wisp', 0, 'bard', 'action', 'attack', TRUE, '1d8', NULL, 'radiant', NULL, FALSE,
+(38, 'Starry Wisp', 0, 'bard,druid', 'action', 'attack', TRUE, '1d8', NULL, 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d8 Radiant'),
 (39, 'Dissonant Whispers', 1, 'bard', 'action', 'save', FALSE, '3d6', '1d6', 'psychic', 'wis', TRUE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Wis save or 3d6 Psychic, half on a success'),
-(40, 'Faerie Fire', 1, 'bard', 'action', 'save', FALSE, NULL, NULL, NULL, 'dex', FALSE,
+(40, 'Faerie Fire', 1, 'bard,druid', 'action', 'save', FALSE, NULL, NULL, NULL, 'dex', FALSE,
     'foe', 1, 0, NULL, 'condition', 'outlined', FALSE, TRUE, 1, 'Dex save or attacks on it have Advantage'),
 (41, 'Bardic Inspiration', 0, '', 'bonus', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
-    'ally', 1, 0, NULL, 'inspiration', '1d6', FALSE, FALSE, 60, 'a die to add to a failed attack roll or save')
+    'ally', 1, 0, NULL, 'inspiration', '1d6', FALSE, FALSE, 60, 'a die to add to a failed attack roll or save'),
+(42, 'Produce Flame', 0, 'druid', 'action', 'attack', TRUE, '1d8', NULL, 'fire', NULL, FALSE,
+    'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d8 Fire'),
+(43, 'Moonbeam', 2, 'druid', 'action', 'buff', FALSE, NULL, '1d10', 'radiant', 'con', TRUE,
+    'self', 1, 0, NULL, 'aura', '2d10', FALSE, TRUE, 1,
+    'a beam on your foe: 2d10 Radiant after each of its turns, Con save for half')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
