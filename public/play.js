@@ -20,13 +20,14 @@ const history = [];
 let historyPos = 0;
 let queue = Promise.resolve(); // keeps replies in the order commands were typed
 
-/** @param {string} text @param {string} [cls] */
+/** @param {string} text @param {string} [cls] @returns {HTMLDivElement} */
 function print(text, cls) {
     const line = document.createElement('div');
     if (cls) line.className = cls;
     line.textContent = text; // never innerHTML: player text comes back in these lines
     log.append(line);
     log.scrollTop = log.scrollHeight;
+    return line;
 }
 
 /** @param {string} cmd */
@@ -125,11 +126,14 @@ function drawHero(h, map) {
 
 /** Echoes a command and queues it, whether typed or a button. @param {string} cmd */
 function run(cmd) {
-    print('> ' + cmd, 'echo');
+    // shown on hover, or on tap via .show (see style.css)
+    print('> ' + cmd, 'echo').dataset.time = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
     history.push(cmd);
     historyPos = history.length;
     queue = queue.then(() => send(cmd));
 }
+
+log.addEventListener('click', (e) => /** @type {HTMLElement} */ (e.target).closest('.echo')?.classList.toggle('show'));
 
 form.addEventListener('submit', (e) => {
     e.preventDefault();

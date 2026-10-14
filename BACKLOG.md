@@ -12,6 +12,7 @@ This repo copy is the source; the claude.ai Project holds a copy.
 - [ ] **Schema migrations.** `bin/deploy.sh` reloads the world but schema changes still need their ALTERs run on the server by hand.
 - [ ] **Session cookie path.** It's `/`, shared with the rest of yarhouse.dev; scope it to the game's folder.
 - [ ] **Deeper Delve.** Stairs to deeper floors with higher CR, more themes, rerolling when the boss dies.
+- [ ] **Hirelings.** "I die a lot" with no group online. `hire <guard|mastiff|acolyte>` at the Swaying Lantern for 2 GP/day (SRD 5.2.1 skilled hireling, p.102), stats from the SRD Guard, Mastiff or Priest Acolyte; `dismiss`. Lazy shape: columns on `users` (`hireling_monster_id`, `hireling_hp`, `hired_until`), so it's always in your room and leaving when paid-up time runs out is computed on read. In `fight()` it attacks your foe after your action (Luminari's charmie auto-assist, `combat/fight.c` ~17265; no `order` command at first). The real change: `monster_turn()` assumes one target and must pick between you and the hireling with `roll()`. At 0 HP it's gone; it heals when you rest. The same mechanism unlocks Faithful Steed, Wild Companion and Find Familiar. Reference: Luminari `MOB_MERCENARY`, `call`, `order`, `dismiss`; Riftshadow pet shops and `do_order`.
 - [ ] **Shops**, if the group wants them (gold already drops by CR).
 - [ ] **Live updates**, only if people play together: polling so `say` and fights show up without a command. Party combat is tactical step 3 below.
 

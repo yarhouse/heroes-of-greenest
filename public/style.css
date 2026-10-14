@@ -53,6 +53,8 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 }
 
 #log .echo { color: var(--dim); margin-top: 0.75rem; }
+#log .echo::after { content: attr(data-time); float: right; visibility: hidden; font-size: 0.75rem; }
+#log .echo:hover::after, #log .echo.show::after { visibility: visible; }
 .error { color: var(--error); }
 
 #hints {
