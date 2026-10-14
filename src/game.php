@@ -18,6 +18,8 @@ const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Drago
 const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR: Potions of Healing from CR 1
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+/** The Weapon Mastery properties the game models (SRD 5.2.1 p.89); items list each weapon's own. */
+const MASTERIES = ['topple', 'vex'];
 /** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
 const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = ''";
 
@@ -81,6 +83,8 @@ const COMMANDS = [
     'down' => 'move down (or d)',
     'kill <monster>' => 'attack; one round per command (or k)',
     'reckless <monster>' => 'Barbarian 2: attack with Advantage, but attacks on you get it too',
+    'shove <monster>' => 'knock a foe Prone, in place of one attack: attacks on it get Advantage',
+    'grapple <monster>' => 'hold a foe, in place of one attack: it has Disadvantage against other heroes',
     'flee' => 'try to escape a fight to a random exit',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
@@ -187,6 +191,7 @@ function run_command(array $me, string $input): array
         $verb === 'l' || $verb === 'look' => cmd_look($me),
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
+        $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
         $verb === 'flee' => cmd_flee($me),
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
@@ -366,13 +371,14 @@ function room_monsters(int $room_id): array
     )->fetchAll();
     foreach ($due as $s) {
         // "dead_since IS NOT NULL" so two heroes arriving at once can't both respawn it.
-        q('UPDATE spawns SET dead_since = NULL, hp = ? WHERE id = ? AND dead_since IS NOT NULL', [
+        q("UPDATE spawns SET dead_since = NULL, hp = ?, conditions = '', grappled_by = NULL
+           WHERE id = ? AND dead_since IS NOT NULL", [
             max(1, roll($s['dice'])), $s['id'],
         ]);
     }
     return q(
-        // s.id and s.hp come last, so they win over m.id and m.hp (the HP dice).
-        'SELECT m.*, s.id, s.hp FROM spawns s JOIN monsters m ON m.id = s.monster_id
+        // The spawn's columns come last, so its id and hp win over the template's (the HP dice).
+        'SELECT m.*, s.* FROM spawns s JOIN monsters m ON m.id = s.monster_id
          WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
         [$room_id]
     )->fetchAll();
@@ -434,6 +440,14 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
             [$foe['id'], (int) $me['foe_first'], $me['id']]
         );
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
+        // What's left on it from fights nobody is still in has worn off, and my own old hold is gone.
+        if (!q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch()) {
+            [$foe['conditions'], $foe['grappled_by']] = ['', null];
+        } elseif ($foe['grappled_by'] === $me['id']) {
+            $foe['grappled_by'] = null;
+        }
+        q('UPDATE spawns SET conditions = ?, grappled_by = ? WHERE id = ?',
+            [$foe['conditions'], $foe['grappled_by'], $foe['id']]);
     }
     if ($me['volley']) { // the foe spends this round closing in, so my shots go unanswered
         start_turn($me);
@@ -497,8 +511,8 @@ function cmd_flee(array $me): array
  * My weapon attacks on $foe this round (more than one with Extra Attack). Returns true if it died. Rage adds damage to
  * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse or Ranged weapon, needs Advantage or another
  * hero on the same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit
- * gives Advantage on the next attack (shortcut: Vex is the only Weapon Mastery modeled, and for any weapon you wield).
- * A Ranged weapon has Disadvantage except in an opening volley.
+ * gives Advantage on the next attack, and a Topple weapon's hit can knock it Prone (shortcut: MASTERIES are modeled for
+ * any weapon you wield, not the few your class picks). A Ranged weapon has Disadvantage except in an opening volley.
  */
 function hero_turn(array $me, array &$foe, array &$lines): bool
 {
@@ -506,7 +520,7 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $me['str_based']);
     for ($i = 0; $i < $me['attacks']; $i++) {
-        [$d20, $edge] = attack_d20($me, $aim, $me['ranged'] && !$me['volley']);
+        [$d20, $edge] = attack_d20($me, $foe, $aim, $me['ranged'] && !$me['volley']);
         $adv = $edge > 0;
         $total = $d20 + $me['to_hit'];
         $with = with($edge);
@@ -529,7 +543,16 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
         }
-        if ($me['vex'] && !$me['advantage']) {
+        if ($me['mastery'] === 'topple' && !has($foe, 'prone')) {
+            $dc = 8 + $me['attack_mod'] + $me['prof_bonus'];
+            [$save, $saved] = save($foe, 'con', $dc);
+            $lines[] = $saved ? "The {$foe['name']} keeps its feet (Con save $save vs DC $dc)."
+                : "The {$foe['name']} topples over, Prone (Con save $save vs DC $dc).";
+            if (!$saved) {
+                knock_prone($foe);
+            }
+        }
+        if ($me['mastery'] === 'vex' && !$me['advantage']) {
             $me['advantage'] = true;
             q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
         }
@@ -538,11 +561,13 @@ function hero_turn(array $me, array &$foe, array &$lines): bool
 }
 
 /**
- * The d20 for my attack roll, and its edge: 1 with Advantage ($adv or my saved one), -1 with Disadvantage ($dis), 0
- * with neither or both.
+ * The d20 for my attack roll at $foe, and its edge: 1 with Advantage ($adv, my saved one, or a Prone foe next to me),
+ * -1 with Disadvantage ($dis, or a Prone foe shot at from afar), 0 with neither or both.
  */
-function attack_d20(array &$me, bool $adv = false, bool $dis = false): array
+function attack_d20(array &$me, array $foe, bool $adv = false, bool $dis = false): array
 {
+    $prone = has($foe, 'prone');
+    [$adv, $dis] = [$adv || ($prone && !$me['volley']), $dis || ($prone && $me['volley'])];
     if ($me['advantage']) { // used up by this roll
         $adv = true;
         $me['advantage'] = false;
@@ -575,10 +600,51 @@ function save(array $foe, string $ability, int $dc): array
     return [$total, $total >= $dc];
 }
 
-/** True if $who (a users row) has $condition. */
+/** True if $who (a hero or a monster) has $condition. */
 function has(array $who, string $condition): bool
 {
     return in_array($condition, explode(',', $who['conditions']), true);
+}
+
+/** $foe has the Prone condition until the start of its next turn, when it gets up. */
+function knock_prone(array &$foe): void
+{
+    $foe['conditions'] = 'prone';
+    q("UPDATE spawns SET conditions = 'prone' WHERE id = ?", [$foe['id']]);
+}
+
+/**
+ * shove or grapple (SRD 5.2.1 Unarmed Strike, p.190) in place of one attack of my turn; any others follow with my
+ * weapon. The foe makes a Str or Dex save, the better of its two, against 8 + my Str + PB. Failing a shove, it's
+ * Prone; failing a grapple, it's Grappled by me, so it has Disadvantage attacking any other hero (Grappled p.182).
+ * shortcut: no sizes or free hands, so anything can be shoved or grappled; add them with species and monster sizes.
+ * Shove's push and the foe escaping a grapple are left out: there are no distances, and monsters never try.
+ */
+function cmd_maneuver(array $me, string $how, string $target): array
+{
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($how): bool {
+        $done = $how === 'shove' ? has($foe, 'prone') : $foe['grappled_by'] === $me['id'];
+        if ($done) {
+            $lines[] = "The {$foe['name']} is already " . ($how === 'shove' ? 'Prone.' : 'in your grip.');
+            return hero_turn($me, $foe, $lines);
+        }
+        $dc = 8 + mod($me['strength']) + $me['prof_bonus'];
+        $ability = $foe['str_save'] >= $foe['dex_save'] ? 'str' : 'dex';
+        [$save, $saved] = save($foe, $ability, $dc);
+        $roll = ucfirst($ability) . " save $save vs DC $dc";
+        if ($saved) {
+            $lines[] = "The {$foe['name']} " . ($how === 'shove' ? 'stands firm' : 'slips your grip') . " ($roll).";
+        } elseif ($how === 'shove') {
+            $lines[] = "You shove the {$foe['name']} to the ground, Prone ($roll).";
+            knock_prone($foe);
+        } else {
+            $lines[] = "You grab hold of the {$foe['name']}, Grappled ($roll).";
+            $foe['grappled_by'] = $me['id'];
+            q('UPDATE spawns SET grappled_by = ? WHERE id = ?', [$me['id'], $foe['id']]);
+        }
+        $me['attacks']--;
+        return hero_turn($me, $foe, $lines);
+    }, ucfirst($how) . ' what?');
 }
 
 /**
@@ -661,10 +727,18 @@ function win(array $me, array $foe, array &$lines): void
 }
 
 /** $foe attacks me: $n times, its Multiattack by default. Returns true if I died (and woke in town). */
-function monster_turn(array &$me, array $foe, array &$lines, ?int $n = null): bool
+function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): bool
 {
+    if ($n === null && has($foe, 'prone')) { // its turn starts (a free attack when I flee is a Reaction, not a turn)
+        $foe['conditions'] = '';
+        q("UPDATE spawns SET conditions = '' WHERE id = ?", [$foe['id']]);
+        $lines[] = "The {$foe['name']} gets back up.";
+    }
+    // Held by another hero still fighting it, it has Disadvantage against me.
+    $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
+        && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
-        $edge = (int) has($me, 'reckless');
+        $edge = has($me, 'reckless') <=> (has($foe, 'prone') || $held);
         $d20 = d20($edge);
         $total = $d20 + $foe['to_hit'];
         $its = "The {$foe['name']}'s {$foe['attack']}";
@@ -844,7 +918,7 @@ function cmd_cast(array $me, string $arg): array
     }
     return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($slot, $spend): bool {
         $spend($me);
-        [$d20, $edge] = attack_d20($me, false, !$me['volley']); // a ranged spell attack
+        [$d20, $edge] = attack_d20($me, $foe, false, !$me['volley']); // a ranged spell attack
         $total = $d20 + $me['prof_bonus'] + mod($me['wisdom']);
         $with = with($edge);
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
@@ -970,7 +1044,7 @@ function gear(array $me): array
         'ranged' => $ranged,
         'thrown' => $weapon !== null && $weapon['thrown'],
         'loading' => $weapon !== null && $weapon['loading'],
-        'vex' => $weapon !== null && $weapon['vex'] && $me['class'] !== 'cleric', // Clerics have no Weapon Mastery
+        'mastery' => $me['class'] === 'cleric' ? null : $weapon['mastery'] ?? null, // Clerics have no Weapon Mastery
     ];
 }
 
@@ -991,8 +1065,8 @@ function describe(array $o): string
     return match ($o['slot']) {
         'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
             . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : '')
-            . ($o['light'] ? ', light' : '') . ($o['vex'] ? ', vex' : '') . ($o['ranged'] ? ', ranged' : '')
-            . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : ''),
+            . ($o['light'] ? ', light' : '') . (in_array($o['mastery'], MASTERIES, true) ? ", {$o['mastery']}" : '')
+            . ($o['ranged'] ? ', ranged' : '') . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : ''),
         'armor' => "{$o['armor']} armor, AC {$o['ac']}"
             . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],
         'shield' => "shield, +{$o['ac']} AC",

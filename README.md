@@ -59,7 +59,8 @@ that class's equipment A (no ammunition, packs or tools). Combat is d20 attack r
 blocks, and XP and levels follow Character Advancement. Fighters have Second Wind and Extra Attack; Barbarians Rage,
 Unarmored Defense and from level 2 Reckless Attack; Rogues Sneak Attack (with Advantage, or another hero on the same
 foe) and from level 2 always get away with `flee`; Clerics `cast` Sacred Flame, Guiding Bolt, Cure Wounds and Healing
-Word. The Vex weapon mastery gives Advantage on your next attack. Damage has SRD types, and Resistance, Immunity and
+Word. Anyone can `shove` a foe Prone or `grapple` it in place of an attack. Of the weapon masteries, Vex gives
+Advantage on your next attack and Topple can knock a foe Prone. Damage has SRD types, and Resistance, Immunity and
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
 with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have

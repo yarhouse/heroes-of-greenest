@@ -61,6 +61,8 @@ CREATE TABLE spawns (
     respawn_secs INT UNSIGNED NOT NULL DEFAULT 600,
     hp SMALLINT NOT NULL DEFAULT 0,
     dead_since DATETIME NULL,
+    conditions SET('prone') NOT NULL DEFAULT '', -- each ends at the start of its next turn
+    grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
     KEY (room_id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
@@ -90,7 +92,8 @@ CREATE TABLE items (
     martial BOOLEAN NOT NULL DEFAULT FALSE, -- a Martial weapon, not Simple
     finesse BOOLEAN NOT NULL DEFAULT FALSE, -- attacks with the better of Str and Dex
     light BOOLEAN NOT NULL DEFAULT FALSE,
-    vex BOOLEAN NOT NULL DEFAULT FALSE, -- the Vex mastery: a hit gives Advantage on your next attack
+    -- Its Weapon Mastery property (p.89); MASTERIES in game.php lists the ones modeled.
+    mastery ENUM('cleave', 'graze', 'nick', 'push', 'sap', 'slow', 'topple', 'vex') NULL,
     two_handed BOOLEAN NOT NULL DEFAULT FALSE, -- can't be used with a shield
     ac TINYINT UNSIGNED NOT NULL DEFAULT 0, -- armor's base AC, or a shield's bonus
     armor ENUM('light', 'medium', 'heavy') NULL, -- Dex adds all, up to +2, or nothing to the armor's AC

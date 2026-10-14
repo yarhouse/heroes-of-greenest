@@ -482,6 +482,41 @@ try {
     run_command(hero('Testa'), 'flee');
     run_command(hero('Testa'), 'equip greatsword');
 
+    // Shove and grapple in place of one attack (Testa: level 5, two attacks, Str +2, PB +3: DC 13).
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    q("UPDATE users SET room_id = 2, fighting = NULL WHERE name IN ('Testa', 'Testb')");
+    $dice_queue = [10, 1, 5, 3, 15, 3, 4, 12]; // Str save 5 fails; one attack with Advantage; it gets up, misses
+    $out = run_command(hero('Testa'), 'shove dummy');
+    check(says($out, 'You shove the Training Dummy to the ground, Prone (Str save 5 vs DC 13).')
+        && says($out, '(20 vs AC 10, with Advantage) for 9 damage') && says($out, 'gets back up')
+        && says($out, 'misses you (15 vs AC 17).') && $dice_queue === [],
+        'Shove: Prone, so my next attack has Advantage');
+    $dice_queue = [4, 1, 12];
+    $out = run_command(hero('Testa'), 'grapple');
+    check(says($out, 'You grab hold of the Training Dummy, Grappled (Str save 4 vs DC 13).') && $dice_queue === [],
+        'Grapple: no Disadvantage against the one holding it');
+    $dice_queue = [10, 1, 1, 15, 2];
+    check(says(run_command(hero('Testb'), 'kill dummy'), 'misses you (5 vs AC 17, with Disadvantage)')
+        && $dice_queue === [], 'held, it has Disadvantage against other heroes');
+    $dice_queue = [20, 1];
+    run_command(hero('Testa'), 'flee');
+    $dice_queue = [1, 15, 2];
+    check(says(run_command(hero('Testb'), 'kill'), 'hits you (18 vs AC 17) for 2') && $dice_queue === [],
+        'the hold ends when the grappler leaves the fight');
+    $dice_queue = [20, 1];
+    run_command(hero('Testb'), 'flee');
+    q('INSERT INTO objects (item_id, user_id) VALUES (19, ?)', [hero('Testa')['id']]);
+    run_command(hero('Testa'), 'equip maul');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
+    $dice_queue = [10, 1, 15, 3, 4, 5, 2, 14, 1, 1, 1]; // a hit, Con save 5 fails; then Advantage
+    $out = run_command(hero('Testa'), 'kill dummy');
+    check(says($out, 'topples over, Prone (Con save 5 vs DC 13).') && says($out, '(19 vs AC 10, with Advantage)')
+        && $dice_queue === [] && str_contains(line(run_command(hero('Testa'), 'i'), 'Maul'), 'two-handed, topple'),
+        'Topple: a hit can knock the foe Prone');
+    $dice_queue = [20, 1];
+    run_command(hero('Testa'), 'flee');
+    run_command(hero('Testa'), 'equip greatsword');
+
     save_hero('Teste', 'correct horse');
     create('Teste', 'cleric');
     q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
