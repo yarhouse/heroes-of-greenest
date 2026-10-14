@@ -24,13 +24,47 @@ php -S localhost:8080 -t public         # play at http://localhost:8080
 
 ## Deploy to DreamHost (shared hosting)
 
-1. Panel: create a MySQL database and user. Enable SSH for the site's user. Set the site's PHP to 8.1 or newer.
-2. SSH in and `git clone` this repo into your home directory, e.g. `~/greenest`.
-3. Panel > Websites > your domain: set the **web directory** to `greenest/public`, so `config.php`, `src/`, `bin/` and `var/` are not reachable from the web.
-4. Turn on the free Let's Encrypt certificate and force HTTPS.
-5. On the server: create `config.php` with the DreamHost MySQL hostname, load `db/schema.sql`, `db/seed.sql` and `db/areas/*.sql`, run `php tests/selftest.php`, then `php bin/adduser.php <Name>` for each friend.
+The code goes to a folder in the SSH user's home, outside the web root, and a symlink in the domain's folder exposes only
+`public/`, so `config.php`, `src/`, `bin/` and `var/` are never reachable from the web. Create `deploy.env` (gitignored):
 
-Update later with `git pull` (and re-run `db/seed.sql` then `db/areas/*.sql` if the world changed).
+```sh
+DEPLOY_HOST=USER@SERVER.dreamhost.com
+DEPLOY_DIR=heroes-of-greenest                # the code, in USER's home
+DEPLOY_WEB=example.com/heroes-of-greenest    # the URL folder, a symlink to DEPLOY_DIR/public; don't create it yourself
+```
+
+One time, in the DreamHost panel: create a **MySQL database** and user and note its hostname (`mysql.example.com`).
+The domain needs PHP 8.1 or newer and HTTPS. Your SSH key must be on the server (`ssh-copy-id USER@SERVER`).
+
+One time, on the server (`ssh USER@SERVER`). If `~/.my.cnf` already exists, add the `[client]` lines to it instead:
+
+```sh
+mkdir -p ~/heroes-of-greenest
+cat > ~/heroes-of-greenest/config.php <<'PHP'
+<?php
+return [
+    'dsn' => 'mysql:host=mysql.example.com;dbname=greenest;charset=utf8mb4',
+    'db_user' => 'greenest',
+    'db_pass' => 'the password',
+];
+PHP
+printf '[client]\nhost=mysql.example.com\nuser=greenest\npassword=the password\ndatabase=greenest\n' > ~/.my.cnf
+chmod 600 ~/heroes-of-greenest/config.php ~/.my.cnf
+```
+
+Then from your Mac, the schema (DESTRUCTIVE, first time only), the first deploy and the accounts:
+
+```sh
+. ./deploy.env
+ssh $DEPLOY_HOST mysql < db/schema.sql
+bin/deploy.sh
+ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php Aaron"   # once per friend
+```
+
+After that, every update is `bin/deploy.sh`. It refuses to run with uncommitted changes or a failing local selftest,
+copies the code over (never `config.php` or `var/`), makes the symlink, reloads `db/seed.sql` and `db/areas/*.sql`
+(heroes are untouched; monsters respawn and the Delve rerolls), and runs the selftest on the server. If a commit
+changes `db/schema.sql`, run its ALTERs on the server first.
 
 ## Dungeons from Riftshadow
 

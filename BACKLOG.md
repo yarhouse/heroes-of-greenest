@@ -11,7 +11,7 @@ Unordered ideas. Move an item to a commit when it ships.
 - [ ] **Map fog of war.** Show a room's shape only once a hero has been next to it, and its contents only once inside. Needs a per-hero visited-rooms table.
 - [x] **Bootstrap as the theme framework.** Bootstrap 5.3.8, self-hosted in `public/vendor/bootstrap/` (CSP blocks CDNs) and themed to the terminal palette. The terminal output stays plain text via `textContent`. First use: the hero sheet card, a drawer on phones.
 - [ ] **Project scripts.** Nothing is on DreamHost yet.
-  - [ ] **DreamHost SSH deployment.** Copy `public/`, `src/`, `bin/` and `db/` up over SSH; never overwrite `config.php` or `var/`.
+  - [x] **DreamHost SSH deployment.** `bin/deploy.sh`, see README. Copy `public/`, `src/`, `bin/` and `db/` up over SSH; never overwrite `config.php` or `var/`.
   - [ ] **DreamHost SQL seed script.** Load `schema.sql` (first install only, it's destructive), then `seed.sql` and `db/areas/*.sql`, against DreamHost's MySQL.
   - [ ] **Seed script that doesn't require passwords.** Run unattended, without typing a password at a prompt.
 - [ ] **Autocomplete command arguments.** After `kill `, suggest the monsters in the room; likewise items for `get`/`drop`/`equip`/`drink`. Today `play.js` only completes command names, from `COMMANDS`.
