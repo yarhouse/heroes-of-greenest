@@ -44,55 +44,55 @@ INSERT INTO delve (seed) VALUES (0);
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
 -- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
--- extra damage and its type, then Resistances, Immunities and Vulnerabilities to damage.
+-- extra damage and its type, then Resistances, Immunities and Vulnerabilities to damage, then size and type.
 INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
     con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities,
-    vulnerabilities) VALUES
+    vulnerabilities, size, type) VALUES
 (1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,                 -- p.353
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,      -- p.302
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon'),
 (3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1,           -- p.290
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'small', 'fey'),
 (4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 0, 1, 1, 0, 0, 0,                 -- p.261
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
 (5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1,         -- p.290
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'small', 'fey'),
 (6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2,                      -- p.364
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
 (7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 0, 3, 2, -2, -1, -3,           -- p.325
-    'piercing', NULL, NULL, '', 'poison', 'bludgeoning'),
+    'piercing', NULL, NULL, '', 'poison', 'bludgeoning', 'medium', 'undead'),
 (8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, 1, -2, 3, -4, 0, -3,                   -- p.343
-    'bludgeoning', NULL, NULL, '', 'poison', ''),
+    'bludgeoning', NULL, NULL, '', 'poison', '', 'medium', 'undead'),
 (9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1,    -- p.298
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'fey'),
 (10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 2, 1, 0, -2, 0, -2,              -- p.289
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'fiend'),
 (11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0,               -- p.290
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'small', 'fey'),
 (12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2, 2, 1, -1, 0, -1,    -- p.272
-    'bludgeoning', NULL, NULL, '', '', ''),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'fey'),
 (13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, 4, -1, 3, -3, -2, -2,             -- p.312
-    'bludgeoning', NULL, NULL, '', '', ''),
+    'bludgeoning', NULL, NULL, '', '', '', 'large', 'giant'),
 (14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 4, 5, 2, 2, 2, 2,          -- p.261
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
 (15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1,     -- p.299
-    'slashing', '1d6', 'poison', '', '', ''),
+    'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey'),
 (16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2,                  -- p.333
-    'slashing', NULL, NULL, '', '', ''),
+    'slashing', NULL, NULL, '', '', '', 'large', 'giant'),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior
-    'piercing', NULL, NULL, '', '', ''),
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon'),
 (1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1, -- SRD Kobold Warrior
-    'piercing', NULL, NULL, '', '', '')
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
     str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
     wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
     extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
-    vulnerabilities = new.vulnerabilities;
+    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
@@ -127,20 +127,31 @@ AS new
 ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = new.second_wind, attacks = new.attacks,
     rages = new.rages, rage_damage = new.rage_damage, slots = new.slots;
 
--- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139.
-INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half, about) VALUES
+-- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
+-- Shield of Faith p.162, Hold Person p.141. Second line: targets and count, a required creature type, then the effect.
+INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
+    targets, count, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
 (1, 'Sacred Flame', 0, 'cleric', 'action', 'save', FALSE, '1d8', NULL, 'radiant', 'dex', FALSE,
-    'Dex save or 1d8 Radiant damage'),
+    'foe', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'Dex save or 1d8 Radiant damage'),
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
-    'spell attack, 4d6 Radiant, and Advantage on your next attack'),
+    'foe', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 4d6 Radiant, and Advantage on your next attack'),
 (3, 'Cure Wounds', 1, 'cleric', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
-    'heal 2d8 + your modifier; takes your turn in a fight'),
+    'self', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'heal 2d8 + your modifier; takes your turn in a fight'),
 (4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
-    'heal 2d4 + your modifier; a Bonus Action, so it costs no turn')
+    'self', 1, NULL, NULL, NULL, FALSE, FALSE, NULL, 'heal 2d4 + your modifier; a Bonus Action, so it costs no turn'),
+(5, 'Bless', 1, 'cleric,paladin', 'action', 'buff', FALSE, NULL, '1', NULL, NULL, FALSE,
+    'allies', 3, NULL, 'd20', '1d4', FALSE, TRUE, 1, 'you and two heroes here add 1d4 to attack rolls and saves'),
+(6, 'Shield of Faith', 1, 'cleric,paladin', 'bonus', 'buff', FALSE, NULL, NULL, NULL, NULL, FALSE,
+    'self', 1, NULL, 'ac', '2', FALSE, TRUE, 10, '+2 AC; a Bonus Action'),
+(7, 'Hold Person', 2, 'bard,cleric,druid,sorcerer,warlock,wizard', 'action', 'save', FALSE, NULL, NULL, NULL, 'wis',
+    FALSE, 'foe', 1, 'humanoid', 'condition', 'paralyzed', TRUE, TRUE, 1,
+    'Wis save or a Humanoid is Paralyzed; it saves again after each of its turns')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
-    save = new.save, half = new.half, about = new.about;
+    save = new.save, half = new.half, targets = new.targets, count = new.count, creature = new.creature,
+    effect = new.effect, value = new.value, repeat_save = new.repeat_save, concentration = new.concentration,
+    minutes = new.minutes, about = new.about;
 
 -- SRD 5.2.1 Weapons (p.90; ranges and ammunition left out), Armor (p.92) and Potion of Healing (p.99).
 -- Ids are fixed: the class kits (CLASSES in game.php) and the finds below use them. Every weapon has its mastery;

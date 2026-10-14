@@ -660,6 +660,58 @@ try {
     q("UPDATE users SET fighting = NULL, room_id = 1, resting = 'long', rest_until = NOW() WHERE name = 'Teste'");
     check(says(run_command(hero('Teste'), 'score'), 'and spell slots back') && hero('Teste')['slots_spent'] === '',
         'a long rest restores spell slots');
+
+    // Lasting effects and Concentration: Shield of Faith, Bless, Hold Person (Teste: Wis +2, DC 12, AC 14).
+    q("UPDATE users SET room_id = 1, fighting = NULL WHERE name NOT IN ('Teste', 'Testb')");
+    q("UPDATE users SET room_id = 2, fighting = NULL, hp = max_hp, level = 3, advantage = FALSE
+       WHERE name IN ('Teste', 'Testb')");
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Teste'), 'cast shield'), 'You cast Shield of Faith on you. Slots 3/4 2/2.')
+        && says($score = run_command(hero('Teste'), 'score'), 'AC 16')
+        && says($score, 'concentrating on Shield of Faith'), 'Shield of Faith: +2 AC, with Concentration');
+    check(says(run_command(hero('Teste'), 'cast bless'), 'You cast Bless on you, Testb.')
+        && says(run_command(hero('Teste'), 'score'), 'AC 14') && says(run_command(hero('Testb'), 'score'), 'Bless'),
+        'Bless reaches another hero here, and a new Concentration spell ends the old one');
+    $dice_queue = [10, 1, 5, 3, 3, 3, 1]; // 5 + 4 misses AC 10, but Bless adds 3
+    check(says(run_command(hero('Testb'), 'kill dummy'), '(12 vs AC 10, +3 Bless) for 8 damage.') && $dice_queue === [],
+        'Bless adds 1d4 to attack rolls');
+    check(says(run_command(hero('Teste'), 'cast hold dummy'), 'works only on a Humanoid, and the Training Dummy is an '
+        . 'Aberration.'), "Hold Person refuses a foe that isn't a Humanoid");
+    q("UPDATE monsters SET type = 'humanoid' WHERE id = 9999");
+    $dice_queue = [10, 1, 5, 3]; // its Wis save 5 fails; it can't act, and fails again at the end of its turn
+    $out = run_command(hero('Teste'), 'cast hold dummy');
+    check(says($out, 'fails its Wis save (5 vs DC 12) against your Hold Person and is Paralyzed.')
+        && says($out, "is Paralyzed and can't act") && says($out, 'still held by your Hold Person')
+        && says(run_command(hero('Teste'), 'score'), 'concentrating on Hold Person') && $dice_queue === [],
+        'Hold Person: Paralyzed until it makes the save again');
+    $dice_queue = [4, 3];
+    check(says(run_command(hero('Teste'), 'cast sacred'), 'fails its Dex save (automatic fail, DC 12) against your '
+        . 'Sacred Flame and takes 4 damage.') && $dice_queue === [], 'Paralyzed fails Dex saves');
+    $dice_queue = [2, 12, 1, 1, 1, 1, 15]; // Advantage; a melee hit is a crit (4d6); then its save at 15 frees it
+    $out = run_command(hero('Testb'), 'kill');
+    check(says($out, 'Critical hit! You hit the Training Dummy (16 vs AC 10, with Advantage) for 6 damage.')
+        && says($out, 'shakes off your Hold Person (Wis save 15 vs DC 12)') && $dice_queue === [],
+        'attacks on the Paralyzed have Advantage and crit; the new Concentration ended Bless');
+    run_command(hero('Teste'), 'cast shield');
+    $dice_queue = [1, 15, 4, 5]; // my Mace misses; the Slam hits for 4; Con save 6 vs DC 10
+    check(says(run_command(hero('Teste'), 'kill'), 'You lose your Concentration on Shield of Faith (Con save 6 vs DC '
+        . '10).')
+        && says(run_command(hero('Teste'), 'score'), 'AC 14') && $dice_queue === [],
+        'damage calls for a Con save to keep Concentration');
+    run_command(hero('Teste'), 'cast shield');
+    $dice_queue = [20, 1];
+    run_command(hero('Teste'), 'flee');
+    check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'an effect cast in a fight ends with it');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
+    $dice_queue = [10, 1, 1, 1];
+    run_command(hero('Teste'), 'kill dummy');
+    check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith') && $dice_queue === [],
+        "and doesn't come back in a new fight against the same monster");
+    $dice_queue = [20, 1];
+    run_command(hero('Teste'), 'flee');
+    q("UPDATE monsters SET type = 'aberration' WHERE id = 9999");
+    $dice_queue = [20, 1];
+    run_command(hero('Testb'), 'flee');
     check($dice_queue === [], 'every queued die was used by the classes');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.

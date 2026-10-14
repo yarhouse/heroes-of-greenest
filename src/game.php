@@ -23,6 +23,9 @@ const MASTERIES = ['cleave', 'graze', 'nick', 'sap', 'topple', 'vex'];
 /** Ends my fight, and what lasts only for one: Rage, saved Advantage, conditions. A SET clause for UPDATE users. */
 const END_FIGHT = "fighting = NULL, raging = FALSE, advantage = FALSE, conditions = '', bonus_used = FALSE";
 const BONUS_USED = "You've already used your Bonus Action this round.";
+/** SQL: effect e (joined to its caster c) still lasts: cast in a fight the caster is still in, or not yet run out. */
+const LIVE_EFFECT = '(e.until > NOW() OR (e.until IS NULL AND c.fighting <=> e.during))';
+const SIZES = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
 
 /**
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Cleric p.36, Fighter p.47, Rogue p.61): Hit Die,
@@ -161,8 +164,11 @@ function with_stats(array $me): array
         $proficient = in_array($a, CLASSES[$class]['saves'], true);
         $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0);
     }
-    $me += gear($me);
+    $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
     $me['attacks'] = $me['loading'] ? 1 : $me['attacks']; // Loading: one shot a turn, Extra Attack or not
+    foreach ($me['effects'] as $e) {
+        $me['ac'] += $e['effect'] === 'ac' ? (int) $e['value'] : 0; // Shield of Faith
+    }
     return $me;
 }
 
@@ -369,18 +375,20 @@ function room_monsters(int $room_id): array
         [$room_id]
     )->fetchAll();
     foreach ($due as $s) {
+        q('DELETE FROM effects WHERE spawn_id = ?', [$s['id']]);
         // "dead_since IS NOT NULL" so two heroes arriving at once can't both respawn it.
         q("UPDATE spawns SET dead_since = NULL, hp = ?, conditions = '', grappled_by = NULL
            WHERE id = ? AND dead_since IS NOT NULL", [
             max(1, roll($s['dice'])), $s['id'],
         ]);
     }
-    return q(
+    $monsters = q(
         // The spawn's columns come last, so its id and hp win over the template's (the HP dice).
         'SELECT m.*, s.* FROM spawns s JOIN monsters m ON m.id = s.monster_id
          WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY s.id',
         [$room_id]
     )->fetchAll();
+    return array_map(fn ($m) => $m + ['effects' => effects_on('spawn_id', $m['id'])], $monsters);
 }
 
 /** The monster I'm fighting, or else the first one here with a word in its name starting with $target. */
@@ -439,6 +447,9 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
             [$foe['id'], (int) $me['foe_first'], $me['id']]
         );
         $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
+        // My effects from earlier fights are over, even if I'm back against the same spawn.
+        q('DELETE FROM effects WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
+        $foe['effects'] = effects_on('spawn_id', $foe['id']);
         // What's left on it from fights nobody is still in has worn off, and my own old hold is gone.
         if (!q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch()) {
             [$foe['conditions'], $foe['grappled_by']] = ['', null];
@@ -491,7 +502,7 @@ function cmd_flee(array $me): array
         return ["You aren't fighting anything."];
     }
     start_turn($me);
-    if ($me['class'] !== 'rogue' || $me['level'] < 2) {
+    if (($me['class'] !== 'rogue' || $me['level'] < 2) && !has($foe, 'paralyzed')) { // a Paralyzed foe can't stop you
         $mine = roll('1d20') + mod($me['dexterity']);
         $theirs = roll('1d20') + $foe['initiative'];
         if ($mine < $theirs) {
@@ -533,9 +544,8 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             break;
         }
         $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $w['str_based']);
-        [$d20, $edge] = attack_d20($me, $foe, $aim, $w['ranged'] && !$me['volley']);
-        $total = $d20 + $w['to_hit'];
-        $with = with($edge);
+        [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, $aim, $w['ranged'] && !$me['volley']);
+        $total = $d20 + $w['to_hit'] + $bonus;
         [$you, $s] = $off ? ["Your off-hand {$w['weapon']}", 'es'] : ['You', ''];
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
@@ -549,7 +559,8 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             }
             continue;
         }
-        $crit = $d20 === 20;
+        // Paralyzed: a hit from within 5 feet is a Critical Hit (shortcut: a melee one, as everything is that close).
+        $crit = $d20 === 20 || (has($foe, 'paralyzed') && !$w['ranged'] && !$me['volley']);
         $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
         // The extra attack adds no ability modifier unless it's negative (shortcut: no Two-Weapon Fighting style yet).
         $dmg = roll($w['damage'], $crit) + ($off ? min(0, $w['attack_mod']) : $w['attack_mod']) + $rage;
@@ -567,8 +578,8 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         if ($w['mastery'] === 'topple' && !has($foe, 'prone')) {
             $dc = 8 + $w['attack_mod'] + $me['prof_bonus'];
             [$save, $saved] = save($foe, 'con', $dc);
-            $lines[] = $saved ? "The {$foe['name']} keeps its feet (Con save $save vs DC $dc)."
-                : "The {$foe['name']} topples over, Prone (Con save $save vs DC $dc).";
+            $lines[] = $saved ? "The {$foe['name']} keeps its feet (Con save " . vs($save, $dc) . ').'
+                : "The {$foe['name']} topples over, Prone (Con save " . vs($save, $dc) . ').';
             if (!$saved) {
                 set_condition($foe, 'prone');
             }
@@ -601,9 +612,8 @@ function cleave(array &$me, array $w, array $foe, array &$lines): void
         return;
     }
     $aim = has($me, 'reckless') && $w['str_based'];
-    [$d20, $edge] = attack_d20($me, $other, $aim);
-    $total = $d20 + $w['to_hit'];
-    $with = with($edge);
+    [$d20, $edge, $bonus, $with] = attack_d20($me, $other, $aim);
+    $total = $d20 + $w['to_hit'] + $bonus;
     if ($d20 === 1 || ($d20 < 20 && $total < $other['ac'])) {
         $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$other['ac']}";
         $lines[] = "You cleave at the {$other['name']} and miss ($why$with).";
@@ -632,20 +642,38 @@ function spend_bonus(array &$me): bool
 }
 
 /**
- * The d20 for my attack roll at $foe, and its edge: 1 with Advantage ($adv, my saved one, or a Prone foe next to me),
- * -1 with Disadvantage ($dis, or a Prone foe shot at from afar), 0 with neither or both.
+ * The d20 for my attack roll at $foe, its edge, any dice my effects add (Bless), and how a combat line says those:
+ * [d20, edge, bonus, note]. The edge is 1 with Advantage ($adv, my saved one, a Paralyzed foe, or a Prone foe next to
+ * me), -1 with Disadvantage ($dis, or a Prone foe shot at from afar), 0 with neither or both.
  */
 function attack_d20(array &$me, array $foe, bool $adv = false, bool $dis = false): array
 {
     $prone = has($foe, 'prone');
-    [$adv, $dis] = [$adv || ($prone && !$me['volley']), $dis || ($prone && $me['volley'])];
+    $adv = $adv || ($prone && !$me['volley']) || has($foe, 'paralyzed');
+    $dis = $dis || ($prone && $me['volley']);
     if ($me['advantage']) { // used up by this roll
         $adv = true;
         $me['advantage'] = false;
         q('UPDATE users SET advantage = FALSE WHERE id = ?', [$me['id']]);
     }
     $edge = $adv <=> $dis;
-    return [d20($edge), $edge];
+    $d20 = d20($edge);
+    [$bonus, $note] = d20_bonus($me);
+    return [$d20, $edge, $bonus, with($edge) . $note];
+}
+
+/** The dice $who's effects add to a d20 test, rolled (Bless +1d4, Bane -1d4), and a note like ', +3 Bless'. */
+function d20_bonus(array $who): array
+{
+    [$sum, $note] = [0, ''];
+    foreach ($who['effects'] ?? [] as $e) {
+        if ($e['effect'] === 'd20') {
+            $n = str_starts_with($e['value'], '-') ? -roll(substr($e['value'], 1)) : roll($e['value']);
+            $sum += $n;
+            $note .= sprintf(', %+d %s', $n, $e['spell']);
+        }
+    }
+    return [$sum, $note];
 }
 
 /** A d20 for a D20 Test: with Advantage (edge 1) the higher of two, with Disadvantage (-1) the lower. */
@@ -665,23 +693,66 @@ function with(int $edge): string
 }
 
 /**
- * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total, whether it saved,
- * its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Rage gives Advantage on Str saves, and a Barbarian's Danger Sense
- * (level 2) on Dex saves (shortcut: nothing Incapacitates yet, which would turn Danger Sense off).
+ * A saving throw by $who, a hero or a monster, with its 'str' to 'cha' save against $dc: [the total (null when it
+ * fails automatically), whether it saved, its edge]. No natural 1 or 20 (SRD 5.2.1 p.6). Paralyzed fails Str and Dex
+ * saves. Rage gives Advantage on Str saves, and a Barbarian's Danger Sense (level 2) on Dex saves unless
+ * Incapacitated. Effects like Bless add their dice.
  */
 function save(array $who, string $ability, int $dc): array
 {
+    if (in_array($ability, ['str', 'dex'], true) && has($who, 'paralyzed')) {
+        return [null, false, 0];
+    }
     $barbarian = ($who['class'] ?? null) === 'barbarian';
     $edge = (int) (($ability === 'str' && ($who['raging'] ?? false))
-        || ($ability === 'dex' && $barbarian && $who['level'] >= 2));
-    $total = d20($edge) + $who[$ability . '_save'];
+        || ($ability === 'dex' && $barbarian && $who['level'] >= 2 && !has($who, 'paralyzed')));
+    $total = d20($edge) + $who[$ability . '_save'] + d20_bonus($who)[0];
     return [$total, $total >= $dc, $edge];
 }
 
-/** True if $who (a hero or a monster) has $condition. */
+/** A save's roll for a combat line: '11 vs DC 12', or that it failed automatically. */
+function vs(?int $total, int $dc): string
+{
+    return $total === null ? "automatic fail, DC $dc" : "$total vs DC $dc";
+}
+
+/** True if $who (a hero or a monster) has $condition, its own or from a spell's effect. */
 function has(array $who, string $condition): bool
 {
+    foreach ($who['effects'] ?? [] as $e) {
+        if ($e['effect'] === 'condition' && $e['value'] === $condition) {
+            return true;
+        }
+    }
     return in_array($condition, explode(',', $who['conditions']), true);
+}
+
+/** The live effects on a hero ($col 'user_id') or a monster ('spawn_id'), each with its spell's name. */
+function effects_on(string $col, int $id): array
+{
+    $col = match ($col) { 'user_id' => 'user_id', 'spawn_id' => 'spawn_id' }; // the only two allowed in SQL
+    return q(
+        "SELECT e.*, s.name AS spell FROM effects e JOIN users c ON c.id = e.caster_id
+         JOIN spells s ON s.id = e.spell_id WHERE e.$col = ? AND " . LIVE_EFFECT . ' ORDER BY e.id',
+        [$id]
+    )->fetchAll();
+}
+
+/** The spell I'm concentrating on, or null. */
+function concentrating(array $me): ?string
+{
+    $name = q(
+        'SELECT s.name FROM effects e JOIN users c ON c.id = e.caster_id JOIN spells s ON s.id = e.spell_id
+         WHERE e.caster_id = ? AND e.concentration AND ' . LIVE_EFFECT . ' LIMIT 1',
+        [$me['id']]
+    )->fetchColumn();
+    return $name === false ? null : $name;
+}
+
+/** Ends my Concentration: every effect I hold with it, live or not, is gone. */
+function end_concentration(array $me): void
+{
+    q('DELETE FROM effects WHERE caster_id = ? AND concentration', [$me['id']]);
 }
 
 /** Gives $foe (a spawn) $condition, or takes it away. */
@@ -696,7 +767,8 @@ function set_condition(array &$foe, string $condition, bool $on = true): void
  * shove or grapple (SRD 5.2.1 Unarmed Strike, p.190) in place of one attack of my turn; any others follow with my
  * weapon. The foe makes a Str or Dex save, the better of its two, against 8 + my Str + PB. Failing a shove, it's
  * Prone; failing a grapple, it's Grappled by me, so it has Disadvantage attacking any other hero (Grappled p.182).
- * shortcut: no sizes or free hands, so anything can be shoved or grappled; add them with species and monster sizes.
+ * The foe can be at most one size larger than me (shortcut: heroes are all Medium until species, and free hands aren't
+ * checked).
  * Shove's push and the foe escaping a grapple are left out: there are no distances, and monsters never try.
  */
 function cmd_maneuver(array $me, string $how, string $target): array
@@ -707,10 +779,14 @@ function cmd_maneuver(array $me, string $how, string $target): array
             $lines[] = "The {$foe['name']} is already " . ($how === 'shove' ? 'Prone.' : 'in your grip.');
             return hero_turn($me, $foe, $lines);
         }
+        if (array_search($foe['size'], SIZES, true) > array_search('large', SIZES, true)) { // Medium heroes
+            $lines[] = "The {$foe['name']} is too big to " . ($how === 'shove' ? 'shove.' : 'grab.');
+            return hero_turn($me, $foe, $lines);
+        }
         $dc = 8 + mod($me['strength']) + $me['prof_bonus'];
         $ability = $foe['str_save'] >= $foe['dex_save'] ? 'str' : 'dex';
         [$save, $saved] = save($foe, $ability, $dc);
-        $roll = ucfirst($ability) . " save $save vs DC $dc";
+        $roll = ucfirst($ability) . ' save ' . vs($save, $dc);
         if ($saved) {
             $lines[] = "The {$foe['name']} " . ($how === 'shove' ? 'stands firm' : 'slips your grip') . " ($roll).";
         } elseif ($how === 'shove') {
@@ -815,6 +891,13 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         set_condition($foe, 'prone', false);
         $lines[] = "The {$foe['name']} gets back up.";
     }
+    if (has($foe, 'paralyzed')) { // Incapacitated: no turn, and no Reaction when I flee
+        if ($n === null) {
+            $lines[] = "The {$foe['name']} is Paralyzed and can't act.";
+            repeat_saves($foe, $lines);
+        }
+        return false;
+    }
     // Held by another hero still fighting it, it has Disadvantage against me.
     $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
@@ -847,13 +930,47 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
                 'UPDATE users SET hp = ?, gold = gold - gold DIV 2, ' . END_FIGHT . ', room_id = ? WHERE id = ?',
                 [$me['hp'], START_ROOM, $me['id']]
             );
+            end_concentration($me);
             array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
             array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
             return true;
         }
+        if ($dmg > 0 && ($spell = concentrating($me)) !== null) {
+            $dc = min(30, max(10, intdiv($dmg, 2)));
+            [$save, $saved] = save($me, 'con', $dc);
+            $lines[] = $saved ? "You keep your Concentration on $spell (Con save " . vs($save, $dc) . ').'
+                : "You lose your Concentration on $spell (Con save " . vs($save, $dc) . ').';
+            if (!$saved) {
+                end_concentration($me);
+                $foe['effects'] = effects_on('spawn_id', $foe['id']);
+                $me['effects'] = effects_on('user_id', $me['id']);
+            }
+        }
     }
     q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
+    if ($n === null) {
+        repeat_saves($foe, $lines);
+    }
     return false;
+}
+
+/** The end of $foe's turn: it repeats each save its effects allow, and one it makes ends that effect. */
+function repeat_saves(array &$foe, array &$lines): void
+{
+    foreach ($foe['effects'] as $i => $e) {
+        if ($e['save'] === null) {
+            continue;
+        }
+        [$save, $saved] = save($foe, $e['save'], $e['dc']);
+        $roll = ucfirst($e['save']) . ' save ' . vs($save, $e['dc']);
+        if ($saved) {
+            q('DELETE FROM effects WHERE id = ?', [$e['id']]);
+            unset($foe['effects'][$i]);
+            $lines[] = "The {$foe['name']} shakes off your {$e['spell']} ($roll).";
+        } else {
+            $lines[] = "The {$foe['name']} is still held by your {$e['spell']} ($roll).";
+        }
+    }
 }
 
 /** Second Wind: a bonus action, so it costs no turn and the monster doesn't swing. */
@@ -943,7 +1060,7 @@ function cmd_cast(array $me, string $arg): array
         $lines = $arg === '' ? [] : ["You don't know a spell called '$arg'."];
         $lines[] = "Your spells (save DC $dc, spell attack +" . ($dc - 8) . '; slots ' . slots_left($me) . '):';
         foreach ($known as $k) {
-            $usage = strtolower($k['name']) . ($k['kind'] === 'heal' ? '' : ' <monster>');
+            $usage = strtolower($k['name']) . ($k['targets'] === 'foe' ? ' <monster>' : '');
             $lines[] = sprintf('  %-24s %s', $usage, ($k['level'] === 0 ? 'cantrip: ' : '') . $k['about']);
         }
         return $lines;
@@ -962,9 +1079,12 @@ function cmd_cast(array $me, string $arg): array
         }
     }
     $tier = 1 + intdiv($me['level'] + 1, 6); // cantrips: twice the dice at 5, three times at 11, four at 17
-    $dice = $spell['level'] === 0
-        ? preg_replace_callback('/^\d+/', fn ($n) => (string) ($n[0] * $tier), $spell['dice'])
-        : $spell['dice'] . str_repeat('+' . $spell['upcast'], $spell['upcast'] === null ? 0 : $slot - $spell['level']);
+    $dice = match (true) {
+        $spell['dice'] === null => null,
+        $spell['level'] === 0 => preg_replace_callback('/^\d+/', fn ($n) => (string) ($n[0] * $tier), $spell['dice']),
+        default => $spell['dice'] . str_repeat('+' . $spell['upcast'], $spell['upcast'] === null ? 0
+            : $slot - $spell['level']),
+    };
     $name = $spell['name'] . ($slot > $spell['level'] ? " (level $slot)" : '');
     $spend = function (array &$me) use ($slot): void {
         if ($slot > 0) {
@@ -975,12 +1095,24 @@ function cmd_cast(array $me, string $arg): array
         }
     };
 
-    if ($spell['kind'] === 'heal') {
-        if ($me['hp'] >= $me['max_hp']) {
+    if ($spell['targets'] !== 'foe') { // healing or a buff, on myself or my allies here
+        if ($spell['kind'] === 'heal' && $me['hp'] >= $me['max_hp']) {
             return ["You're already at full health."];
         }
-        $heal = function (array &$me) use ($spend, $dice, $mod, $name): string {
+        $heal = function (array &$me) use ($spell, $spend, $dice, $mod, $name, $slot, $dc): string {
             $spend($me);
+            if ($spell['kind'] === 'buff') {
+                $extra = $spell['upcast'] === null ? 0 : (int) $spell['upcast'] * ($slot - $spell['level']);
+                $who = $spell['targets'] === 'self' ? [] : q(
+                    'SELECT id, name FROM users WHERE room_id = ? AND id <> ? AND setup IS NULL ORDER BY name LIMIT '
+                        . ($spell['count'] + $extra - 1),
+                    [$me['room_id'], $me['id']]
+                )->fetchAll();
+                start_effect($me, $spell, $dc, 'user_id', [$me, ...$who], $me['fighting']);
+                $me['effects'] = effects_on('user_id', $me['id']);
+                return "You cast $name on " . implode(', ', ['you', ...array_column($who, 'name')])
+                    . ($slot > 0 ? '. Slots ' . slots_left($me) . '.' : '.');
+            }
             $hp = min($me['max_hp'], $me['hp'] + max(0, roll($dice) + $mod));
             q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
             $line = "You cast $name and regain " . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}. Slots "
@@ -999,13 +1131,27 @@ function cmd_cast(array $me, string $arg): array
             return false;
         });
     }
+    $foe = $spell['creature'] === null ? null : find_foe($me, $target);
+    if ($foe !== null && $foe['type'] !== $spell['creature']) {
+        return ["$spell[name] works only on a " . ucfirst($spell['creature']) . ", and the $foe[name] is "
+            . lcfirst(a_an(ucfirst($foe['type']))) . '.'];
+    }
     $act = function (array &$me, array &$foe, array &$lines) use ($spell, $spend, $dice, $mod, $dc, $name): bool {
         $spend($me);
         $type = $spell['damage_type'];
         if ($spell['kind'] === 'save') {
             $ability = $spell['save'];
             [$save, $saved] = save($foe, $ability, $dc);
-            $roll = ucfirst($ability) . " save ($save vs DC $dc) against your $name";
+            $roll = ucfirst($ability) . ' save (' . vs($save, $dc) . ") against your $name";
+            if ($spell['effect'] !== null && !$saved) {
+                start_effect($me, $spell, $dc, 'spawn_id', [$foe], $foe['id']);
+                $foe['effects'] = effects_on('spawn_id', $foe['id']);
+            }
+            if ($dice === null) {
+                $lines[] = "The {$foe['name']} " . ($saved ? "makes its $roll." : "fails its $roll and is "
+                    . ucfirst($spell['value']) . '.');
+                return false;
+            }
             if ($saved && !$spell['half']) {
                 $lines[] = "The {$foe['name']} makes its $roll and takes no damage.";
                 return false;
@@ -1016,9 +1162,8 @@ function cmd_cast(array $me, string $arg): array
                 . " its $roll and takes $dmg damage$note.";
             return hurt_foe($me, $foe, $dmg, $lines);
         }
-        [$d20, $edge] = attack_d20($me, $foe, false, $spell['ranged'] && !$me['volley']);
-        $total = $d20 + $me['prof_bonus'] + $mod;
-        $with = with($edge);
+        [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, false, $spell['ranged'] && !$me['volley']);
+        $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "Your $name misses the {$foe['name']} ($why$with).";
@@ -1037,6 +1182,28 @@ function cmd_cast(array $me, string $arg): array
         return false;
     };
     return fight($me, $target, $act, 'Cast it at what?', $spell['kind'] === 'attack' && $spell['ranged']);
+}
+
+/**
+ * Starts $spell's effect on $targets (heroes for 'user_id', monsters for 'spawn_id'), cast by me. Cast in a fight it
+ * lasts while I'm still in it ($during: the spawn I fight); otherwise for the spell's minutes. A Concentration spell
+ * first ends the one I was concentrating on.
+ */
+function start_effect(array $me, array $spell, int $dc, string $col, array $targets, ?int $during): void
+{
+    $col = match ($col) { 'user_id' => 'user_id', 'spawn_id' => 'spawn_id' }; // the only two allowed in SQL
+    if ($spell['concentration']) {
+        end_concentration($me);
+    }
+    foreach ($targets as $t) {
+        q(
+            "INSERT INTO effects ($col, caster_id, spell_id, effect, value, save, dc, concentration, during, until)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? IS NULL, NOW() + INTERVAL ? MINUTE, NULL))",
+            [$t['id'], $me['id'], $spell['id'], $spell['effect'], $spell['value'],
+                $spell['repeat_save'] ? $spell['save'] : null, $spell['repeat_save'] ? $dc : null,
+                (int) $spell['concentration'], $during, $during, (int) $spell['minutes']]
+        );
+    }
 }
 
 /**
@@ -1395,6 +1562,8 @@ function hero_sheet(array $me): array
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
             ...explode(',', $me['conditions']),
+            ...array_column($me['effects'], 'spell'),
+            ($spell = concentrating($me)) === null ? null : "concentrating on $spell",
             $me['resting'] !== null ? "taking a {$me['resting']} rest" : null,
         ])),
         'xp' => $me['xp'],

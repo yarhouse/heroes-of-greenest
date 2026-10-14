@@ -1,6 +1,6 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS spells, delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS effects, spells, delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -49,7 +49,10 @@ CREATE TABLE monsters (
     immunities SET('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
         'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT '',
     vulnerabilities SET('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
-        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT ''
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NOT NULL DEFAULT '',
+    size ENUM('tiny', 'small', 'medium', 'large', 'huge', 'gargantuan') NOT NULL,
+    type ENUM('aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend',
+        'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A monster living in a room. Alive while dead_since is NULL; respawns on the first read
@@ -178,21 +181,56 @@ CREATE TABLE delve (
     seed INT UNSIGNED NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Spells the game can resolve (SRD 5.2.1 p.107+), by kind: a spell attack roll against AC, a saving throw, or healing
--- (dice + the spellcasting modifier). Which classes cast what, and their spellcasting ability, is CLASSES in game.php.
+-- Spells the game can resolve (SRD 5.2.1 p.107+), by kind: a spell attack roll against AC, a saving throw, healing
+-- (dice + the spellcasting modifier), or a buff that needs no roll. Attacks and saves may deal damage, and a spell may
+-- leave an effect (see effects). Which classes cast what, and their spellcasting ability, is CLASSES in game.php.
 CREATE TABLE spells (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(40) NOT NULL UNIQUE,
     level TINYINT UNSIGNED NOT NULL, -- 0 is a cantrip
     classes SET('bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard') NOT NULL,
     casting ENUM('action', 'bonus') NOT NULL, -- a Bonus Action costs no turn
-    kind ENUM('attack', 'save', 'heal') NOT NULL,
+    kind ENUM('attack', 'save', 'heal', 'buff') NOT NULL,
+    targets ENUM('foe', 'self', 'allies') NOT NULL DEFAULT 'foe', -- allies: you and up to `count` - 1 heroes here
+    count TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    creature ENUM('aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend',
+        'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NULL, -- a foe must be this type
     ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a ranged spell attack: Disadvantage next to a foe
-    dice VARCHAR(20) NOT NULL, -- at its own level; a cantrip's dice multiply at character levels 5, 11 and 17
-    upcast VARCHAR(20) NULL, -- added for each slot level above its own
+    dice VARCHAR(20) NULL, -- damage or healing at its own level; a cantrip's dice multiply at levels 5, 11 and 17
+    upcast VARCHAR(20) NULL, -- per slot level above its own: more dice, or for allies more targets ('1')
     damage_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
         'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL,
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,
     half BOOLEAN NOT NULL DEFAULT FALSE, -- a made save still takes half the damage
+    effect ENUM('condition', 'd20', 'ac') NULL, -- what it leaves on a failed save, a hit, or a buff's targets
+    value VARCHAR(20) NULL, -- the condition, the die added to d20 tests ('1d4', '-1d4'), or the AC bonus
+    repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
+    concentration BOOLEAN NOT NULL DEFAULT FALSE,
+    minutes SMALLINT UNSIGNED NULL, -- how long its effect lasts outside a fight; in one, until that fight ends
     about VARCHAR(100) NOT NULL -- for the spell list
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A spell's lasting effect on a hero (user_id) or a monster (spawn_id). Cast in a fight (during: the spawn fought), it
+-- lasts while its caster is still in that fight; cast outside one, until `until`. No ticks: effects past that are
+-- ignored when read (LIVE_EFFECT in game.php). Concentration ones also end when the caster's Concentration does.
+CREATE TABLE effects (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NULL,
+    spawn_id INT UNSIGNED NULL,
+    caster_id INT UNSIGNED NOT NULL,
+    spell_id INT UNSIGNED NOT NULL,
+    effect ENUM('condition', 'd20', 'ac') NOT NULL,
+    value VARCHAR(20) NOT NULL,
+    save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL, -- repeated at the end of each of the target's turns
+    dc TINYINT UNSIGNED NULL,
+    concentration BOOLEAN NOT NULL,
+    during INT UNSIGNED NULL,
+    until DATETIME NULL,
+    KEY (user_id),
+    KEY (spawn_id),
+    KEY (caster_id),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (spawn_id) REFERENCES spawns (id) ON DELETE CASCADE,
+    FOREIGN KEY (caster_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (spell_id) REFERENCES spells (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
