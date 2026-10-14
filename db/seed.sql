@@ -40,9 +40,10 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 DELETE FROM delve;
 INSERT INTO delve (seed) VALUES (0);
 
--- Monsters 1-31 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php borrows.
--- Beasts are a Druid's Wild Shape forms (17-23 are here for that, and share CRs with 1-16, which the converter
--- prefers); a Multiattack of two kinds keeps one of them.
+-- Monsters 1-67 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php
+-- borrows: 32-48 are the SRD's NPCs, for Riftshadow's humanoids, and 49-67 what the Sewers need. Beasts are a Druid's
+-- Wild Shape forms (17-23 are here for that, and share CRs with 1-16, which the converter prefers); a Multiattack of
+-- two kinds keeps one of them.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
 -- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
@@ -112,6 +113,78 @@ INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, dam
     'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid'),
 (31, 'Sprite', 15, '4d4', 4, 'Needle Sword', 1, 6, '1d4+4', 0.25, 50, -4, 4, 0, 2, 1, 0,               -- p.329
     'piercing', NULL, NULL, '', '', '', 'tiny', 'fey'),
+(32, 'Guard', 16, '2d8+2', 1, 'Spear', 1, 3, '1d6+1', 0.125, 25, 1, 1, 1, 0, 0, 0,                     -- p.296
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(33, 'Guard Captain', 18, '10d8+30', 4, 'Longsword', 2, 6, '2d10+4', 4, 1100, 4, 2, 3, 1, 2, 1,        -- p.296
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(34, 'Cultist', 12, '2d8', 1, 'Ritual Sickle', 1, 3, '1d4+1', 0.125, 25, 0, 1, 0, 0, 2, 0,             -- p.278
+    'slashing', '1', 'necrotic', '', '', '', 'medium', 'humanoid'),
+(35, 'Cultist Fanatic', 13, '8d8+8', 2, 'Pact Blade', 1, 4, '1d8+2', 2, 450, 0, 2, 1, 0, 4, 1,         -- p.278
+    'slashing', '2d6', 'necrotic', '', '', '', 'medium', 'humanoid'),
+(36, 'Priest Acolyte', 13, '2d8+2', 0, 'Mace', 1, 4, '1d6+2', 0.25, 50, 2, 0, 1, 0, 2, 0,              -- p.316
+    'bludgeoning', '1d4', 'radiant', '', '', '', 'medium', 'humanoid'),
+(37, 'Priest', 13, '7d8+7', 0, 'Mace', 2, 5, '1d6+3', 2, 450, 3, 0, 1, 1, 3, 1,                        -- p.316
+    'bludgeoning', '2d4', 'radiant', '', '', '', 'medium', 'humanoid'),
+(38, 'Mage', 15, '18d8', 2, 'Arcane Burst', 3, 6, '3d8+3', 6, 2300, -1, 2, 0, 6, 4, 0,                 -- p.305
+    'force', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(39, 'Scout', 13, '3d8+3', 2, 'Shortsword', 2, 4, '1d6+2', 0.5, 100, 0, 2, 1, 0, 1, 0,                 -- p.322
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(40, 'Spy', 12, '6d8', 4, 'Shortsword', 1, 4, '1d6+2', 1, 200, 0, 2, 0, 1, 2, 3,                       -- p.329
+    'piercing', '2d6', 'poison', '', '', '', 'medium', 'humanoid'),
+(41, 'Tough', 12, '5d8+10', 1, 'Mace', 1, 4, '1d6+2', 0.5, 100, 2, 1, 2, 0, 0, 0,                      -- p.332
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(42, 'Tough Boss', 16, '11d8+33', 2, 'Warhammer', 2, 5, '2d8+3', 4, 1100, 5, 2, 5, 0, 0, 2,            -- p.332
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(43, 'Knight', 18, '8d8+16', 0, 'Greatsword', 2, 5, '2d6+3', 3, 700, 3, 0, 4, 0, 2, 2,                 -- p.302
+    'slashing', '1d8', 'radiant', '', '', '', 'medium', 'humanoid'),
+(44, 'Noble', 15, '2d8', 1, 'Rapier', 1, 3, '1d8+1', 0.125, 25, 0, 1, 0, 1, 2, 3,                      -- p.312
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(45, 'Pirate', 14, '6d8+6', 5, 'Dagger', 2, 5, '1d4+3', 1, 200, 0, 5, 1, -1, 1, 4,                     -- p.314
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(46, 'Pirate Captain', 17, '13d8+26', 7, 'Rapier', 3, 7, '2d8+4', 6, 2300, 3, 7, 2, 0, 5, 6,           -- p.314
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(47, 'Warrior Infantry', 13, '2d8', 0, 'Spear', 1, 3, '1d6+1', 0.125, 25, 1, 0, 0, -1, 0, -1,          -- p.336
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(48, 'Warrior Veteran', 17, '10d8+20', 3, 'Greatsword', 2, 5, '2d6+3', 3, 700, 3, 1, 2, 0, 0, 0,       -- p.337
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+(49, 'Bat', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -4, 1, -3,                            -- p.345
+    'piercing', NULL, NULL, '', '', '', 'tiny', 'beast'),
+(50, 'Spider', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -5, 0, -4,                         -- p.361
+    'piercing', '1d4', 'poison', '', '', '', 'tiny', 'beast'),
+(51, 'Giant Fire Beetle', 13, '1d6+1', 0, 'Bite', 1, 1, '1', 0, 10, -1, 0, 1, -5, -2, -4,              -- p.351
+    'fire', NULL, NULL, 'fire', '', '', 'small', 'beast'),
+(52, 'Swarm of Insects', 11, '3d8+6', 1, 'Bites', 1, 3, '2d4+1', 0.5, 100, -4, 1, 2, -5, -2, -5,       -- p.361
+    'poison', NULL, NULL, 'bludgeoning,piercing,slashing', '', '', 'medium', 'beast'),
+(53, 'Venomous Snake', 12, '2d4', 2, 'Bite', 1, 4, '1d4+2', 0.125, 25, -4, 2, 0, -5, 0, -4,            -- p.363
+    'piercing', '1d6', 'poison', '', '', '', 'tiny', 'beast'),
+(54, 'Ochre Jelly', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5,        -- p.312
+    'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze'),
+(55, 'Homunculus', 13, '1d4+2', 2, 'Bite', 1, 4, '1', 0, 10, -3, 2, 2, 0, 2, 0,                        -- p.299
+    'piercing', NULL, NULL, '', 'poison', '', 'tiny', 'construct'),
+(56, 'Animated Armor', 18, '6d8+6', 2, 'Slam', 2, 4, '1d6+2', 1, 200, 2, 0, 1, -5, -4, -5,             -- p.259
+    'bludgeoning', NULL, NULL, '', 'poison,psychic', '', 'medium', 'construct'),
+(57, 'Shadow', 12, '5d8+5', 2, 'Draining Swipe', 1, 4, '1d6+2', 0.5, 100, -2, 2, 1, -2, 0, -1,         -- p.322
+    'necrotic', NULL, NULL, 'acid,cold,fire,lightning,thunder', 'necrotic,poison', 'radiant', 'medium', 'undead'),
+(58, 'Red Dragon Wyrmling', 17, '10d8+30', 2, 'Rend', 2, 6, '1d10+4', 4, 1100, 4, 2, 3, 1, 2, 2,       -- p.318
+    'slashing', '1d6', 'fire', '', 'fire', '', 'medium', 'dragon'),
+(59, 'Sea Hag', 14, '7d8+21', 1, 'Claw', 1, 5, '2d6+3', 2, 450, 3, 1, 3, 1, 1, 1,                      -- p.322
+    'slashing', NULL, NULL, '', '', '', 'medium', 'fey'),
+(60, 'Giant Constrictor Snake', 12, '8d12+8', 2, 'Bite', 1, 6, '2d6+4', 2, 450, 4, 2, 1, -5, 0, -4,    -- p.350
+    'piercing', NULL, NULL, '', '', '', 'huge', 'beast'),
+(61, 'Basilisk', 15, '8d8+16', -1, 'Bite', 1, 5, '2d6+3', 3, 700, 3, -1, 2, -4, -1, -2,                -- p.262
+    'piercing', '2d6', 'poison', '', '', '', 'medium', 'monstrosity'),
+(62, 'Lemure', 9, '2d8', -3, 'Vile Slime', 1, 2, '1d4', 0, 10, 0, -3, 0, -5, 0, -4,                    -- p.304
+    'poison', NULL, NULL, 'cold', 'fire,poison', '', 'medium', 'fiend'),
+(63, 'Ettin', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1,            -- p.284
+    'slashing', NULL, NULL, '', '', '', 'large', 'giant'),
+(64, 'Darkmantle', 11, '5d6+5', 3, 'Crush', 1, 5, '1d6+3', 0.5, 100, 3, 1, 1, -4, 0, -3,               -- p.278
+    'bludgeoning', NULL, NULL, '', '', '', 'small', 'aberration'),
+(65, 'Grick', 14, '12d8', 2, 'Beak', 2, 4, '2d6+2', 2, 450, 2, 2, 0, -4, 2, -3,                        -- p.295
+    'piercing', NULL, NULL, '', '', '', 'medium', 'aberration'),
+(66, 'Otyugh', 14, '11d10+44', 0, 'Tentacle', 3, 6, '2d8+3', 5, 1800, 3, 0, 7, -2, 1, -2,              -- p.313
+    'piercing', NULL, NULL, '', '', '', 'large', 'aberration'),
+(67, 'Wererat', 13, '11d8+11', 3, 'Scratch', 2, 5, '1d6+3', 2, 450, 0, 3, 1, 0, 0, -1,                 -- p.338
+    'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity'),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
     'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior

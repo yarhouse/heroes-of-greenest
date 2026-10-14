@@ -5,9 +5,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Humanoid NPCs in the converter.** Rift humanoids are mostly race "human", so map them by role words to the SRD's
-   NPC stat blocks (Guard, Cultist, Priest, Mage, Scout, Spy, Tough, Knight, Noble, Pirate...). Do it with the Sewers,
-   which also need stand-ins for monsters the SRD lacks (no mind flayers).
+Nothing chosen yet: pick the next task from `BACKLOG.md`.
 
 Any time: **accounts for the friends**, once each:
 `ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php <Name>"`.
@@ -41,3 +39,7 @@ Any time: **accounts for the friends**, once each:
   backgrounds (Acolyte, Criminal, Sage, Soldier), each with +2/+1 (or +1 x3) and its Origin feat. The game picks
   Magic Initiate's spells and the Int/Wis/Cha ability for origin spells; Giant Ancestry is used at the first chance.
   Fight traits are ruled, the rest only shown. Background equipment is skipped: heroes start with class kit A.
+- 2026-10-14 **Humanoid NPCs and the Sewers:** the converter maps role words in Rift names (guard, priest, thief,
+  warrior...) to the SRD's NPC stat blocks, tiered by Rift level, and a creature the SRD lacks to a stand-in of about
+  its strength. The Sewers (Rift's Diku sewer, CR 0 to 5) are under Market Lane, Rift names and text kept for now;
+  their mind flayers are a Darkmantle, a Grick and an Otyugh.

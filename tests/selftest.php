@@ -209,10 +209,11 @@ try {
     check(says($score, 'Saves  Str +4  Dex +2  Con +3  Int -1  Wis +0  Cha +1'),
         "hero saves: the ability modifier, plus PB for the class's two (a Fighter's Str and Con)");
 
-    // Map: Town Square (safe) has Market Lane west, the inn (safe) east, the keep north, the Mill Bridge (stair down) south.
+    // Map: Town Square (safe) has Market Lane (stair down to the Sewers) west, the inn (safe) east, the keep north, the
+    // Mill Bridge (stair down) south.
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
     $map = cmd_map(hero('Testa'));
-    check(mb_substr($map[5], 5, 11) === '[ ]─(@)─( )' && mb_substr($map[3], 9, 3) === '[ ]'
+    check(mb_substr($map[5], 5, 11) === '[v]─(@)─( )' && mb_substr($map[3], 9, 3) === '[ ]'
         && mb_substr($map[4], 10, 1) === '│' && mb_substr($map[7], 9, 3) === '[v]', 'map: rooms, links, safe, stairs');
     check($map[0] === '' && $map[5][0] === ' ', 'map: nothing beyond the reach of the Town Square');
     $foe = q('SELECT room_id FROM spawns ORDER BY id LIMIT 1')->fetchColumn();
@@ -1524,6 +1525,18 @@ try {
     check(says(run_command(hero('Testa'), 'n'), 'Southern Fields'), 'the way back to Greenest');
     q("UPDATE users SET room_id = 24609 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'look'), 'A Goblin Child is here.'), 'converted monsters spawn');
+    q("UPDATE users SET room_id = 4 WHERE name = 'Testa'");
+    check(says(run_command(hero('Testa'), 'd'), 'Under the Dump')
+        && says(run_command(hero('Testa'), 'u'), 'Market Lane'), 'Market Lane leads down to the Sewers, and back up');
+    $sql = file_get_contents(__DIR__ . '/../db/areas/sewer.sql');
+    $is = fn (string $mob, string $srd): bool => (bool) preg_match("/'$mob'.*SRD $srd, Rift/", $sql);
+    check($is('Junior Mindflayer', 'Darkmantle') && $is('Senior Mindflayer', 'Grick')
+        && $is('Master Mindflayer', 'Otyugh') && $is('Evil Wanderer', 'Spy') && $is('Small Spider', 'Spider')
+        && $is('Ugly Wererat', 'Wererat'),
+        'the Sewers: stand-ins tiered by Rift level, role words, the longest name that matches');
+    $forms = fn (int $level): array => array_column(wild_forms(['level' => $level]), 'name');
+    check(!array_intersect(['Bat', 'Swarm of Insects'], $forms(4)) && in_array('Bat', $forms(8), true),
+        'no Wild Shape forms that fly before Druid 8');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

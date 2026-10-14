@@ -2012,8 +2012,13 @@ function cmd_wild(array $me, string $arg): array
 function wild_forms(array $me): array
 {
     $cr = $me['level'] >= 8 ? 1 : ($me['level'] >= 4 ? 0.5 : 0.25);
-    return q("SELECT * FROM monsters WHERE type = 'beast' AND id < 1001 AND cr <= ? ORDER BY cr, name", [$cr])
-        ->fetchAll();
+    // No Fly Speed before level 8. shortcut: monsters have no speeds, so the ones that fly are named here.
+    $flyers = $me['level'] >= 8 ? '' : 'Bat,Swarm of Insects';
+    return q(
+        "SELECT * FROM monsters WHERE type = 'beast' AND id < 1001 AND cr <= ? AND NOT FIND_IN_SET(name, ?)
+         ORDER BY cr, name",
+        [$cr, $flyers]
+    )->fetchAll();
 }
 
 function cmd_land(array $me, string $target): array

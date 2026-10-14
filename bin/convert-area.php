@@ -19,8 +19,8 @@ if (PHP_SAPI !== 'cli') {
 const BACK = [
     'north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east', 'up' => 'down', 'down' => 'up',
 ];
-// A monster's SRD stat block, by its Rift race or else words of its names ("the great sewer rat" is race human): the
-// last tier at or below its Rift level. Every name must be a stat block in seed.sql.
+// A monster's SRD stat block, by its Rift race or else words of its names ("the great sewer rat" is race human), the
+// longest that matches: the last tier at or below its Rift level. Every name must be a stat block in seed.sql.
 const CREATURES = [
     'goblin' => [0 => 'Goblin Minion', 20 => 'Goblin Warrior', 30 => 'Goblin Boss'],
     'hobgoblin' => [0 => 'Hobgoblin Warrior', 30 => 'Hobgoblin Captain'],
@@ -44,6 +44,54 @@ const CREATURES = [
     'druid' => [0 => 'Druid'],
     'lumberjack' => [0 => 'Commoner'],
     'brownie' => [0 => 'Sprite'],
+    // Humanoids, mostly race "human" in Rift, by their role. The SRD's only arcane NPC is the CR 6 Mage, so lesser
+    // casters are Cultists.
+    'guard' => [0 => 'Guard', 30 => 'Guard Captain'],
+    'cultist' => [0 => 'Cultist', 20 => 'Cultist Fanatic'],
+    'acolyte' => [0 => 'Priest Acolyte'],
+    'priest' => [0 => 'Priest Acolyte', 20 => 'Priest'],
+    'cleric' => [0 => 'Priest Acolyte', 20 => 'Priest'],
+    'mage' => [0 => 'Cultist', 20 => 'Cultist Fanatic', 50 => 'Mage'],
+    'wizard' => [0 => 'Cultist', 20 => 'Cultist Fanatic', 50 => 'Mage'],
+    'scout' => [0 => 'Scout'],
+    'ranger' => [0 => 'Scout'],
+    'hunter' => [0 => 'Scout'],
+    'spy' => [0 => 'Spy'],
+    'thief' => [0 => 'Spy'],
+    'wanderer' => [0 => 'Spy'],
+    'thug' => [0 => 'Tough', 40 => 'Tough Boss'],
+    'tough' => [0 => 'Tough', 40 => 'Tough Boss'],
+    'knight' => [0 => 'Knight'],
+    'noble' => [0 => 'Noble'],
+    'lord' => [0 => 'Noble'],
+    'lady' => [0 => 'Noble'],
+    'pirate' => [0 => 'Pirate', 50 => 'Pirate Captain'],
+    'sailor' => [0 => 'Pirate'],
+    'warrior' => [0 => 'Warrior Infantry', 30 => 'Warrior Veteran'],
+    'soldier' => [0 => 'Warrior Infantry', 30 => 'Warrior Veteran'],
+    'mercenary' => [0 => 'Warrior Infantry', 30 => 'Warrior Veteran'],
+    'peasant' => [0 => 'Commoner'],
+    'citizen' => [0 => 'Commoner'],
+    'merchant' => [0 => 'Commoner'],
+    // The Sewers. Stand-ins where the SRD has no such creature, or only a far deadlier one: no mind flayers, no mud
+    // monster or morkoth (a shadow here), the chreffn is copper-skinned, and its nagas are CR 8 and 10.
+    'bat' => [0 => 'Bat'],
+    'small spider' => [0 => 'Spider'],
+    'beetle' => [0 => 'Giant Fire Beetle'],
+    'maggot' => [0 => 'Swarm of Insects'],
+    'snake' => [0 => 'Venomous Snake'],
+    'homonculus' => [0 => 'Homunculus'], // Rift's spelling
+    'red dragon' => [0 => 'Red Dragon Wyrmling'],
+    'sea hag' => [0 => 'Sea Hag'],
+    'basilisk' => [0 => 'Basilisk'],
+    'lemure' => [0 => 'Lemure'],
+    'ettin' => [0 => 'Ettin'],
+    'wererat' => [0 => 'Wererat'],
+    'mudmonster' => [0 => 'Ochre Jelly'],
+    'morkoth' => [0 => 'Shadow'],
+    'chreffn' => [0 => 'Animated Armor'],
+    'naga' => [0 => 'Giant Constrictor Snake'],
+    'mindflayer' => [0 => 'Darkmantle', 8 => 'Grick', 14 => 'Otyugh'],
 ];
 // Anything else gets the SRD stat block nearest CR = Rift level / this.
 const RIFT_LEVELS_PER_CR = 12;
