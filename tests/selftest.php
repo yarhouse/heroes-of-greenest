@@ -957,6 +957,63 @@ try {
     check(hero('Testg')['uses_spent'] === 0 && hero('Testg')['once_used'] === 0,
         'a long rest refills it and the free Divine Smite');
 
+    // Ranger (Testh: Dex 15, Wis 14: spell save DC 12). The dummy: AC 10, Str save +0.
+    q('DELETE FROM effects');
+    q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
+    q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
+    save_hero('Testh', 'correct horse');
+    create('Testh', 'ranger');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Testh'");
+    $score = run_command(hero('Testh'), 'score');
+    check(says($score, 'level 1 Ranger') && says($score, 'HP 11/11   AC 14')
+        && says($score, 'Scimitar +4 to hit, 1d6+2 damage')
+        && says($score, 'Hit Dice 1/1 d10   Favored Enemy 2/2   Spell slots 2/2')
+        && says($score, 'Saves  Str +3  Dex +4  Con +1  Int -1  Wis +2  Cha +0')
+        && count(objects_here('user_id', (int) hero('Testh')['id'])) === 4 && hero('Testh')['gold'] === 7,
+        'Ranger: Studded Leather, Scimitar, Shortsword, Longbow; Str and Dex saves; 2 free Hunter\'s Marks');
+    $out = run_command(hero('Testh'), 'cast');
+    check(says($out, "hunter's mark") && says($out, 'ensnaring strike <monster>') && says($out, 'cure wounds')
+        && !says(run_command(hero('Testh'), 'prepare'), "hunter's mark"),
+        "Hunter's Mark is always prepared, beside the SRD's suggested two");
+    check(says(run_command(hero('Testh'), 'cast hunt'), "You cast Hunter's Mark (free) on you.")
+        && hero('Testh')['uses_spent'] === 1 && hero('Testh')['slots_spent'] === '',
+        "Favored Enemy: Hunter's Mark without a slot");
+    $dice_queue = [10, 1, 12, 3, 4, 1];
+    $out = run_command(hero('Testh'), 'kill dummy');
+    check(says($out, "(16 vs AC 10) for 9 damage (+4 Hunter's Mark).") && $dice_queue === [],
+        "Hunter's Mark: 1d6 Force on each weapon hit");
+    $dice_queue = [12, 3, 4, 5, 1, 1]; // the Str save fails; Restrained, the Slam has Disadvantage
+    $out = run_command(hero('Testh'), 'cast ensnaring');
+    check(says($out, 'Your Ensnaring Strike: the Training Dummy is Restrained (Str save 5 vs DC 12). Slots 1/2.')
+        && says($out, 'misses you (natural 1, with Disadvantage)')
+        && concentrating(hero('Testh')) === 'Ensnaring Strike' && $dice_queue === [],
+        "Ensnaring Strike: a hit, a Str save or Restrained; it ends Hunter's Mark's Concentration");
+    $dice_queue = [2, 12, 3, 1, 1];
+    check(says(run_command(hero('Testh'), 'kill'), '(16 vs AC 10, with Advantage) for 5 damage.') && $dice_queue === [],
+        'attacks on a Restrained foe have Advantage');
+    q("UPDATE users SET level = 3 WHERE name = 'Testh'");
+    $dice_queue = [2, 12, 3, 5, 1, 1];
+    check(says(run_command(hero('Testh'), 'kill'), 'for 10 damage (+5 Colossus Slayer).') && $dice_queue === [],
+        'Colossus Slayer: 1d8 more on a foe missing HP');
+    $dice_queue = [20, 1];
+    run_command(hero('Testh'), 'flee');
+    run_command(hero('Testh'), 'equip longbow');
+    check(says(run_command(hero('Testh'), 'score'), 'Longbow +6 to hit, 1d8+2 damage'),
+        'Archery: +2 to ranged attacks');
+    q("UPDATE users SET level = 7, room_id = 2 WHERE name = 'Testh'");
+    q('UPDATE monsters SET attacks = 2 WHERE id = 9999');
+    q('DELETE FROM effects');
+    $dice_queue = [10, 1, 1, 1]; // an opening volley of two misses
+    run_command(hero('Testh'), 'kill dummy');
+    $dice_queue = [1, 1, 1, 1, 15, 2, 15, 1]; // two misses; its first Slam hits, so the second rolls twice
+    $out = run_command(hero('Testh'), 'kill');
+    check(says($out, 'hits you (18 vs AC 14) for 2 damage.') && says($out, 'misses you (natural 1, with Disadvantage)')
+        && $dice_queue === [], 'Multiattack Defense: after a hit, its other attacks this turn have Disadvantage');
+    q('UPDATE monsters SET attacks = 1 WHERE id = 9999');
+    check(says(run_command(hero('Testh'), 'score'), 'Favored Enemy 2/3'), 'level 5 and up: 3 free Hunter\'s Marks');
+    $dice_queue = [20, 1];
+    run_command(hero('Testh'), 'flee');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

@@ -83,7 +83,8 @@ CREATE TABLE levels (
     rages TINYINT UNSIGNED NOT NULL, -- Barbarian
     rage_damage TINYINT UNSIGNED NOT NULL, -- Barbarian
     martial_arts TINYINT UNSIGNED NOT NULL, -- Monk: the Martial Arts die's sides
-    slots VARCHAR(30) NOT NULL -- Cleric spell slots by spell level, e.g. '4,3,2'
+    slots VARCHAR(30) NOT NULL, -- a full caster's (Cleric) spell slots by spell level, e.g. '4,3,2'
+    half_slots VARCHAR(30) NOT NULL -- a half caster's (Paladin)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Item templates: the SRD 5.2.1 weapons, armor, Shield and Potion of Healing. Ammunition, weapon ranges, Strength
@@ -123,7 +124,7 @@ CREATE TABLE users (
     -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
     -- a class and ability scores on their next login; the defaults below are overwritten then.
     setup ENUM('class', 'abilities', 'confirm') NULL DEFAULT 'class',
-    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk') NOT NULL DEFAULT 'fighter',
+    class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin') NOT NULL DEFAULT 'fighter',
     level TINYINT UNSIGNED NOT NULL DEFAULT 1,
     xp INT UNSIGNED NOT NULL DEFAULT 0,
     hp SMALLINT NOT NULL DEFAULT 11,
@@ -135,8 +136,9 @@ CREATE TABLE users (
     wisdom TINYINT UNSIGNED NOT NULL DEFAULT 10,
     charisma TINYINT UNSIGNED NOT NULL DEFAULT 12,
     hit_dice_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a hero has one Hit Die per level
-    uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- Second Wind, Rage or Focus Points
-    metabolized BOOLEAN NOT NULL DEFAULT FALSE, -- a Monk's Uncanny Metabolism, used since the last long rest
+    uses_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- Second Wind, Rage, Focus Points or Lay On Hands HP
+    -- A once-a-long-rest feature used since the last one: a Monk's Uncanny Metabolism, a Paladin's free Divine Smite.
+    once_used BOOLEAN NOT NULL DEFAULT FALSE,
     wholeness_spent TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a Monk's Wholeness of Body
     slots_spent VARCHAR(30) NOT NULL DEFAULT '', -- spell slots spent by spell level, e.g. '2,1'
     raging BOOLEAN NOT NULL DEFAULT FALSE, -- until the fight ends
@@ -196,7 +198,8 @@ CREATE TABLE spells (
     level TINYINT UNSIGNED NOT NULL, -- 0 is a cantrip
     classes SET('bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard') NOT NULL,
     casting ENUM('action', 'bonus') NOT NULL, -- a Bonus Action costs no turn
-    kind ENUM('attack', 'save', 'heal', 'buff') NOT NULL,
+    -- smite: a Bonus Action cast on my first melee hit of the round, adding its dice to that hit
+    kind ENUM('attack', 'save', 'heal', 'buff', 'smite') NOT NULL,
     -- ally: you or a hero here you name; allies: you and up to `count` - 1 heroes here
     targets ENUM('foe', 'self', 'ally', 'allies') NOT NULL DEFAULT 'foe',
     count TINYINT UNSIGNED NOT NULL DEFAULT 1,
@@ -211,9 +214,9 @@ CREATE TABLE spells (
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,
     half BOOLEAN NOT NULL DEFAULT FALSE, -- a made save still takes half the damage
     -- What it leaves on a failed save, a hit, or a buff's targets: a condition, a die added to d20 tests ('1d4',
-    -- '-1d4'), an AC bonus, a Hit Point maximum bonus, or an aura (`value` dice, `save` for half) that hurts the foe at
-    -- the end of each of its turns.
-    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura') NULL,
+    -- '-1d4'), an AC bonus, a Hit Point maximum bonus, an aura (`value` dice, `save` for half) that hurts the foe at
+    -- the end of each of its turns, or extra damage dice of its damage_type on my weapon hits.
+    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura', 'damage') NULL,
     value VARCHAR(20) NULL,
     repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
     concentration BOOLEAN NOT NULL DEFAULT FALSE,
@@ -230,7 +233,7 @@ CREATE TABLE effects (
     spawn_id INT UNSIGNED NULL,
     caster_id INT UNSIGNED NOT NULL,
     spell_id INT UNSIGNED NOT NULL,
-    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura') NOT NULL,
+    effect ENUM('condition', 'd20', 'ac', 'max_hp', 'aura', 'damage') NOT NULL,
     value VARCHAR(20) NOT NULL,
     -- The save the target repeats at the end of each of its turns, or an aura's save for half.
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,

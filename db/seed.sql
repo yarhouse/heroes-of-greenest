@@ -132,7 +132,7 @@ ON DUPLICATE KEY UPDATE xp = new.xp, prof_bonus = new.prof_bonus, second_wind = 
 -- SRD 5.2.1 spells: Sacred Flame p.159, Guiding Bolt p.138, Cure Wounds p.121, Healing Word p.139, Bless p.113,
 -- Shield of Faith p.162, Hold Person p.141, Bane p.112, Command p.116 (as Halt), Inflict Wounds p.143, Aid p.107,
 -- Blindness/Deafness p.113 (as Blindness), Mass Healing Word p.148, Spirit Guardians p.164, Divine Favor p.125,
--- Divine Smite p.125, Shining Smite p.162. Only the spells a fight
+-- Divine Smite p.125, Shining Smite p.162, Hunter's Mark p.141, Ensnaring Strike p.128, Entangle p.128. Only the spells a fight
 -- here can use. Second line: targets, count and more per slot level, a required creature type, then the effect.
 INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcast, damage_type, save, half,
     targets, count, upcast_targets, creature, effect, value, repeat_save, concentration, minutes, about) VALUES
@@ -141,7 +141,7 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 (2, 'Guiding Bolt', 1, 'cleric', 'action', 'attack', TRUE, '4d6', '1d6', 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
     'spell attack, 4d6 Radiant, and Advantage on your next attack'),
-(3, 'Cure Wounds', 1, 'cleric,paladin', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
+(3, 'Cure Wounds', 1, 'cleric,paladin,ranger', 'action', 'heal', FALSE, '2d8', '2d8', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'you or a hero here regain 2d8 + your modifier'),
 (4, 'Healing Word', 1, 'cleric', 'bonus', 'heal', FALSE, '2d4', '2d4', NULL, NULL, FALSE,
     'ally', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
@@ -176,7 +176,14 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
     'attack; your first melee hit deals 2d8 Radiant more, 3d8 to a Fiend or Undead'),
 (17, 'Shining Smite', 2, 'paladin', 'bonus', 'smite', FALSE, '2d6', '1d6', 'radiant', NULL, FALSE,
     'foe', 1, 0, NULL, 'condition', 'outlined', FALSE, TRUE, 1,
-    'attack; your first melee hit deals 2d6 Radiant more, and attacks on it have Advantage')
+    'attack; your first melee hit deals 2d6 Radiant more, and attacks on it have Advantage'),
+(18, 'Hunter''s Mark', 1, 'ranger', 'bonus', 'buff', FALSE, NULL, NULL, 'force', NULL, FALSE,
+    'self', 1, 0, NULL, 'damage', '1d6', FALSE, TRUE, 60, 'your weapon hits on your quarry deal an extra 1d6 Force'),
+(19, 'Ensnaring Strike', 1, 'ranger', 'bonus', 'smite', TRUE, NULL, NULL, NULL, 'str', FALSE,
+    'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 1,
+    'attack; your first weapon hit makes it save (Str) or be Restrained'),
+(20, 'Entangle', 1, 'druid,ranger', 'action', 'save', FALSE, NULL, NULL, NULL, 'str', FALSE,
+    'foe', 1, 0, NULL, 'condition', 'restrained', FALSE, TRUE, 1, 'Str save or it is Restrained by grasping plants')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
