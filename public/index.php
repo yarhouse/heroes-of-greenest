@@ -36,13 +36,14 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <?php if ($me) : ?>
 <main class="play">
     <div id="log" role="log" aria-live="polite"></div>
+    <div id="actions" role="toolbar" aria-label="Quick commands"></div>
     <ul id="hints" role="listbox" aria-label="Matching commands" hidden></ul>
     <form id="prompt" autocomplete="off">
         <label for="cmd" class="visually-hidden">Command</label>
         <span aria-hidden="true">&gt;</span>
         <input id="cmd" autofocus autocapitalize="off" spellcheck="false" maxlength="300"
             role="combobox" aria-autocomplete="list" aria-controls="hints" aria-expanded="false"
-            data-commands="<?= $e(json_encode(COMMANDS)) ?>">
+            data-commands="<?= $e(json_encode(my_commands($me))) ?>">
         <button id="hero-toggle" type="button" class="btn btn-sm d-lg-none" data-bs-toggle="offcanvas"
             data-bs-target="#hero" aria-controls="hero" hidden>Hero</button>
     </form>

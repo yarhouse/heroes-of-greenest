@@ -88,7 +88,18 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 
 #cmd:focus-visible { border-bottom-color: var(--accent); }
 
-#hero-toggle {
+/* Quick commands from actions() in game.php: tap to send, or to start typing one that needs more. */
+#actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--line);
+}
+
+#actions:empty { display: none; }
+
+#hero-toggle, #actions .btn {
     --bs-btn-color: var(--accent);
     --bs-btn-border-color: var(--line);
     --bs-btn-hover-color: var(--accent);
@@ -109,7 +120,7 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
     .play {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 22rem;
-        grid-template-rows: 1fr auto auto;
+        grid-template-rows: 1fr auto auto auto;
         column-gap: 1.5rem;
         max-width: 80rem;
     }

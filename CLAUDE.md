@@ -37,5 +37,5 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 - PSR-12, 4 spaces, `declare(strict_types=1)`, one `// file :: purpose` header per file. No framework, no Composer.
 - `play.js` is plain JS with `// @ts-check` so there's nothing to build or deploy beyond copying files.
-- Add a command: a `cmd_*` function in `game.php`, a branch in `run_command()`, a line in `cmd_help()`, a check in `tests/selftest.php`.
+- Add a command: a `cmd_*` function in `game.php`, a branch in `run_command()`, a line in `COMMANDS` (plus `FEATURES` if only one class has it, and `actions()` if it deserves a button), a check in `tests/selftest.php`.
 - Validate by running `php tests/selftest.php` and playing it in a browser via `php -S`.

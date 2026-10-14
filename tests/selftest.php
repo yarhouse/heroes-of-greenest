@@ -112,6 +112,41 @@ try {
     }
     check(says(run_command(hero('Testa'), 'help'), 'say <text>'), 'help lists commands');
     q("UPDATE users SET resting = NULL, rest_until = NULL WHERE name = 'Testa'"); // the loop above ran 'rest'
+
+    // help, Tab and the buttons hide exactly the features a hero's own handler refuses, for every class and level.
+    $help = run_command(hero('Testa'), 'help');
+    check(says($help, 'second') && !says($help, 'cast <spell>') && !says($help, 'rage'),
+        "a Fighter's help has Second Wind, not spells or Rage");
+    save_hero('Gate', 'correct horse');
+    check(actions(hero('Gate')) === array_keys(CLASSES), 'creation buttons: the classes');
+    $wrong = [];
+    foreach (array_keys(CLASSES) as $class) {
+        q("UPDATE users SET setup = 'class' WHERE name = 'Gate'");
+        create('Gate', $class);
+        foreach ([1, 2, 3, 4, 5, 6] as $level) {
+            q("UPDATE users SET level = ? WHERE name = 'Gate'", [$level]);
+            $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands(hero('Gate'))));
+            foreach ([...array_keys(FEATURES), 'cast', 'prepare'] as $verb) {
+                $out = run_command(hero('Gate'), $verb);
+                $refused = (bool) preg_grep("/^(Only |You don't (know any|prepare))/", $out);
+                if (in_array($verb, $mine, true) === $refused) {
+                    $wrong[] = "$class $level $verb";
+                }
+            }
+        }
+    }
+    check($wrong === [], 'my_commands() matches what the handlers allow: ' . implode(', ', $wrong));
+    $spawn = q('SELECT s.id, s.room_id, m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id
+                ORDER BY s.id LIMIT 1')->fetch();
+    q('UPDATE users SET room_id = ? WHERE name = ?', [$spawn['room_id'], 'Testa']);
+    run_command(hero('Testa'), 'look'); // spawns it
+    check(in_array('kill ' . strtolower($spawn['name']), actions(hero('Testa')), true), 'buttons: kill what is here');
+    q('UPDATE users SET fighting = ? WHERE name = ?', [$spawn['id'], 'Testa']);
+    check(actions(hero('Testa')) === ['kill', 'shove', 'grapple', 'second', 'drink ', 'flee'],
+        "buttons in a fight: a Fighter's moves, no targets needed");
+    q("UPDATE users SET fighting = NULL, room_id = 1 WHERE name = 'Testa'");
+    check(actions(hero('Testa')) === ['north', 'south', 'east', 'west', 'rest', 'sleep', 'look', 'inventory'],
+        'buttons in the Town Square: exits, and rests since it is safe');
     $score = run_command(hero('Testa'), 'score');
     check(says($score, 'Testa, level 1 Fighter') && says($score, 'Str 15 (+2)') && says($score, 'Int 8 (-1)')
         && says($score, 'HP 11/11   AC 17   Proficiency Bonus +2'), 'score: Standard Array Fighter, AC and HP');

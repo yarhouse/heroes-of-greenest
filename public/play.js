@@ -7,8 +7,9 @@ const input = /** @type {HTMLInputElement} */ (document.getElementById('cmd'));
 const hints = /** @type {HTMLUListElement} */ (document.getElementById('hints'));
 const sheet = /** @type {HTMLElement} */ (document.getElementById('sheet'));
 const heroToggle = /** @type {HTMLButtonElement} */ (document.getElementById('hero-toggle'));
-/** @type {Record<string, string>} usage => what it does, from COMMANDS in game.php */
-const commands = JSON.parse(input.dataset.commands ?? '{}');
+const actions = /** @type {HTMLElement} */ (document.getElementById('actions'));
+/** @type {Record<string, string>} usage => what it does, from my_commands() in game.php */
+let commands = JSON.parse(input.dataset.commands ?? '{}');
 
 /** @type {string[]} */
 const history = [];
@@ -32,9 +33,12 @@ async function send(cmd) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ cmd }),
         });
-        /** @type {{ lines?: string[], hero?: Hero, map?: string[], logout?: boolean }} */
+        /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>, hero?: Hero,
+         *   map?: string[], logout?: boolean }} */
         const data = await res.json();
         for (const line of data.lines ?? []) print(line);
+        if (data.commands) commands = data.commands;
+        drawActions(data.actions ?? []);
         sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
         if (data.hero) drawHero(data.hero, data.map ?? []);
         if (data.logout) setTimeout(() => location.reload(), 800);
@@ -113,16 +117,39 @@ function drawHero(h, map) {
     byId('map').textContent = map.join('\n');
 }
 
+/** Echoes a command and queues it, whether typed or a button. @param {string} cmd */
+function run(cmd) {
+    print('> ' + cmd, 'echo');
+    history.push(cmd);
+    historyPos = history.length;
+    queue = queue.then(() => send(cmd));
+}
+
 form.addEventListener('submit', (e) => {
     e.preventDefault();
     const cmd = input.value.trim();
     input.value = '';
     showHints();
+    if (cmd) run(cmd);
+});
+
+/** actions() in game.php. One ending in a space needs more typed, so it goes in the prompt. @param {string[]} list */
+function drawActions(list) {
+    actions.replaceChildren(...list.map((cmd) => {
+        const button = el('button', 'btn btn-sm', cmd.endsWith(' ') ? cmd.trim() + '…' : cmd);
+        button.setAttribute('type', 'button');
+        button.dataset.cmd = cmd;
+        return button;
+    }));
+}
+
+actions.addEventListener('click', (e) => {
+    const cmd = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.cmd;
     if (!cmd) return;
-    print('> ' + cmd, 'echo');
-    history.push(cmd);
-    historyPos = history.length;
-    queue = queue.then(() => send(cmd));
+    if (!cmd.endsWith(' ')) return run(cmd); // no focus, so a phone keyboard stays down
+    input.value = cmd;
+    showHints();
+    input.focus();
 });
 
 /** Usages whose command word starts with what's typed. Only while typing the first word. */

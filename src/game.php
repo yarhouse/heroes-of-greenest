@@ -209,6 +209,26 @@ const COMMANDS = [
     'quit' => 'log out',
 ];
 
+/** The class, and level, a feature's command needs. Its handler refuses anyone else; this only hides it from them. */
+const FEATURES = [
+    'reckless' => ['barbarian', 2], 'rage' => ['barbarian', 1], 'second' => ['fighter', 1],
+    'flurry' => ['monk', 2], 'patient' => ['monk', 2], 'stun' => ['monk', 5], 'wholeness' => ['monk', 6],
+    'inspire' => ['bard', 1], 'wild' => ['druid', 2], 'land' => ['druid', 3], 'cunning' => ['warlock', 2],
+    'lay' => ['paladin', 1], 'innate' => ['sorcerer', 1], 'font' => ['sorcerer', 2],
+];
+
+/** COMMANDS without other classes' features, or spells for a class that has none: what help and Tab offer. */
+function my_commands(array $me): array
+{
+    return array_filter(COMMANDS, function (string $usage) use ($me): bool {
+        $verb = explode(' ', $usage)[0];
+        [$class, $level] = FEATURES[$verb] ?? [$me['class'], 1];
+        return $me['class'] === $class && $me['level'] >= $level
+            && ($verb !== 'cast' || isset(CLASSES[$me['class']]['casting']))
+            && ($verb !== 'prepare' || isset(CLASSES[$me['class']]['prepared']));
+    }, ARRAY_FILTER_USE_KEY);
+}
+
 /** Faces for the next dice rolled, used in order before any real rolls. Only tests fill it. */
 $dice_queue = [];
 
@@ -362,7 +382,7 @@ function run_command(array $me, string $input): array
         $verb === 'drink' => cmd_drink($me, trim($arg)),
         $verb === 'say' => cmd_say($me, trim($arg)),
         $verb === 'who' => cmd_who(),
-        $verb === 'help' => cmd_help(),
+        $verb === 'help' => cmd_help($me),
         default => ["Huh? Type 'help' for commands."],
     };
     // look already lists what was said in the room, so don't repeat it.
@@ -2879,13 +2899,57 @@ function cmd_who(): array
     return $lines;
 }
 
-function cmd_help(): array
+function cmd_help(array $me): array
 {
     $lines = ['Commands (start typing for suggestions, Tab to complete):'];
-    foreach (COMMANDS as $usage => $what) {
+    foreach (my_commands($me) as $usage => $what) {
         $lines[] = sprintf('  %-14s %s', $usage, $what);
     }
     return $lines;
+}
+
+/**
+ * The buttons above the prompt: commands that fit right now, sent as if typed. One ending in a space needs more
+ * typed after it, so play.js puts it in the prompt instead. A shortcut only: the handlers still check everything.
+ */
+function actions(array $me): array
+{
+    if ($me['setup'] !== null) {
+        return match ($me['setup']) {
+            'class' => array_keys(CLASSES),
+            'abilities' => ['ok', 'back'],
+            'confirm' => ['begin', 'back'],
+        };
+    }
+    $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
+    $mine = array_intersect(
+        ['reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage', 'innate', 'wholeness',
+            'lay', 'cast'],
+        $mine
+    );
+    $cast = in_array('cast', $mine, true) ? ['cast '] : [];
+    if ($me['fighting'] !== null) {
+        // Every attack goes at the monster I'm fighting, so none of these needs a name.
+        return ['kill', ...array_diff($mine, ['cast']), ...$cast, 'drink ', 'flee'];
+    }
+    // shortcut: not room_monsters(), which respawns (and rolls); a monster due back shows after the next look
+    $foes = q(
+        'SELECT DISTINCT m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id
+         WHERE s.room_id = ? AND s.dead_since IS NULL ORDER BY m.name',
+        [$me['room_id']]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $items = array_unique(array_column(objects_here('room_id', (int) $me['room_id']), 'name'));
+    $exits = q('SELECT dir FROM exits WHERE room_id = ?', [$me['room_id']])->fetchAll(PDO::FETCH_COLUMN);
+    $safe = q('SELECT safe FROM rooms WHERE id = ?', [$me['room_id']])->fetchColumn();
+    return [
+        ...array_map(fn ($name) => 'kill ' . strtolower($name), $foes),
+        ...array_map(fn ($name) => 'get ' . strtolower($name), $items),
+        ...array_values(array_intersect(DIRS, $exits)),
+        ...$cast,
+        ...($safe ? ['rest', 'sleep'] : []),
+        'look',
+        'inventory',
+    ];
 }
 
 function ago(int $mins): string
