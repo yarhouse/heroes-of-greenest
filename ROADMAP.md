@@ -13,8 +13,6 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 2. **Humanoid NPCs in the converter.** Rift humanoids are mostly race "human", so map them by role words to the SRD's
    NPC stat blocks (Guard, Cultist, Priest, Mage, Scout, Spy, Tough, Knight, Noble, Pirate...). Do it with the Sewers,
    which also need stand-ins for monsters the SRD lacks (no mind flayers).
-3. **Name and story for the forest west of Southern Fields** (Riftshadow's Haon Dor). Aaron names it and gives its place
-   in the campaign; then rewrite its room and monster text in `db/areas/src/haon.are` (the Mount Cim trail rooms too).
 
 Any time: **accounts for the friends**, once each:
 `ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php <Name>"`.
@@ -36,9 +34,11 @@ Any time: **accounts for the friends**, once each:
   Warrior from 20, Boss from 30; hobgoblin: Warrior, Captain from 30), with CR = Rift level / 12 as the fallback. Their
   Rift weapons, body armor and shields map to SRD items, and a kill's loot comes from those. Kobold Mines is now
   CR 1/8 to 3.
-- 2026-10-14 **Haon Dor** instead of bridge areas: with Kobold Mines at CR 1/8 to 3 there was no gap to bridge, so Haon
+- 2026-10-14 **Haon Dor** (now the Wood of Sharp Teeth) instead of bridge areas: with Kobold Mines at CR 1/8 to 3 there was no gap to bridge, so Haon
   Dor is a second area at the same tier (CR 0 to 2, a Green Dragon Wyrmling as its boss), west of Southern Fields.
   The Sewers wait for an area past the mines.
+- 2026-10-14 **Place names** come from the Faerûn map around Greenest (the Greenfields): the forest west of town is
+  the Wood of Sharp Teeth, with the Fields of the Dead to its north (screenshot in the Project).
 - 2026-10-14 **Edited areas** live as `.are` copies in `db/areas/src/`, converted from there; generated SQL is never
   hand-edited.
 - 2026-10-14 **Deployed** at https://yarhouse.dev/heroes-of-greenest with `bin/deploy.sh` (see README).

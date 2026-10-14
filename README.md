@@ -73,11 +73,11 @@ server never needs Riftshadow. To add or regenerate one, name the Greenest room 
 
 ```sh
 php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600 > db/areas/koboldmines.sql
-php bin/convert-area.php db/areas/src/haon.are 6 west 6000 > db/areas/haon.sql
+php bin/convert-area.php db/areas/src/sharpteeth.are 6 west 6000 > db/areas/sharpteeth.sql
 ```
 
 The first links Southern Fields (6) south to the mines' entrance (24600), and back north; the second links it west to
-the edge of the forest (6000). To change an area's text (room and monster names, descriptions), copy its `.are` file
+the edge of the Wood of Sharp Teeth (6000), Riftshadow's Haon Dor renamed. To change an area's text (room and monster names, descriptions), copy its `.are` file
 into `db/areas/src/`, edit it there, and convert from that copy, so the edits survive every regeneration.
 
 Each monster gets an SRD stat block by its Riftshadow race, or a word of its name, with tiers by Rift level
