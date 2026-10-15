@@ -17,19 +17,22 @@ function check(bool $ok, string $what): void
 }
 function hero(string $name): array
 {
-    return q('SELECT * FROM users WHERE name = ?', [$name])->fetch();
+    return q('SELECT * FROM users WHERE account = ?', [$name])->fetch();
 }
 function says(array $lines, string $text): bool
 {
     return (bool) array_filter($lines, fn ($l) => str_contains($l, $text));
 }
 /**
- * Takes a new hero through character creation: class, ability scores ('ok' for the suggested ones), species and
- * background, begin. With no species the hero skips both, like one made before there were any, so the class's own
- * numbers hold.
+ * Takes a new hero through character creation: a name (the account's, if it has none yet), class, ability scores
+ * ('ok' for the suggested ones), species and background, begin. With no species the hero skips both, like one made
+ * before there were any, so the class's own numbers hold.
  */
 function create(string $name, string $class, string $scores = 'ok', string $species = '', string $bg = ''): array
 {
+    if (hero($name)['setup'] === 'name') {
+        run_command(hero($name), $name);
+    }
     run_command(hero($name), $class);
     run_command(hero($name), $scores);
     if ($species === '') {
@@ -48,10 +51,10 @@ function line(array $lines, string $text): string
 
 db()->beginTransaction();
 try {
-    check(save_hero('Testa', 'short') !== '', 'rejects a short password');
-    check(save_hero('Te5t', 'long enough') !== '', 'rejects a bad name');
-    check(save_hero('Testa', 'correct horse') === '', 'creates a hero');
-    save_hero('Testb', 'battery staple');
+    check(save_account('Testa', 'short') !== '', 'rejects a short password');
+    check(save_account('Te5t', 'long enough') !== '', 'rejects a bad name');
+    check(save_account('Testa', 'correct horse') === '', 'creates an account');
+    save_account('Testb', 'battery staple');
     create('Testa', 'fighter');
     create('Testb', 'fighter');
 
@@ -63,15 +66,56 @@ try {
     q("UPDATE users SET locked_until = NULL WHERE name = 'Testa'");
     check(login('testa', 'correct horse') === '', 'logs in, name is case-insensitive');
     check((session_user()['name'] ?? '') === 'Testa', 'session resolves to the hero');
-    save_hero('Testa', 'new password!');
+    save_account('Testa', 'new password!');
     check(session_user() === null, 'password reset ends old sessions');
+
+    // Accounts asked for on account.php and approved by the DM, then changed by their player.
+    check(request_account('Te5t', 'correct horse', 'Sam') !== '', 'a request needs an account name of letters');
+    check(request_account('Testn', 'short', 'Sam') !== '', 'and a good password');
+    check(request_account('Testn', 'correct horse', " \e\u{9B} ") !== '', 'and says who is asking');
+    check(request_account('Testn', 'correct horse', "Sam\e[2J, Thursdays") === ''
+        && q("SELECT note FROM requests WHERE account = 'Testn'")->fetchColumn() === 'Sam[2J, Thursdays',
+        'a request, its note without control characters');
+    check(request_account('testa', 'correct horse', 'Mallory') === ''
+        && !q("SELECT 1 FROM requests WHERE account = 'testa'")->fetch(), 'a taken name looks sent but is dropped');
+    $hash = q("SELECT pass_hash FROM requests WHERE account = 'Testn'")->fetchColumn();
+    check(request_account('TESTN', 'other password', 'Mallory') === ''
+        && q("SELECT pass_hash FROM requests WHERE account = 'Testn'")->fetchColumn() === $hash,
+        'the first request for a name stands');
+    for ($i = (int) q('SELECT COUNT(*) FROM requests')->fetchColumn(); $i < MAX_REQUESTS; $i++) {
+        q("INSERT INTO requests (account, pass_hash, note) VALUES (?, '', 'filler')", ["Fill$i"]);
+    }
+    check(str_starts_with(request_account('Testo', 'correct horse', 'Sam'), 'Too many'), 'requests are capped');
+    q("DELETE FROM requests WHERE note = 'filler'");
+    check(login('Testn', 'correct horse') !== '', 'no login before approval');
+    check(approve_request('Testn') === '' && login('testn', 'correct horse') === '' && hero('Testn')['setup'] === 'name'
+        && !q("SELECT 1 FROM requests WHERE account = 'Testn'")->fetch(), 'approved, they log in and name a hero');
+    check(approve_request('Nobody') !== '', 'approving needs a request');
+    $me = hero('Testn');
+    check(update_account($me, 'wrong password', 'Testn', '') === 'Wrong current password.'
+        && hero('Testn')['failed_logins'] === 1, 'account changes need the current password, counted like a login');
+    check(str_contains(update_account($me, 'correct horse', 'TESTA', ''), 'already an account'),
+        'an account name in use is refused');
+    check(update_account($me, 'correct horse', 'Testn', 'x') !== '' && login('Testn', 'correct horse') === '',
+        'a bad new password changes nothing');
+    check(update_account($me, 'correct horse', 'Testo', 'new horse!') === '' && session_user()['account'] === 'Testo'
+        && login('Testo', 'new horse!') === '', 'a new name and password, and this session carries on');
+    run_command(hero('Testo'), 'nimble');
+    check(hero('Testo')['name'] === 'Nimble' && login('Nimble', 'new horse!') !== '',
+        "players log in with the account name, not the hero's");
 
     // Character creation: choose a class, assign the Standard Array, a species and a background, then begin. Nothing
     // else runs until then.
-    save_hero('Testc', 'correct horse');
+    save_account('Testc', 'correct horse');
     $out = run_command(hero('Testc'), 'look');
-    check(says($out, 'Choose your class') && says($out, 'barbarian') && !says($out, "There's no"),
-        'a new hero chooses a class');
+    check(says($out, "What is your hero's name?") && actions(hero('Testc')) === [], 'a new hero is named first');
+    check(count(cmd_who()) === 1 + q('SELECT COUNT(*) FROM users WHERE name IS NOT NULL')->fetchColumn(),
+        'who leaves out heroes without a name');
+    check(says(run_command(hero('Testc'), 'Te5t'), '3-16 letters'), 'a hero name of letters');
+    check(says(run_command(hero('Testc'), 'testa'), 'already a hero called Testa'), 'hero names are unique');
+    $out = run_command(hero('Testc'), 'testc');
+    check(says($out, 'Welcome to Greenest, Testc!') && says($out, 'barbarian') && !says($out, "There's no"),
+        'then the hero chooses a class');
     check(says(run_command(hero('Testc'), 'artificer'), "There's no 'artificer' class"), 'an unknown class is refused');
     check(says(run_command(hero('Testc'), 'n'), "no 'n' class") && hero('Testc')['room_id'] === START_ROOM,
         'no game commands during creation');
@@ -108,7 +152,7 @@ try {
         "'begin' enters the world");
     check(count(objects_here('user_id', (int) hero('Testc')['id'])) === 5 && hero('Testc')['gold'] === 8,
         "the Rogue's kit: Leather Armor, Shortsword, 2 Daggers, Shortbow and 8 gp");
-    q("UPDATE users SET setup = 'class', level = 3, xp = 1000 WHERE name = 'Testc'");
+    q("UPDATE users SET setup = 'class', level = 3, xp = 1000 WHERE account = 'Testc'");
     create('Testc', 'barb');
     $t = hero('Testc');
     check($t['class'] === 'barbarian' && $t['level'] === 1 && $t['xp'] === 0 && $t['max_hp'] === 14
@@ -145,7 +189,8 @@ try {
     $help = run_command(hero('Testa'), 'help');
     check(says($help, 'second') && !says($help, 'cast <spell>') && !says($help, 'rage'),
         "a Fighter's help has Second Wind, not spells or Rage");
-    save_hero('Gate', 'correct horse');
+    save_account('Gate', 'correct horse');
+    run_command(hero('Gate'), 'Gate');
     check(actions(hero('Gate')) === array_keys(CLASSES), 'creation buttons: the classes');
     $wrong = [];
     foreach (array_keys(CLASSES) as $class) {
@@ -178,7 +223,7 @@ try {
     check(in_array(['magic missile', 'cast magic missile '], $c['cast'], true)
         && $c['cast magic missile'] === [[$foe, "cast magic missile $foe"]],
         "cast's buttons: my spells, then a monster for one that needs one");
-    save_hero('Healer', 'correct horse');
+    save_account('Healer', 'correct horse');
     create('Healer', 'cleric');
     q('UPDATE users SET room_id = ? WHERE name = ?', [$spawn['room_id'], 'Healer']);
     $c = choices(with_stats(hero('Healer')));
@@ -513,7 +558,7 @@ try {
     $dice_queue = [20, 1];
     run_command(hero('Testc'), 'flee');
 
-    save_hero('Testd', 'correct horse');
+    save_account('Testd', 'correct horse');
     create('Testd', 'rogue');
     $id = hero('Testd')['id'];
     q("UPDATE users SET room_id = 2 WHERE name = 'Testd'");
@@ -687,7 +732,7 @@ try {
     run_command(hero('Testa'), 'equip greatsword');
     run_command(hero('Testa'), 'equip greatsword');
 
-    save_hero('Teste', 'correct horse');
+    save_account('Teste', 'correct horse');
     create('Teste', 'cleric');
     q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
     $score = run_command(hero('Teste'), 'score');
@@ -865,7 +910,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testf', 'correct horse');
+    save_account('Testf', 'correct horse');
     create('Testf', 'monk');
     $id = hero('Testf')['id'];
     q("UPDATE users SET room_id = 2 WHERE name = 'Testf'");
@@ -972,7 +1017,7 @@ try {
     // Paladin (Testg: Str 15, Cha 14: spell save DC 12, spell attack +4). The dummy: AC 10.
     q('UPDATE spawns SET hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testg', 'correct horse');
+    save_account('Testg', 'correct horse');
     create('Testg', 'paladin');
     q("UPDATE users SET room_id = 2 WHERE name IN ('Testg', 'Testf')");
     $score = run_command(hero('Testg'), 'score');
@@ -1049,7 +1094,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testh', 'correct horse');
+    save_account('Testh', 'correct horse');
     create('Testh', 'ranger');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testh'");
     $score = run_command(hero('Testh'), 'score');
@@ -1106,7 +1151,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testi', 'correct horse');
+    save_account('Testi', 'correct horse');
     create('Testi', 'wizard');
     $id = hero('Testi')['id'];
     q("UPDATE users SET room_id = 2 WHERE name = 'Testi'");
@@ -1158,7 +1203,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testj', 'correct horse');
+    save_account('Testj', 'correct horse');
     create('Testj', 'sorcerer');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testj'");
     $score = run_command(hero('Testj'), 'score');
@@ -1214,7 +1259,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testk', 'correct horse');
+    save_account('Testk', 'correct horse');
     create('Testk', 'bard');
     q("UPDATE users SET room_id = 2 WHERE name IN ('Testk', 'Testj')");
     $score = run_command(hero('Testk'), 'score');
@@ -1271,7 +1316,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testl', 'correct horse');
+    save_account('Testl', 'correct horse');
     create('Testl', 'druid');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testl'");
     $score = run_command(hero('Testl'), 'score');
@@ -1337,7 +1382,7 @@ try {
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-    save_hero('Testm', 'correct horse');
+    save_account('Testm', 'correct horse');
     create('Testm', 'warlock');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testm'");
     $score = run_command(hero('Testm'), 'score');
@@ -1401,12 +1446,13 @@ try {
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL, conditions = \'\' WHERE id = 9999');
     $hero = function (string $name, string $class, string $species, string $bg): array {
         q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
-        save_hero($name, 'correct horse');
+        save_account($name, 'correct horse');
         create($name, $class, 'ok', $species, $bg);
         q('UPDATE users SET room_id = 2 WHERE name = ?', [$name]);
         return hero($name);
     };
-    save_hero('Pick', 'correct horse');
+    save_account('Pick', 'correct horse');
+    run_command(hero('Pick'), 'Pick');
     run_command(hero('Pick'), 'fighter');
     run_command(hero('Pick'), 'ok');
     check(in_array('dragonborn ', actions(hero('Pick')), true) && in_array('dwarf', actions(hero('Pick')), true)

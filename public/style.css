@@ -172,3 +172,9 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
     font: inherit;
     cursor: pointer;
 }
+
+.aside { margin-top: 1rem; font-size: 0.875rem; }
+.aside a { color: var(--dim); }
+.aside a:hover { color: var(--fg); }
+.login .done { color: var(--accent); }
+.login small { display: block; color: var(--dim); }

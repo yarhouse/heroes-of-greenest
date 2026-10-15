@@ -7,6 +7,8 @@ declare(strict_types=1);
 const SESSION_DAYS = 30;
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
+const NAME_RULE = '/^[A-Za-z]{3,16}$/'; // account names and hero names
+const MAX_REQUESTS = 20; // pending account requests; the form refuses more until the DM approves or denies some
 
 $config = require __DIR__ . '/../config.php';
 
@@ -78,11 +80,13 @@ function pw_version(string $hash): string
     return hash('sha256', $hash);
 }
 
-/** Logs in and returns '' on success, or an error message for the player. */
-function login(string $name, string $password): string
+/** Logs in by account name and returns '' on success, or an error message for the player. */
+function login(string $account, string $password): string
 {
-    $u = q('SELECT id, pass_hash, failed_logins, locked_until > NOW() AS locked FROM users WHERE name = ?', [$name])
-        ->fetch();
+    $u = q(
+        'SELECT id, pass_hash, failed_logins, locked_until > NOW() AS locked FROM users WHERE account = ?',
+        [$account]
+    )->fetch();
     if (!$u) {
         password_hash($password, PASSWORD_DEFAULT); // same work as a real check, so misses don't reveal valid names
         return 'Wrong name or password.';
@@ -136,24 +140,98 @@ function session_user(): ?array
     return $me;
 }
 
-/**
- * Creates a hero, who chooses a class and abilities on first login, or resets their password (and unlocks them) if
- * the name exists. Returns '' or an error.
- */
-function save_hero(string $name, string $password): string
+/** '' if the password is acceptable, else why not. */
+function password_error(string $password): string
 {
-    if (!preg_match('/^[A-Za-z]{3,16}$/', $name)) {
-        return 'Name must be 3-16 letters.';
-    }
     $len = strlen($password);
-    if ($len < 8 || $len > 72) { // bcrypt ignores bytes past 72
-        return 'Password must be 8-72 characters.';
+    return $len < 8 || $len > 72 ? 'Password must be 8-72 characters.' : ''; // bcrypt ignores bytes past 72
+}
+
+/**
+ * Creates an account, whose player names their hero and chooses a class and abilities on first login, or resets its
+ * password (and unlocks it) if the account exists. Returns '' or an error.
+ */
+function save_account(string $account, string $password): string
+{
+    if (!preg_match(NAME_RULE, $account)) {
+        return 'Account name must be 3-16 letters.';
+    }
+    if ($error = password_error($password)) {
+        return $error;
     }
     $hash = password_hash($password, PASSWORD_DEFAULT);
     q(
-        'INSERT INTO users (name, pass_hash, last_event_id) SELECT ?, ?, COALESCE(MAX(id), 0) FROM events
+        'INSERT INTO users (account, pass_hash, last_event_id) SELECT ?, ?, COALESCE(MAX(id), 0) FROM events
          ON DUPLICATE KEY UPDATE pass_hash = ?, failed_logins = 0, locked_until = NULL',
-        [$name, $hash, $hash]
+        [$account, $hash, $hash]
     );
+    return '';
+}
+
+/**
+ * Asks the DM for an account (bin/requests.php approves it). Returns '' or an error. A name that's taken, by an
+ * account or an earlier request, is dropped silently, so the form can't be used to find account names.
+ */
+function request_account(string $account, string $password, string $note): string
+{
+    $note = trim(preg_replace('/\p{C}/u', '', $note) ?? ''); // the DM reads these in a terminal: no escape codes
+    if (!preg_match(NAME_RULE, $account)) {
+        return 'Account name must be 3-16 letters.';
+    }
+    if ($error = password_error($password)) {
+        return $error;
+    }
+    if ($note === '' || mb_strlen($note) > 200) {
+        return 'Say who you are (up to 200 characters), so the DM knows you.';
+    }
+    if (q('SELECT COUNT(*) FROM requests')->fetchColumn() >= MAX_REQUESTS) {
+        return 'Too many requests are waiting. Ask the DM to look at them.';
+    }
+    $hash = password_hash($password, PASSWORD_DEFAULT);
+    if (!q('SELECT 1 FROM users WHERE account = ?', [$account])->fetch()) {
+        q('INSERT IGNORE INTO requests (account, pass_hash, note) VALUES (?, ?, ?)', [$account, $hash, $note]);
+    }
+    return '';
+}
+
+/** Makes the account a request asked for, and removes the request. Returns '' or an error for the DM. */
+function approve_request(string $account): string
+{
+    if (q('SELECT 1 FROM users WHERE account = ?', [$account])->fetch()) {
+        return "There's already an account called $account. Deny this request; they can ask again.";
+    }
+    $made = q(
+        'INSERT INTO users (account, pass_hash, last_event_id)
+         SELECT account, pass_hash, (SELECT COALESCE(MAX(id), 0) FROM events) FROM requests WHERE account = ?',
+        [$account]
+    )->rowCount();
+    q('DELETE FROM requests WHERE account = ?', [$account]);
+    return $made ? '' : "There's no request for $account.";
+}
+
+/**
+ * Changes the logged-in player's account name and, unless $new is '', their password. $current is checked like a
+ * login, failures and lockout included. Other sessions end when the password changes; this one carries on.
+ */
+function update_account(array $me, string $current, string $account, string $new): string
+{
+    if (!preg_match(NAME_RULE, $account)) {
+        return 'Account name must be 3-16 letters.';
+    }
+    if ($new !== '' && $error = password_error($new)) {
+        return $error;
+    }
+    if ($error = login($me['account'], $current)) {
+        return $error === 'Wrong name or password.' ? 'Wrong current password.' : $error;
+    }
+    if (q('SELECT 1 FROM users WHERE account = ? AND id <> ?', [$account, $me['id']])->fetch()) {
+        return "There's already an account called $account.";
+    }
+    q('UPDATE users SET account = ? WHERE id = ?', [$account, $me['id']]);
+    if ($new !== '') {
+        $hash = password_hash($new, PASSWORD_DEFAULT);
+        q('UPDATE users SET pass_hash = ? WHERE id = ?', [$hash, $me['id']]);
+        $_SESSION['pwv'] = pw_version($hash);
+    }
     return '';
 }

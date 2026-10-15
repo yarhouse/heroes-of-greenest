@@ -17,7 +17,7 @@ cp config.php.example config.php        # then edit the DB settings
 mysql -u greenest -p greenest < db/schema.sql   # DESTRUCTIVE: wipes all tables
 mysql -u greenest -p greenest < db/seed.sql     # world content; safe to re-run (respawns monsters)
 cat db/areas/*.sql | mysql -u greenest -p greenest   # converted dungeons; load after seed.sql, every time
-php bin/adduser.php Aaron               # prompts for a password
+php bin/adduser.php Aaron               # an account; prompts for a password
 php tests/selftest.php                  # should print all "ok"
 php -S localhost:8080 -t public         # play at http://localhost:8080
 ```
@@ -162,13 +162,30 @@ its `LICENSE`. To upgrade, copy `bootstrap.min.css` and `bootstrap.bundle.min.js
 
 ## Accounts
 
-Invite only. `php bin/adduser.php <Name>` creates a hero (who chooses a class on first login), or resets the password of an existing one (which also logs them out everywhere and clears any lockout).
+Invite only. An account (the name you log in with, never shown in the game) has one hero, named by its player on
+first login before choosing a class. Account and hero names are both 3-16 letters.
 
-`php bin/reclass.php <Name>` sends a hero back to character creation: on their next login they choose a class and
-scores again and start over at level 1, keeping only their name and password.
+Friends ask for an account on the login page ("Request an account", `account.php`), with a note saying who they are.
+The DM looks and decides on the server:
 
-Test heroes are ordinary heroes (names are 3-16 letters, no digits). The password can come from a pipe, so one line
-makes one:
+```sh
+php bin/requests.php                   # list waiting requests
+php bin/requests.php approve <Account> # they can log in now
+php bin/requests.php deny <Account>
+```
+
+A request for a name that's taken is dropped without saying so, so the form can't be used to find account names; at
+most 20 wait at once. Logged in, the same page changes your account name or password (it needs your current one, and
+wrong tries count toward the login lockout); a new password logs out your other sessions.
+
+`php bin/adduser.php <Account>` creates an account directly, or resets the password of an existing one (which also logs
+them out everywhere and clears any lockout).
+
+`php bin/reclass.php <Hero>` sends a hero back to character creation: on their next login they choose a class and
+scores again and start over at level 1, keeping only their name and account.
+
+Test heroes are ordinary accounts, named after their account by the selftest. The password can come from a pipe, so one
+line makes one:
 
 ```sh
 echo 'test password' | php bin/adduser.php Testbard

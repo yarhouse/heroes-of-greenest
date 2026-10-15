@@ -2,7 +2,8 @@
 
 declare(strict_types=1);
 
-// adduser.php :: create a hero, or reset an existing hero's password. Usage: php bin/adduser.php <Name>
+// adduser.php :: create an account, or reset its password. Usage: php bin/adduser.php <Account>
+// The player names their hero and chooses a class on first login.
 
 if (PHP_SAPI !== 'cli') {
     exit(1);
@@ -21,7 +22,7 @@ if ($tty) {
     fwrite(STDERR, "\n");
 }
 
-$error = save_hero($name, $password);
+$error = save_account($name, $password);
 if ($error !== '') {
     fwrite(STDERR, "$error\n");
     exit(1);

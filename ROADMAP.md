@@ -7,8 +7,8 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 Nothing chosen yet: pick the next task from `BACKLOG.md`.
 
-Any time: **accounts for the friends**, once each:
-`ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php <Name>"`.
+Any time: **approve account requests** (friends ask on the login page):
+`ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
 
 ## Decided
 
@@ -43,3 +43,7 @@ Any time: **accounts for the friends**, once each:
   warrior...) to the SRD's NPC stat blocks, tiered by Rift level, and a creature the SRD lacks to a stand-in of about
   its strength. The Sewers (Rift's Diku sewer, CR 0 to 5) are under Market Lane, Rift names and text kept for now;
   their mind flayers are a Darkmantle, a Grick and an Otyugh.
+- 2026-10-14 **Accounts and heroes are separate:** you log in with an account name, never shown in the game, and name
+  your hero first at character creation (heroes made before keep their account's name). Friends request an account on
+  the login page and the DM approves it with `bin/requests.php` (no email, so no self-service reset: the DM still uses
+  `bin/adduser.php`). `account.php` changes your account name and password. One hero per account.

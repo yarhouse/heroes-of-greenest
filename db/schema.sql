@@ -1,6 +1,7 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS effects, spells, delve, objects, events, users, items, levels, spawns, monsters, exits, rooms;
+DROP TABLE IF EXISTS requests, effects, spells, delve, objects, events, users, items, levels, spawns, monsters, exits,
+    rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
@@ -114,19 +115,20 @@ CREATE TABLE items (
     loading BOOLEAN NOT NULL DEFAULT FALSE -- one shot a turn, however many attacks you have
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Name collation is case-insensitive, so "aaron" logs in as "Aaron".
+-- Name collation is case-insensitive, so "aaron" logs in as "Aaron", and two heroes can't be "Mira" and "MIRA".
 CREATE TABLE users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(16) NOT NULL UNIQUE,
+    account VARCHAR(16) NOT NULL UNIQUE, -- the login name, never shown in the game
+    name VARCHAR(16) NULL UNIQUE, -- the hero's name, chosen first at character creation
     pass_hash VARCHAR(255) NOT NULL,
     room_id INT UNSIGNED NOT NULL DEFAULT 1,
     failed_logins TINYINT UNSIGNED NOT NULL DEFAULT 0,
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
-    -- Character creation step, or NULL once the hero is in the world. New heroes (and any set back to 'class') choose
-    -- a class, ability scores, species and background on their next login; the defaults below are overwritten then.
-    setup ENUM('class', 'abilities', 'species', 'background', 'confirm') NULL DEFAULT 'class',
+    -- Character creation step, or NULL once the hero is in the world. New heroes name themselves, then (like any set
+    -- back to 'class') choose a class, ability scores, species and background; the defaults below are overwritten then.
+    setup ENUM('name', 'class', 'abilities', 'species', 'background', 'confirm') NULL DEFAULT 'name',
     class ENUM('fighter', 'barbarian', 'rogue', 'cleric', 'monk', 'paladin', 'ranger', 'wizard', 'sorcerer', 'bard',
         'druid', 'warlock') NOT NULL DEFAULT 'fighter',
     -- SPECIES and BACKGROUNDS in game.php; NULL for a hero made before there were any, until bin/reclass.php
@@ -269,4 +271,12 @@ CREATE TABLE effects (
     FOREIGN KEY (spawn_id) REFERENCES spawns (id) ON DELETE CASCADE,
     FOREIGN KEY (caster_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (spell_id) REFERENCES spells (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Accounts asked for on account.php, waiting for the DM: bin/requests.php lists, approves and denies them.
+CREATE TABLE requests (
+    account VARCHAR(16) PRIMARY KEY,
+    pass_hash VARCHAR(255) NOT NULL,
+    note VARCHAR(200) NOT NULL, -- who's asking, so the DM knows them
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

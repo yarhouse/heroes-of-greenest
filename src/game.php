@@ -604,14 +604,17 @@ function heard_since_last_command(array $me): array
 }
 
 /**
- * Character creation, one step per command until the hero sets out: choose a class, then assign the Standard Array
- * (which gives the class's kit and a fresh level 1 hero, even one who was played before), a species, a background
- * (whose ability increases set the hero's HP), then 'begin'. 'back' starts over.
+ * Character creation, one step per command until the hero sets out: a name (new heroes only), a class, then assign the
+ * Standard Array (which gives the class's kit and a fresh level 1 hero, even one who was played before), a species, a
+ * background (whose ability increases set the hero's HP), then 'begin'. 'back' starts over at the class.
  */
 function cmd_setup(array $me, string $input): array
 {
     $word = strtolower($input);
     $word = $word === 'l' || $word === 'look' ? '' : $word; // the play page sends 'look' on load: show the step again
+    if ($me['setup'] === 'name') {
+        return setup_name($me, $word === '' ? '' : $input);
+    }
     if ($word === 'back' || $me['setup'] === 'class') {
         return setup_class($me, $word === 'back' ? '' : $word);
     }
@@ -629,6 +632,23 @@ function cmd_setup(array $me, string $input): array
     }
     q('UPDATE users SET setup = NULL WHERE id = ?', [$me['id']]);
     return ["You set out, {$me['name']}. Type 'help' for commands.", '', ...cmd_look($me)];
+}
+
+function setup_name(array $me, string $name): array
+{
+    $ask = "What is your hero's name? (3-16 letters; others see it, unlike your account name)";
+    if ($name === '') {
+        return ['Welcome to Greenest!', $ask];
+    }
+    $name = ucfirst($name);
+    if (!preg_match(NAME_RULE, $name)) {
+        return ["A hero's name is 3-16 letters, no spaces.", $ask];
+    }
+    if (q('SELECT 1 FROM users WHERE name = ?', [$name])->fetch()) {
+        return ["There's already a hero called $name.", $ask];
+    }
+    q('UPDATE users SET name = ? WHERE id = ?', [$name, $me['id']]);
+    return setup_class(['name' => $name] + $me, '');
 }
 
 function setup_class(array $me, string $word): array
@@ -819,7 +839,8 @@ function cmd_look(array $me): array
     $lines = [$room['name'], $room['description'], 'Exits: ' . ($exits ? implode(' ', $exits) : 'none')];
 
     $others = q(
-        'SELECT name FROM users WHERE room_id = ? AND id <> ? AND last_seen > NOW() - INTERVAL ? MINUTE ORDER BY name',
+        'SELECT name FROM users WHERE room_id = ? AND id <> ? AND name IS NOT NULL
+         AND last_seen > NOW() - INTERVAL ? MINUTE ORDER BY name',
         [$me['room_id'], $me['id'], ONLINE_MINUTES]
     )->fetchAll(PDO::FETCH_COLUMN);
     foreach ($others as $name) {
@@ -3376,7 +3397,8 @@ function cmd_who(): array
 {
     $rows = q(
         'SELECT u.name, r.name AS room, TIMESTAMPDIFF(MINUTE, u.last_seen, NOW()) AS mins
-         FROM users u JOIN rooms r ON r.id = u.room_id ORDER BY u.last_seen IS NULL, u.last_seen DESC'
+         FROM users u JOIN rooms r ON r.id = u.room_id WHERE u.name IS NOT NULL
+         ORDER BY u.last_seen IS NULL, u.last_seen DESC'
     )->fetchAll();
     $lines = ['Heroes of Greenest:'];
     foreach ($rows as $r) {
@@ -3403,6 +3425,7 @@ function actions(array $me): array
 {
     if ($me['setup'] !== null) {
         return match ($me['setup']) {
+            'name' => [],
             'class' => array_keys(CLASSES),
             'abilities' => ['ok', 'back'],
             // A species with a choice goes in the prompt, for choices() to offer its kinds.

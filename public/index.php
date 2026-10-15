@@ -83,6 +83,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
                 </div>
                 <pre id="map" class="card-footer m-0" aria-label="Map"></pre>
             </section>
+            <p class="aside"><a href="account.php">Account and password</a></p>
         </div>
     </aside>
 </main>
@@ -93,10 +94,11 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
     <h1>Heroes of Greenest</h1>
     <form method="post">
         <?php if ($error) : ?><p class="error" role="alert"><?= $e($error) ?></p><?php endif ?>
-        <label>Name <input name="name" required autocomplete="username" value="<?= $e($name) ?>"></label>
+        <label>Account <input name="name" required autocomplete="username" value="<?= $e($name) ?>"></label>
         <label>Password <input name="password" type="password" required autocomplete="current-password"></label>
         <button>Enter</button>
     </form>
+    <p class="aside"><a href="account.php">Request an account</a></p>
     <p class="credits">This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of
         the Coast LLC, available at <a href="https://www.dndbeyond.com/srd">https://www.dndbeyond.com/srd</a>. The SRD
         5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at
