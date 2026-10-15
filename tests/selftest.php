@@ -1630,6 +1630,56 @@ try {
     check(says(run_command(hero('Hire'), 'dismiss'), 'Your Mastiff heads back')
         && hero('Hire')['hireling_monster_id'] === null, 'dismiss');
 
+    // Shops and the temple (Shop, a Fighter with kit A and 4 gold: Greatsword +4, 2d6+2).
+    save_account('Shop', 'correct horse');
+    create('Shop', 'fighter');
+    $mine = fn (string $item) => find_object(objects_here('user_id', hero('Shop')['id']), $item);
+    check(says(run_command(hero('Shop'), 'buy dagger'), 'Nothing is for sale here'), 'buying needs a shop');
+    q("UPDATE users SET room_id = 4 WHERE name = 'Shop'");
+    check(says(run_command(hero('Shop'), 'n'), 'The Smithy'), 'the Smithy is north of Market Lane');
+    $out = run_command(hero('Shop'), 'list');
+    check(preg_grep('/^  Dagger +2 GP  weapon, 1d4/', $out) && preg_grep('/^  Club +1 GP/', $out)
+        && !says($out, 'Musket') && !says($out, 'Chain Mail') && !says($out, '+1'),
+        'it lists its weapons, under 1 GP for 1 gold');
+    check(in_array('buy ', actions(hero('Shop')), true)
+        && in_array(['dagger', 'buy dagger'], choices(with_stats(hero('Shop')))['buy'], true), 'buttons offer them');
+    check(says(run_command(hero('Shop'), 'buy rapier'), 'The Rapier costs 25 gold, and you have 4.')
+        && hero('Shop')['gold'] === 4, "you can't buy what you can't afford");
+    check(says(run_command(hero('Shop'), 'buy dagger'), 'You buy the Dagger for 2 gold.')
+        && hero('Shop')['gold'] === 2 && $mine('dagger') !== null, 'buy');
+    check(says(run_command(hero('Shop'), 'sell flail'), 'You sell the Flail for 5 gold.')
+        && hero('Shop')['gold'] === 7 && $mine('flail') === null, 'sell for half the cost');
+    check(says(run_command(hero('Shop'), 'sell javelin'), 'Nobody will pay anything for the Javelin.')
+        && $mine('javelin') !== null, 'nothing for what costs under 2 GP');
+    q("UPDATE users SET room_id = 11, gold = 415 WHERE name = 'Shop'");
+    check((bool) preg_grep('/^  Longsword \+1 +415 GP/', run_command(hero('Shop'), 'list')),
+        'the Curio Loft sells +1 weapons');
+    run_command(hero('Shop'), 'buy longsword');
+    run_command(hero('Shop'), 'equip longsword');
+    $s = with_stats(hero('Shop'));
+    check($s['weapon'] === 'Longsword +1' && $s['to_hit'] === 5 && $s['damage'] === '1d10+1',
+        'a +1 Weapon adds 1 to attack and damage rolls');
+    q("UPDATE users SET room_id = 10, gold = 200 WHERE name = 'Shop'");
+    check(says(run_command(hero('Shop'), 'buy greater'), 'You buy the Potion of Healing (greater) for 200 gold.'),
+        'the Apothecary sells potions');
+    check(says(run_command(hero('Shop'), 'pray heal'), 'east of the Mill Bridge'), 'priests cast at the temple');
+    q("UPDATE users SET room_id = 5, hp = 1, max_hp = 30, gold = 400 WHERE name = 'Shop'");
+    check(says(run_command(hero('Shop'), 'e'), 'Temple of Chauntea') && in_array('pray ', actions(hero('Shop')), true),
+        'the temple is east of the Mill Bridge');
+    check(says(run_command(hero('Shop'), 'pray'), 'aid     200 GP'), 'pray alone lists the services');
+    $dice_queue = [1, 2];
+    check(says(run_command(hero('Shop'), 'pray cure'), 'You give 50 gold, and a priest of Chauntea casts Cure Wounds '
+        . 'on you. HP 7/30.') && hero('Shop')['gold'] === 350, 'Cure Wounds: 2d8 + 3 for 50 gold');
+    check(says(run_command(hero('Shop'), 'pray heal'), 'You give 100 gold, and a priest of Chauntea casts Cure Wounds '
+        . '2 times on you. HP 30/30.') && hero('Shop')['hp'] === 30, 'heal: to full, 50 gold for each 12 HP missing');
+    check(says(run_command(hero('Shop'), 'pray heal'), 'already at full health'), 'not at full HP');
+    check(says(run_command(hero('Shop'), 'pray aid'), 'You give 200 gold, and a priest of Chauntea casts Aid on you. '
+        . 'HP 35/35.') && with_stats(hero('Shop'))['max_hp'] === 35, 'Aid: +5 HP and max HP for 200 gold');
+    check(says(run_command(hero('Shop'), 'pray aid'), 'Aid is already on you'), "Aid doesn't stack");
+    q("UPDATE users SET hp = 1, gold = 49 WHERE name = 'Shop'");
+    check(says(run_command(hero('Shop'), 'pray cure'), "That's a donation of 50 gold, and you have 49."),
+        'the priests want their donation');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

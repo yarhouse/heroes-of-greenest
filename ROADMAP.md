@@ -58,3 +58,11 @@ Any time: **approve account requests** (friends ask on the login page):
 - 2026-10-14 **Schema migrations:** `db/migrations/*.sql`, applied in name order by `bin/migrate.php` and recorded in a
   `migrations` table; `bin/deploy.sh` runs it locally and on the server before the world reload. `schema.sql` stays
   the whole schema (each change is made there too) and drops `migrations`, so a fresh load marks every file done.
+- 2026-10-14 **Shops and the temple:** four shops off Market Lane (rooms 8-11) `list`, `buy` and `sell`; an item's
+  `shop` column names the room that sells it, and any shop buys anything for half its cost. Prices are the SRD's,
+  rounded up to whole GP (gold has no SP or CP). Magic items are Uncommon only: a +1 version of every weapon the
+  Smithy sells (items `bonus` column, ids + 100), the +1 Shield, and the greater Potion of Healing; Rare ones stay out
+  of the shops. Loot can now roll them too, by cost (+1 weapons from CR 9). No gear yet: it has no rules until
+  crafting. The temple of Chauntea (room 12, safe, east of the Mill Bridge) sells `pray cure` (Cure Wounds, 50 GP),
+  `heal` (Cure Wounds until full HP, a casting per 12 HP missing) and `aid` (Aid, 200 GP), cast by the SRD Priest
+  (Wis +3).

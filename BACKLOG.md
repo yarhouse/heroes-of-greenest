@@ -12,7 +12,9 @@ This repo copy is the source; the claude.ai Project holds a copy.
 - [ ] **Autocomplete command arguments.** After `kill `, suggest the monsters in the room; likewise items for `get`/`drop`/`equip`/`drink`. Today `play.js` only completes command names, from `COMMANDS`.
 - [ ] **Monster traits.** Pack Tactics, Undead Fortitude and the other stat-block traits are ignored; monsters use their main attack × Multiattack.
 - [ ] **Deeper Delve.** Stairs to deeper floors with higher CR, more themes, rerolling when the boss dies.
-- [ ] **Shops**, if the group wants them (gold already drops by CR).
+- [ ] **Adventuring gear in the shops.** Acid, Alchemist's Fire and Holy Water thrown in place of an attack (a
+  `throw` like `breathe`), and the tools harvesting and crafting will need (Herbalism Kit, Smith's Tools).
+- [ ] **Rare magic items for sale**, if gold piles up: +1 Armor, +2 Weapons and Shield, Potion of Healing (superior).
 - [ ] **Live updates**, only if people play together: polling so `say` and fights show up without a command. Party combat is tactical step 3 below.
 
 ## Tactical combat: distance and room grids

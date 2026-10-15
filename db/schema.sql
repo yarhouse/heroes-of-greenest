@@ -113,7 +113,10 @@ CREATE TABLE items (
         'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL, -- a weapon's
     ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a Ranged weapon: Dex to hit, Disadvantage once a foe is next to you
     thrown BOOLEAN NOT NULL DEFAULT FALSE, -- can be thrown, so it can open a fight from afar
-    loading BOOLEAN NOT NULL DEFAULT FALSE -- one shot a turn, however many attacks you have
+    loading BOOLEAN NOT NULL DEFAULT FALSE, -- one shot a turn, however many attacks you have
+    bonus TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a magic weapon's bonus to attack and damage rolls (+1 Weapon)
+    shop INT UNSIGNED NULL, -- the room that sells it; NULL if none does
+    FOREIGN KEY (shop) REFERENCES rooms (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Name collation is case-insensitive, so "aaron" logs in as "Aaron", and two heroes can't be "Mira" and "MIRA".

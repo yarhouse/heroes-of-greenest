@@ -159,14 +159,18 @@ has Nick; in a fight you get one Bonus Action a round (Rage, Second Wind, a poti
 Weapon masteries: Cleave carries a hit on to a second monster in the room, Graze deals your modifier on a miss, Nick
 frees the off-hand attack, Sap gives the foe Disadvantage on its next attack, Topple can knock it Prone and Vex gives
 Advantage on your next attack (Push and Slow need distances). Damage has SRD types, and Resistance, Immunity and
-Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
+Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions of Healing and Uncommon +1 Weapons and Shield; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
 with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
 Disadvantage. Rest with `rest` (short, 10 minutes: Hit Dice heal you) or `sleep` (long, an hour: full HP) in a safe
-room: the town square or the Swaying Lantern. The hero sheet counts down the time left, an open page finishes the rest
+room: the town square, the Swaying Lantern or the temple. The hero sheet counts down the time left, an open page finishes the rest
 by itself, and a fight that leaves you at half HP or less ends with where to rest. At
 the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a
-day: it follows you, attacks your foe after you, takes some of its attacks, and heals when you rest. The plan and
+day: it follows you, attacks your foe after you, takes some of its attacks, and heals when you rest. The shops off
+Market Lane `list`, `buy` and `sell` (at half price): weapons at the Smithy, armor and shields at the Armorer,
+potions at the Apothecary and +1 items in the Curio Loft above it (SRD prices; magic items 400 GP plus the item). At
+the temple of Chauntea, east of the Mill Bridge, `pray cure`, `heal` or `aid` buys a priest's spell at the SRD's
+Spellcasting Services prices. The plan and
 what's left out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,

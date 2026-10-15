@@ -16,6 +16,17 @@ const LANTERN = 3; // the Swaying Lantern, where hirelings wait for work
 /** Skilled hirelings (SRD 5.2.1 p.102: 2 GP a day), as `hire` word => their monsters row. */
 const HIRELINGS = ['guard' => 32, 'mastiff' => 68, 'acolyte' => 36];
 const HIRE_GP = 2;
+const TEMPLE = 12; // the Temple of Chauntea, where priests cast for a donation
+/**
+ * What `pray` buys at the temple, as word => [spell id, GP a casting, what it does]: Spellcasting Services (SRD 5.2.1
+ * p.102). 'heal' is Cure Wounds cast until full HP, charged for the castings an average roll needs.
+ */
+const PRAYERS = [
+    'cure' => [3, 50, 'Cure Wounds: regain 2d8 + 3 HP'],
+    'heal' => [3, 50, "Cure Wounds until you're whole, a casting each 12 HP missing"],
+    'aid' => [11, 200, '+5 HP and max HP for 8 hours'],
+];
+const PRIEST_WIS = 3; // the SRD Priest's (p.316), the temple's healer
 const SHORT_REST_SECS = 600;
 const LONG_REST_SECS = 3600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
@@ -344,6 +355,10 @@ const COMMANDS = [
     'hire <guard|mastiff|acolyte>' => 'at the Swaying Lantern, 2 gold a day: it fights beside you (hire again for '
         . 'more days)',
     'dismiss' => 'send your hireling away',
+    'list' => 'in a shop or the temple: what you can buy',
+    'buy <item>' => 'in a shop off Market Lane: buy something',
+    'sell <item>' => 'in a shop: sell something for half its price',
+    'pray <cure|heal|aid>' => "at Chauntea's temple, east of the Mill Bridge: a priest's spell, for a donation",
     'say <text>' => "speak to the room ('<text> works too)",
     'who' => 'every hero, and when last seen',
     'help' => 'this list',
@@ -617,6 +632,10 @@ function run_command(array $me, string $input): array
         $verb === 'drink' => cmd_drink($me, trim($arg)),
         $verb === 'hire' => cmd_hire($me, trim($arg)),
         $verb === 'dismiss' => cmd_dismiss($me),
+        $verb === 'list' => cmd_list($me),
+        $verb === 'buy' => cmd_buy($me, trim($arg)),
+        $verb === 'sell' => cmd_sell($me, trim($arg)),
+        $verb === 'pray' => cmd_pray($me, trim($arg)),
         $verb === 'say' => cmd_say($me, trim($arg)),
         $verb === 'who' => cmd_who(),
         $verb === 'help' => cmd_help($me),
@@ -635,7 +654,8 @@ function heal_hint(array $me): array
     if ($u['fighting'] !== null || $u['hp'] > intdiv($u['max_hp'], 2)) {
         return [];
     }
-    $where = $u['safe'] ? 'You can rest here' : 'Rest in a safe room, ( ) on the map: the town square or the Lantern';
+    $where = $u['safe'] ? 'You can rest here'
+        : 'Rest in a safe room, ( ) on the map: the town square, the Lantern or the temple';
     return ["You're hurt (HP {$u['hp']}/{$u['max_hp']}). $where. 'rest' (10 min) spends Hit Dice ({$u['dice']} left); "
         . "'sleep' (1 h) heals you fully."];
 }
@@ -3060,12 +3080,13 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
     if ($arts && ($weapon === null || (int) substr($damage, 2) < $me['martial_arts'])) {
         $damage = '1d' . $me['martial_arts'];
     }
+    $bonus = $weapon['bonus'] ?? 0; // a +1 Weapon's, to attack and damage rolls
     return [
         'weapon' => $weapon['name'] ?? 'Unarmed Strike',
-        'damage' => $damage,
+        'damage' => $damage . ($bonus ? "+$bonus" : ''),
         'damage_type' => $weapon['damage_type'] ?? 'bludgeoning', // an Unarmed Strike's
         'attack_mod' => $attack_mod,
-        'to_hit' => $attack_mod + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0)
+        'to_hit' => $attack_mod + $bonus + ($weapon === null || trained($me, $weapon) ? $me['prof_bonus'] : 0)
             + ($ranged && $me['class'] === 'ranger' && $me['level'] >= 2 ? 2 : 0), // Archery
         'finesse' => $finesse,
         'str_based' => $nimble ? $str >= $dex : !$ranged,
@@ -3104,7 +3125,8 @@ function describe(array $o): string
         'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
             . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : '')
             . ($o['light'] ? ', light' : '') . (in_array($o['mastery'], MASTERIES, true) ? ", {$o['mastery']}" : '')
-            . ($o['ranged'] ? ', ranged' : '') . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : ''),
+            . ($o['ranged'] ? ', ranged' : '') . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : '')
+            . ($o['bonus'] ? ", +{$o['bonus']} to hit and damage" : ''),
         'armor' => "{$o['armor']} armor, AC {$o['ac']}"
             . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],
         'shield' => "shield, +{$o['ac']} AC",
@@ -3257,6 +3279,119 @@ function cmd_drink(array $me, string $target): array
     $hp = min($me['max_hp'], $me['hp'] + roll($o['dice']));
     q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
     return ["You drink the {$o['name']} and regain " . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}."];
+}
+
+/** The items for sale in $room_id's shop, cheapest first; none if it isn't a shop. */
+function stock(int $room_id): array
+{
+    return q('SELECT * FROM items WHERE shop = ? ORDER BY cost, name', [$room_id])->fetchAll();
+}
+
+/** What an item costs in a shop. shortcut: gold is whole GP, so under 1 GP costs 1; add SP and CP if they matter. */
+function price(array $item): int
+{
+    return max(1, (int) ceil((float) $item['cost']));
+}
+
+function cmd_list(array $me): array
+{
+    if ($me['room_id'] === TEMPLE) {
+        $lines = ["The priests of Chauntea cast for a donation ('pray <service>'):"];
+        foreach (PRAYERS as $word => [, $gp, $what]) {
+            $lines[] = sprintf('  %-6s %4d GP  %s', $word, $gp, $what);
+        }
+        return [...$lines, "You have {$me['gold']} gold."];
+    }
+    $stock = stock((int) $me['room_id']);
+    if (!$stock) {
+        return ["Nothing is for sale here. Greenest's shops are off Market Lane, its temple east of the Mill Bridge."];
+    }
+    $lines = ["For sale ('buy <item>'; the shop pays half price for anything you 'sell'):"];
+    $width = max(array_map('strlen', array_column($stock, 'name')));
+    foreach ($stock as $i) {
+        $lines[] = sprintf("  %-{$width}s %4d GP  %s", $i['name'], price($i), describe($i));
+    }
+    return [...$lines, "You have {$me['gold']} gold."];
+}
+
+function cmd_buy(array $me, string $target): array
+{
+    $stock = stock((int) $me['room_id']);
+    if (!$stock) {
+        return ["Nothing is for sale here. Greenest's shops are off Market Lane."];
+    }
+    $i = find_object($stock, $target);
+    if ($i === null) {
+        return [($target === '' ? 'Buy what?' : "Nobody here sells a $target.") . " 'list' shows what's for sale."];
+    }
+    $gp = price($i);
+    if (q('UPDATE users SET gold = gold - ? WHERE id = ? AND gold >= ?', [$gp, $me['id'], $gp])->rowCount() !== 1) {
+        return ["The {$i['name']} costs $gp gold, and you have {$me['gold']}."];
+    }
+    q('INSERT INTO objects (item_id, user_id) VALUES (?, ?)', [$i['id'], $me['id']]);
+    return ["You buy the {$i['name']} for $gp gold."];
+}
+
+/** Any shop buys anything for half its cost (SRD 5.2.1 p.89), preferring one I don't have equipped. */
+function cmd_sell(array $me, string $target): array
+{
+    if (!stock((int) $me['room_id'])) {
+        return ["Nobody here is buying. Greenest's shops are off Market Lane."];
+    }
+    if ($target === '') {
+        return ['Sell what?'];
+    }
+    $carried = objects_here('user_id', (int) $me['id']);
+    $o = find_object(array_filter($carried, fn ($c) => !$c['worn']), $target) ?? find_object($carried, $target);
+    if ($o === null) {
+        return ["You aren't carrying a $target."];
+    }
+    $gp = (int) floor((float) $o['cost'] / 2);
+    if ($gp === 0) {
+        return ["Nobody will pay anything for the {$o['name']}."];
+    }
+    // Deleting by owner first means two requests at once can't both sell it.
+    if (q('DELETE FROM objects WHERE id = ? AND user_id = ?', [$o['id'], $me['id']])->rowCount() === 0) {
+        return ["You aren't carrying a $target."];
+    }
+    q('UPDATE users SET gold = gold + ? WHERE id = ?', [$gp, $me['id']]);
+    return ["You sell the {$o['name']} for $gp gold."];
+}
+
+/** A priest at the temple casts PRAYERS[$what] on me, once I've paid for it. */
+function cmd_pray(array $me, string $what): array
+{
+    if ($me['room_id'] !== TEMPLE) {
+        return ["Chauntea's priests take donations at her temple, east of the Mill Bridge."];
+    }
+    $what = strtolower($what);
+    if (!isset(PRAYERS[$what])) {
+        return cmd_list($me);
+    }
+    [$spell_id, $gp] = PRAYERS[$what];
+    $spell = q('SELECT * FROM spells WHERE id = ?', [$spell_id])->fetch();
+    $missing = $me['max_hp'] - $me['hp'];
+    if ($what !== 'aid' && $missing <= 0) {
+        return ["You're already at full health."];
+    }
+    if ($what === 'aid' && array_filter($me['effects'], fn ($e) => $e['spell_id'] === $spell_id)) {
+        return ['Aid is already on you; another casting would do nothing more.'];
+    }
+    $casts = $what === 'heal' ? (int) ceil($missing / (average($spell['dice']) + PRIEST_WIS)) : 1;
+    $gp *= $casts;
+    if (q('UPDATE users SET gold = gold - ? WHERE id = ? AND gold >= ?', [$gp, $me['id'], $gp])->rowCount() !== 1) {
+        return ["That's a donation of $gp gold, and you have {$me['gold']}."];
+    }
+    if ($what === 'aid') {
+        start_effect($me, $spell, 0, 'user_id', [$me], null);
+        [$hp, $max] = [$me['hp'] + (int) $spell['value'], $me['max_hp'] + (int) $spell['value']];
+    } else {
+        $max = $me['max_hp'];
+        $hp = $what === 'heal' ? $max : min($max, $me['hp'] + roll($spell['dice']) + PRIEST_WIS);
+    }
+    q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+    $cast = $casts > 1 ? "casts {$spell['name']} $casts times" : "casts {$spell['name']}";
+    return ["You give $gp gold, and a priest of Chauntea $cast on you. HP $hp/$max."];
 }
 
 /** The hero sheet as data: the score panel in play.js draws it, `score` prints it. Takes a with_stats() row. */
@@ -3647,6 +3782,8 @@ function actions(array $me): array
         ...$cast,
         ...($safe ? ['rest', 'sleep'] : []),
         ...($me['room_id'] === LANTERN ? ['hire '] : []),
+        ...(stock((int) $me['room_id']) ? ['list', 'buy ', 'sell '] : []),
+        ...($me['room_id'] === TEMPLE ? ['list', 'pray '] : []),
         'look',
         'inventory',
     ];
@@ -3679,6 +3816,9 @@ function choices(array $me): array
         'equip' => $pick('equip', $names(array_filter($carried, fn ($o) => !$o['worn'] && $o['slot'] !== 'potion'))),
         'drink' => $pick('drink', $names(array_filter($carried, fn ($o) => $o['slot'] === 'potion'))),
         'hire' => $me['room_id'] === LANTERN ? $pick('hire', array_keys(HIRELINGS)) : [],
+        'buy' => $pick('buy', $names(stock((int) $me['room_id']))),
+        'sell' => stock((int) $me['room_id']) ? $pick('sell', $names($carried)) : [],
+        'pray' => $me['room_id'] === TEMPLE ? $pick('pray', array_keys(PRAYERS)) : [],
         'inspire' => $has('inspire') ? $pick('inspire', $heroes) : [],
         'lay' => $has('lay') ? [['yourself', 'lay'], ...$pick('lay', $heroes)] : [],
         'wild' => $has('wild') ? [...($me['shape'] !== null ? [['your own form', 'wild']] : []),
