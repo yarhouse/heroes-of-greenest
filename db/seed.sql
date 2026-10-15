@@ -40,10 +40,10 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 DELETE FROM delve;
 INSERT INTO delve (seed) VALUES (0);
 
--- Monsters 1-67 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php
--- borrows: 32-48 are the SRD's NPCs, for Riftshadow's humanoids, and 49-67 what the Sewers need. Beasts are a Druid's
--- Wild Shape forms (17-23 are here for that, and share CRs with 1-16, which the converter prefers); a Multiattack of
--- two kinds keeps one of them.
+-- Monsters 1-68 are SRD 5.2.1 stat blocks (page numbers in comments), also the stat blocks bin/convert-area.php
+-- borrows: 32-48 are the SRD's NPCs, for Riftshadow's humanoids, 49-67 what the Sewers need, and 68 the Mastiff a
+-- hireling can be (with the Guard and Priest Acolyte). Beasts are a Druid's Wild Shape forms (17-23 are here for
+-- that, and share CRs with 1-16, which the converter prefers); a Multiattack of two kinds keeps one of them.
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
 -- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
@@ -185,6 +185,8 @@ INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, dam
     'piercing', NULL, NULL, '', '', '', 'large', 'aberration'),
 (67, 'Wererat', 13, '11d8+11', 3, 'Scratch', 2, 5, '1d6+3', 2, 450, 0, 3, 1, 0, 0, -1,                 -- p.338
     'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity'),
+(68, 'Mastiff', 12, '1d8+1', 2, 'Bite', 1, 3, '1d6+1', 0.125, 25, 1, 2, 1, -4, 3, -2,                  -- p.357
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
     'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior

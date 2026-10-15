@@ -147,8 +147,10 @@ Advantage on your next attack (Push and Slow need distances). Damage has SRD typ
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
 with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
-Disadvantage. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. The
-plan and what's left out are in the project's `d20-plan.md`. "5E compatible."
+Disadvantage. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. At
+the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a
+day: it follows you, attacks your foe after you, takes some of its attacks, and heals when you rest. The plan and
+what's left out are in the project's `d20-plan.md`. "5E compatible."
 
 This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC,
 available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0

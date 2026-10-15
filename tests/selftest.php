@@ -1566,6 +1566,55 @@ try {
         "Cloud's Jaunt: a Goliath flees without a roll");
     q('UPDATE spawns SET conditions = \'\' WHERE id = 9999');
 
+    // Hirelings (Hire, a Fighter: Greatsword +4, 2d6+2). A Guard: AC 16, 11 HP, Spear +3 for 1d6+1.
+    save_account('Hire', 'correct horse');
+    create('Hire', 'fighter');
+    q("UPDATE users SET gold = 3 WHERE name = 'Hire'");
+    check(says(run_command(hero('Hire'), 'hire guard'), 'at the Swaying Lantern'), 'hirelings wait at the Lantern');
+    q("UPDATE users SET room_id = ? WHERE name = 'Hire'", [LANTERN]);
+    check(in_array('hire ', actions(hero('Hire')), true)
+        && in_array(['mastiff', 'hire mastiff'], choices(with_stats(hero('Hire')))['hire'], true),
+        'the Lantern offers them');
+    check(says(run_command(hero('Hire'), 'hire dragon'), 'Hire whom?'), 'only guards, mastiffs and acolytes');
+    $out = run_command(hero('Hire'), 'hire guard');
+    check(says($out, 'A Guard takes your 2 gold') && hero('Hire')['gold'] === 1 && hero('Hire')['hireling_hp'] === 11,
+        "hire: 2 gold a day, at the stat block's average HP");
+    check(says(run_command(hero('Hire'), 'hire mastiff'), 'Dismiss it first'), 'one hireling at a time');
+    check(says(run_command(hero('Hire'), 'hire guard'), 'and you have 1.'), 'a day needs 2 gold');
+    q("UPDATE users SET gold = 2 WHERE name = 'Hire'");
+    check(says(run_command(hero('Hire'), 'hire guard'), 'for another day')
+        && preg_grep('/Guard 11\/11 HP, AC 16, 4[78] h paid/', run_command(hero('Hire'), 'score')),
+        'hiring again pays for another day, shown on the sheet');
+    q("UPDATE users SET room_id = 2 WHERE name = 'Hire'");
+    q("UPDATE spawns SET hp = 30 WHERE id = 9999");
+    check(says(run_command(hero('Hire'), 'look'), 'Your Guard is here, with you.'), 'it goes where you go');
+    $dice_queue = [10, 1, 15, 1, 1, 12, 3, 2, 10]; // initiative; I hit for 4, it hits for 4; d2 = 2: at the Guard
+    $out = run_command(hero('Hire'), 'kill dummy');
+    check(says($out, "Your Guard's Spear hits the Training Dummy (15 vs AC 10) for 4 damage.")
+        && says($out, "The Training Dummy's Slam misses your Guard (13 vs AC 16).") && !says($out, 'misses you (')
+        && says($out, 'Guard: 11/11 HP.  Training Dummy: 22 HP.'), 'it attacks my foe after me, and draws its attacks');
+    q("UPDATE users SET hireling_hp = 3 WHERE name = 'Hire'");
+    $dice_queue = [15, 1, 1, 1, 2, 20, 4, 4]; // I hit; natural 1; d2 = 2, and a critical Slam for 8
+    $out = run_command(hero('Hire'), 'kill');
+    check(says($out, "Your Guard's Spear misses the Training Dummy (natural 1).")
+        && says($out, 'Your Guard falls') && hero('Hire')['hireling_monster_id'] === null, 'at 0 HP it is gone');
+    $dice_queue = [1, 1]; // with no hireling there's no d2
+    check(says(run_command(hero('Hire'), 'kill'), 'Slam misses you (natural 1)') && $dice_queue === [],
+        'then its attacks are all at me');
+    q("UPDATE users SET fighting = NULL, room_id = ?, gold = 2 WHERE name = 'Hire'", [LANTERN]);
+    run_command(hero('Hire'), 'hire guard');
+    q("UPDATE users SET hireling_hp = 1, resting = 'short', rest_until = NOW() WHERE name = 'Hire'");
+    check(says(run_command(hero('Hire'), 'look'), 'Your Guard rests too') && hero('Hire')['hireling_hp'] === 11,
+        'a rest heals it');
+    q("UPDATE users SET hired_until = NOW() - INTERVAL 1 SECOND WHERE name = 'Hire'");
+    $out = run_command(hero('Hire'), 'look');
+    check(says($out, "Your Guard's paid time is up") && !says($out, 'Your Guard is here')
+        && hero('Hire')['hireling_monster_id'] === null, 'it leaves when its paid time runs out');
+    q("UPDATE users SET gold = 2 WHERE name = 'Hire'");
+    run_command(hero('Hire'), 'hire mastiff');
+    check(says(run_command(hero('Hire'), 'dismiss'), 'Your Mastiff heads back')
+        && hero('Hire')['hireling_monster_id'] === null, 'dismiss');
+
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');

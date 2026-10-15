@@ -12,6 +12,10 @@ const MAP_REACH = 2; // the map shows rooms up to this many grid steps each way
 const ONLINE_MINUTES = 10;
 const ECHO_DAYS = 7;
 const START_ROOM = 1;
+const LANTERN = 3; // the Swaying Lantern, where hirelings wait for work
+/** Skilled hirelings (SRD 5.2.1 p.102: 2 GP a day), as `hire` word => their monsters row. */
+const HIRELINGS = ['guard' => 32, 'mastiff' => 68, 'acolyte' => 36];
+const HIRE_GP = 2;
 const SHORT_REST_SECS = 600;
 const LONG_REST_SECS = 3600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
@@ -337,6 +341,9 @@ const COMMANDS = [
     'drop <item>' => 'put something down',
     'equip <item>' => "wield or wear something you carry; 'equip <item> offhand' for a second Light weapon",
     'drink <potion>' => 'drink a potion; like Second Wind, it costs no turn',
+    'hire <guard|mastiff|acolyte>' => 'at the Swaying Lantern, 2 gold a day: it fights beside you (hire again for '
+        . 'more days)',
+    'dismiss' => 'send your hireling away',
     'say <text>' => "speak to the room ('<text> works too)",
     'who' => 'every hero, and when last seen',
     'help' => 'this list',
@@ -528,7 +535,30 @@ function with_stats(array $me): array
         $me['max_hp'] += $e['effect'] === 'max_hp' ? (int) $e['value'] : 0; // Aid
     }
     $me['hp'] = min($me['hp'], $me['max_hp']); // an Aid that ran out
+    $me['hireling'] = hireling($me);
     return $me;
+}
+
+/**
+ * My hireling while its paid time lasts: its monsters row with its 'hp' now, 'max_hp' (the stat block's average, so
+ * it isn't rolled) and 'mins' left; null if I have none.
+ */
+function hireling(array $me): ?array
+{
+    $h = q(
+        // The hireling's columns come last, so its hp wins over the template's (the HP dice).
+        'SELECT m.*, m.hp AS dice, u.hireling_hp AS hp, TIMESTAMPDIFF(MINUTE, NOW(), u.hired_until) AS mins
+         FROM users u JOIN monsters m ON m.id = u.hireling_monster_id WHERE u.id = ? AND u.hired_until > NOW()',
+        [$me['id']]
+    )->fetch();
+    return $h ? ['max_hp' => average($h['dice'])] + $h : null;
+}
+
+/** The average of dice like '2d8+2' (11), rounded down, as a stat block gives it. */
+function average(string $dice): int
+{
+    preg_match('/^(\d+)d(\d+)([+-]\d+)?$/', $dice, $d);
+    return intdiv((int) $d[1] * ((int) $d[2] + 1), 2) + (int) ($d[3] ?? 0);
 }
 
 /** Runs one command for $me (a users row) and returns the output lines. */
@@ -541,6 +571,11 @@ function run_command(array $me, string $input): array
     }
     $me = with_stats($me);
     $rested = $me['resting'] !== null ? finish_rest($me) : [];
+    if ($me['hireling_monster_id'] !== null && $me['hireling'] === null) { // its paid time ran out
+        $name = q('SELECT name FROM monsters WHERE id = ?', [$me['hireling_monster_id']])->fetchColumn();
+        dismiss($me);
+        $rested[] = "Your $name's paid time is up, and it heads back to the Swaying Lantern.";
+    }
     if (str_starts_with($input, "'")) {
         $input = 'say ' . substr($input, 1);
     }
@@ -580,6 +615,8 @@ function run_command(array $me, string $input): array
         $verb === 'drop' => cmd_drop($me, trim($arg)),
         $verb === 'equip' => cmd_equip($me, trim($arg)),
         $verb === 'drink' => cmd_drink($me, trim($arg)),
+        $verb === 'hire' => cmd_hire($me, trim($arg)),
+        $verb === 'dismiss' => cmd_dismiss($me),
         $verb === 'say' => cmd_say($me, trim($arg)),
         $verb === 'who' => cmd_who(),
         $verb === 'help' => cmd_help($me),
@@ -846,6 +883,9 @@ function cmd_look(array $me): array
     foreach ($others as $name) {
         $lines[] = "$name is here.";
     }
+    if (isset($me['hireling'])) { // a hero fresh from character creation has no stats yet, and no hireling
+        $lines[] = "Your {$me['hireling']['name']} is here, with you.";
+    }
     foreach (room_monsters((int) $me['room_id']) as $m) {
         $lines[] = a_an($m['name']) . ' is here' . ($m['id'] === $me['fighting'] ? ', fighting you.' : '.');
     }
@@ -994,6 +1034,7 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
             }
         }
         $over = $act($me, $foe, $lines);
+        $over = $over || ($me['hireling'] !== null && hireling_turn($me, $foe, $lines));
         if ($me['bonus_used'] && !$over) { // my turn is over; a Bonus Action before my next one counts for that one
             $me['bonus_used'] = false;
             q('UPDATE users SET bonus_used = FALSE WHERE id = ?', [$me['id']]);
@@ -1004,7 +1045,9 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         $over = $over || (!$me['volley'] && !$me['foe_first'] && monster_turn($me, $foe, $lines));
     }
     if (!$over) {
-        $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  {$foe['name']}: {$foe['hp']} HP.";
+        $h = $me['hireling'];
+        $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  "
+            . ($h ? "{$h['name']}: {$h['hp']}/{$h['max_hp']} HP.  " : '') . "{$foe['name']}: {$foe['hp']} HP.";
     }
     return $lines;
 }
@@ -1602,10 +1645,10 @@ function win(array &$me, array $foe, array &$lines): void
 }
 
 /**
- * $foe attacks me: $n times, its Multiattack by default. Returns true if the fight is over: I died (and woke in town),
- * or my Reaction killed it. A Stone or Storm Goliath's Reaction (Giant Ancestry) goes on the first hit that hurts
- * (shortcut: it doesn't count against Deflect Attacks' or Cutting Words'), and an Orc's Relentless Endurance keeps
- * them on 1 HP.
+ * $foe attacks me (or, on a 2 on a d2, my hireling): $n times, its Multiattack by default. Returns true if the fight
+ * is over: I died (and woke in town), or my Reaction killed it. A Stone or Storm Goliath's Reaction (Giant Ancestry)
+ * goes on the first hit that hurts (shortcut: it doesn't count against Deflect Attacks' or Cutting Words'), and an
+ * Orc's Relentless Endurance keeps them on 1 HP.
  */
 function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): bool
 {
@@ -1625,6 +1668,11 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
                 unset($foe['effects'][$i]);
             }
         }
+        return end_of_turn($me, $foe, $lines);
+    }
+    // With my hireling beside me, its turn goes at one of us (a free attack when I flee is always at me).
+    if ($n === null && $me['hireling'] !== null && roll('1d2') === 2) {
+        hit_hireling($me, $foe, $lines);
         return end_of_turn($me, $foe, $lines);
     }
     // Held by another hero still fighting it, it has Disadvantage against me.
@@ -2808,7 +2856,13 @@ function finish_rest(array &$me): array
         'UPDATE users SET hp = ?, hit_dice_spent = ?, uses_spent = ?, slots_spent = ? WHERE id = ?',
         [$me['hp'], $me['hit_dice_spent'], $me['uses_spent'], $me['slots_spent'], $me['id']]
     );
-    return [$line . " HP {$me['hp']}/{$me['max_hp']}."];
+    $h = $me['hireling'];
+    $healed = $h !== null && $h['hp'] < $h['max_hp'];
+    if ($healed) { // either rest heals a hireling fully
+        $me['hireling']['hp'] = $h['max_hp'];
+        q('UPDATE users SET hireling_hp = ? WHERE id = ?', [$h['max_hp'], $me['id']]);
+    }
+    return [$line . " HP {$me['hp']}/{$me['max_hp']}.", ...($healed ? ["Your {$h['name']} rests too: full HP."] : [])];
 }
 
 /**
@@ -3193,6 +3247,123 @@ function cmd_drink(array $me, string $target): array
 }
 
 /** The hero sheet as data: the score panel in play.js draws it, `score` prints it. Takes a with_stats() row. */
+/**
+ * Hires a skilled hireling at the Swaying Lantern for a day of real time, or pays the one I have for another day. It
+ * starts at its stat block's average HP and goes wherever I go (see hireling_turn() and hit_hireling()).
+ */
+function cmd_hire(array $me, string $kind): array
+{
+    $id = HIRELINGS[strtolower($kind)] ?? null;
+    if ($id === null) {
+        return ['Hire whom? A guard, a mastiff or an acolyte, for ' . HIRE_GP . ' gold a day.'];
+    }
+    if ($me['room_id'] !== LANTERN) {
+        return ['Hirelings wait for work at the Swaying Lantern.'];
+    }
+    $h = $me['hireling'];
+    if ($h !== null && $h['id'] !== $id) {
+        return ["You already have a {$h['name']}. Dismiss it first."];
+    }
+    if (q('UPDATE users SET gold = gold - ? WHERE id = ? AND gold >= ?', [HIRE_GP, $me['id'], HIRE_GP])
+        ->rowCount() !== 1) {
+        return ['A hireling costs ' . HIRE_GP . " gold a day, and you have {$me['gold']}."];
+    }
+    if ($h !== null) {
+        q('UPDATE users SET hired_until = hired_until + INTERVAL 1 DAY WHERE id = ?', [$me['id']]);
+        return ["You pay your {$h['name']} for another day."];
+    }
+    $m = q('SELECT name, hp FROM monsters WHERE id = ?', [$id])->fetch();
+    q(
+        'UPDATE users SET hireling_monster_id = ?, hireling_hp = ?, hired_until = NOW() + INTERVAL 1 DAY WHERE id = ?',
+        [$id, average($m['hp']), $me['id']]
+    );
+    return [a_an($m['name']) . ' takes your ' . HIRE_GP . " gold and will fight beside you for a day. 'dismiss' sends "
+        . 'it away.'];
+}
+
+function cmd_dismiss(array $me): array
+{
+    if ($me['hireling'] === null) {
+        return ["You haven't hired anyone."];
+    }
+    $name = $me['hireling']['name'];
+    dismiss($me);
+    return ["Your $name heads back to the Swaying Lantern."];
+}
+
+/** My hireling leaves: dismissed, killed or its time up. */
+function dismiss(array &$me): void
+{
+    q('UPDATE users SET hireling_monster_id = NULL, hireling_hp = NULL, hired_until = NULL WHERE id = ?', [$me['id']]);
+    $me['hireling'] = null;
+}
+
+/**
+ * My hireling attacks my foe after my action, as Luminari's charmies auto-assist. Returns true if it killed it; the
+ * kill (XP, gold) is mine. shortcut: no Advantage or Disadvantage from conditions, and no traits.
+ */
+function hireling_turn(array &$me, array &$foe, array &$lines): bool
+{
+    $h = $me['hireling'];
+    for ($i = 0; $i < $h['attacks']; $i++) {
+        $d20 = roll('1d20');
+        $total = $d20 + $h['to_hit'];
+        $its = "Your {$h['name']}'s {$h['attack']}";
+        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
+            $lines[] = "$its misses the {$foe['name']} (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}")
+                . ').';
+            continue;
+        }
+        [$dmg, $note] = typed(max(0, roll($h['damage'], $d20 === 20)), $h['damage_type'], $foe);
+        if ($h['extra_damage'] !== null) {
+            [$extra, $extra_note] = typed(roll($h['extra_damage'], $d20 === 20), $h['extra_type'], $foe);
+            $dmg += $extra;
+            $note = implode('', array_unique([$note, $extra_note]));
+        }
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits the {$foe['name']} ($total vs AC {$foe['ac']}) "
+            . "for $dmg damage$note.";
+        if (hurt_foe($me, $foe, $dmg, $lines)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * $foe's turn goes at my hireling instead of me. At 0 HP the hireling is gone. shortcut: plain d20s, no Advantage or
+ * Disadvantage from conditions on either side, and the whole turn picks one target.
+ */
+function hit_hireling(array &$me, array $foe, array &$lines): void
+{
+    $h = $me['hireling'];
+    for ($i = 0; $i < $foe['attacks'] && $h['hp'] > 0; $i++) {
+        $d20 = roll('1d20');
+        $total = $d20 + $foe['to_hit'];
+        $its = "The {$foe['name']}'s {$foe['attack']}";
+        if ($d20 === 1 || ($d20 < 20 && $total < $h['ac'])) {
+            $lines[] = "$its misses your {$h['name']} (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$h['ac']}")
+                . ').';
+            continue;
+        }
+        [$dmg, $note] = typed(max(0, roll($foe['damage'], $d20 === 20)), $foe['damage_type'], $h);
+        if ($foe['extra_damage'] !== null) {
+            [$extra, $extra_note] = typed(roll($foe['extra_damage'], $d20 === 20), $foe['extra_type'], $h);
+            $dmg += $extra;
+            $note = implode('', array_unique([$note, $extra_note]));
+        }
+        $h['hp'] -= $dmg;
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits your {$h['name']} ($total vs AC {$h['ac']}) "
+            . "for $dmg damage$note.";
+    }
+    if ($h['hp'] > 0) {
+        $me['hireling'] = $h;
+        q('UPDATE users SET hireling_hp = ? WHERE id = ?', [$h['hp'], $me['id']]);
+        return;
+    }
+    $lines[] = "Your {$h['name']} falls, and is carried back to the Swaying Lantern.";
+    dismiss($me);
+}
+
 function hero_sheet(array $me): array
 {
     $xp = q('SELECT level, xp FROM levels WHERE level IN (?, ?)', [$me['level'], $me['level'] + 1])
@@ -3258,6 +3429,8 @@ function hero_sheet(array $me): array
             ...($me['offhand'] === null ? [] : [['Off hand', sprintf('%s %+d to hit, %s damage%s',
                 $me['offhand']['weapon'], $me['offhand']['to_hit'], $me['offhand']['damage'],
                 $me['offhand']['mastery'] === 'nick' ? ' (Nick)' : ', a Bonus Action')]]),
+            ...(($h = $me['hireling']) === null ? [] : [[$h['name'], "{$h['hp']}/{$h['max_hp']} HP, AC {$h['ac']}, "
+                . ($h['mins'] >= 60 ? intdiv($h['mins'], 60) . ' h' : "{$h['mins']} min") . ' paid']]),
         ],
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
@@ -3455,6 +3628,7 @@ function actions(array $me): array
         ...array_values(array_intersect(DIRS, $exits)),
         ...$cast,
         ...($safe ? ['rest', 'sleep'] : []),
+        ...($me['room_id'] === LANTERN ? ['hire '] : []),
         'look',
         'inventory',
     ];
@@ -3486,6 +3660,7 @@ function choices(array $me): array
         'drop' => $pick('drop', $names($carried)),
         'equip' => $pick('equip', $names(array_filter($carried, fn ($o) => !$o['worn'] && $o['slot'] !== 'potion'))),
         'drink' => $pick('drink', $names(array_filter($carried, fn ($o) => $o['slot'] === 'potion'))),
+        'hire' => $me['room_id'] === LANTERN ? $pick('hire', array_keys(HIRELINGS)) : [],
         'inspire' => $has('inspire') ? $pick('inspire', $heroes) : [],
         'lay' => $has('lay') ? [['yourself', 'lay'], ...$pick('lay', $heroes)] : [],
         'wild' => $has('wild') ? [...($me['shape'] !== null ? [['your own form', 'wild']] : []),

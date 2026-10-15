@@ -6,8 +6,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 ## Next
 
 1. **Healing is hard to find.** "Where are Hit Dice to spend? My character never seems to heal." Today Hit Dice are spent only automatically at the end of a `rest` (short rest): it works only in a safe room (Town Square, Swaying Lantern), takes 10 real minutes, moving cancels it, and it only resolves on your next command after the time is up. There's no natural healing. Ideas: show the time left in the score panel, say where to rest when HP is low, maybe let `rest` spend Hit Dice one at a time as in the SRD.
-2. **Hirelings.** Its columns are the first schema change since deploying, so step 3 can come first. "I die a lot" with no group online. `hire <guard|mastiff|acolyte>` at the Swaying Lantern for 2 GP/day (SRD 5.2.1 skilled hireling, p.102), stats from the SRD Guard, Mastiff or Priest Acolyte; `dismiss`. Lazy shape: columns on `users` (`hireling_monster_id`, `hireling_hp`, `hired_until`), so it's always in your room and leaving when paid-up time runs out is computed on read. In `fight()` it attacks your foe after your action (Luminari's charmie auto-assist, `combat/fight.c` ~17265; no `order` command at first). The real change: `monster_turn()` assumes one target and must pick between you and the hireling with `roll()`. At 0 HP it's gone; it heals when you rest. The same mechanism unlocks Faithful Steed, Wild Companion and Find Familiar. Reference: Luminari `MOB_MERCENARY`, `call`, `order`, `dismiss`; Riftshadow pet shops and `do_order`.
-3. **Schema migrations.** `bin/deploy.sh` reloads the world but schema changes still need their ALTERs run on the server by hand.
+2. **Schema migrations.** `bin/deploy.sh` reloads the world but schema changes still need their ALTERs run on the server by hand.
 
 Any time: **approve account requests** (friends ask on the login page):
 `ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
@@ -49,3 +48,7 @@ Any time: **approve account requests** (friends ask on the login page):
   your hero first at character creation (heroes made before keep their account's name). Friends request an account on
   the login page and the DM approves it with `bin/requests.php` (no email, so no self-service reset: the DM still uses
   `bin/adduser.php`). `account.php` changes your account name and password. One hero per account.
+- 2026-10-14 **Hirelings:** `hire <guard|mastiff|acolyte>` at the Swaying Lantern, 2 GP a real day (hire again for
+  more), `dismiss`. Three `users` columns; it goes wherever its hero goes and leaves when the paid time runs out. It
+  attacks your foe after your action, a foe's turn goes at it on a d2, and at 0 HP it's gone (the gold with it). It
+  starts at its stat block's average HP and either rest heals it fully. No `order` and no conditions on its rolls yet.

@@ -173,7 +173,12 @@ CREATE TABLE users (
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
     resting ENUM('short', 'long') NULL, -- finishes on the first command after rest_until
     rest_until DATETIME NULL,
+    -- A hireling (HIRELINGS in game.php) always at my side, its monsters row; it leaves once hired_until passes.
+    hireling_monster_id INT UNSIGNED NULL,
+    hireling_hp SMALLINT NULL,
+    hired_until DATETIME NULL,
     FOREIGN KEY (room_id) REFERENCES rooms (id),
+    FOREIGN KEY (hireling_monster_id) REFERENCES monsters (id),
     FOREIGN KEY (fighting) REFERENCES spawns (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
