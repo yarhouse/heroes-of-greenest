@@ -1,7 +1,7 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
 -- Dropping migrations tells bin/migrate.php this database matches this file, so it marks every migration done.
-DROP TABLE IF EXISTS migrations, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
+DROP TABLE IF EXISTS migrations, bulletins, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
     monsters, exits, rooms;
 
 CREATE TABLE rooms (
@@ -132,6 +132,7 @@ CREATE TABLE users (
     locked_until DATETIME NULL,
     last_seen DATETIME NULL,
     last_event_id INT UNSIGNED NOT NULL DEFAULT 0,
+    last_bulletin_id INT UNSIGNED NOT NULL DEFAULT 0, -- the newest bulletins row I've read
     -- Character creation step, or NULL once the hero is in the world. New heroes name themselves, then (like any set
     -- back to 'class') choose a class, ability scores, species and background; the defaults below are overwritten then.
     setup ENUM('name', 'class', 'abilities', 'species', 'background', 'confirm') NULL DEFAULT 'name',
@@ -200,6 +201,14 @@ CREATE TABLE events (
     KEY room_recent (room_id, id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- The bulletin board in the Town Square: posts added by hand on the server (README); seed.sql adds only the first.
+-- The newest id is the board's version: a hero whose last_bulletin_id is lower has news waiting.
+CREATE TABLE bulletins (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    text TEXT NOT NULL, -- \n starts a new line
+    posted DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- An item in the world: on a room's floor (room_id) or carried by a hero (user_id), never both.

@@ -529,7 +529,14 @@ INSERT INTO features (id, room_id, keywords, text, skill, dc, secret) VALUES
  'arcana', 10, 'Honest enchantments, every one, and the same maker''s mark on every piece: a workshop in Baldur''s Gate.'),
 (19, 12, 'altar offerings sheaves',
  'Sheaves of barley and baskets of apples before a wooden statue of a smiling, broad-hipped woman: Chauntea, the Great Mother.',
- 'religion', 10, 'This season''s offerings, but thin. A harvest altar this bare in autumn means the town is going hungry, and the priests know it.');
+ 'religion', 10, 'This season''s offerings, but thin. A harvest altar this bare in autumn means the town is going hungry, and the priests know it.'),
+(20, 1, 'bulletin board',
+ 'A weathered board on a post by the well, under a little shingle roof. Pinned to it, newest on top:\n{bulletin}',
+ NULL, NULL, NULL);
+-- The bulletin board's first post, added only if it's missing. Later posts go straight into the server's database
+-- (README), so a deploy never touches them.
+INSERT IGNORE INTO bulletins (id, text) VALUES
+(1, 'Welcome to Greenest, traveller! Rooms and hirelings at the Swaying Lantern, healing at Chauntea''s temple, and work on the notices before the keep. News for all of Greenest''s heroes goes up here.');
 INSERT INTO npcs (id, room_id, name, about) VALUES
 (1, 3, 'Marta Dunmore, the innkeeper',
  'A broad woman with an apron full of keys and a voice that carries across the common room. She keeps the ledger, the rooms and the peace.'),

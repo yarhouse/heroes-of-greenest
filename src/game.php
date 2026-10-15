@@ -953,9 +953,15 @@ function cmd_look(array $me): array
     foreach (array_reverse($said) as $s) {
         $lines[] = "{$s['name']} said here " . ago((int) $s['mins']) . ": {$s['text']}";
     }
-    $features = array_map(fn ($f) => strtok($f['keywords'], ' '), features_here((int) $me['room_id']));
+    $here = features_here((int) $me['room_id']);
+    $features = array_map(fn ($f) => strtok($f['keywords'], ' '), $here);
     if ($features) {
         $lines[] = 'You could inspect: ' . implode(', ', $features) . '.';
+    }
+    $board = array_filter($here, fn ($f) => str_contains($f['text'], '{bulletin}'));
+    if ($board && q('SELECT 1 FROM bulletins WHERE id > ? LIMIT 1', [$me['last_bulletin_id']])->fetch()) {
+        $word = strtok(reset($board)['keywords'], ' ');
+        $lines[] = "A new notice is pinned to the $word board. Try 'inspect $word'.";
     }
     return $lines;
 }
@@ -1024,6 +1030,9 @@ function cmd_inspect(array $me, string $target): array
     foreach (features_here((int) $me['room_id']) as $f) {
         if (names(bare($target), $f['keywords'])) {
             $text = str_replace('{roster}', implode("\n", roster()), $f['text']);
+            if (str_contains($text, '{bulletin}')) { // only here, since reading the board marks it read
+                $text = str_replace('{bulletin}', implode("\n", bulletins($me)), $text);
+            }
             return [...explode("\n", $text), ...secret($me, $f, "feature {$f['id']}")];
         }
     }
@@ -1037,6 +1046,22 @@ function roster(): array
         ->fetchAll();
     return array_map(fn ($h) => sprintf('  %-16s %s', $h['name'], $h['setup'] !== null ? '(just arrived)'
         : ucwords(trim("{$h['species']} {$h['class']}")) . ", level {$h['level']}"), $heroes);
+}
+
+/**
+ * The newest posts on the bulletin board, a line each (more if a post has line breaks), and marks them read: the
+ * newest id becomes my last_bulletin_id, so cmd_look stops pointing me at the board.
+ */
+function bulletins(array $me): array
+{
+    $posts = q('SELECT id, text, TIMESTAMPDIFF(MINUTE, posted, NOW()) AS mins FROM bulletins ORDER BY id DESC LIMIT 3')
+        ->fetchAll();
+    if (!$posts) {
+        return ['  Nothing is pinned there.'];
+    }
+    q('UPDATE users SET last_bulletin_id = ? WHERE id = ?', [$posts[0]['id'], $me['id']]);
+    return array_map(fn ($p) => '  (' . ago((int) $p['mins']) . ') ' . str_replace("\n", "\n    ", $p['text']),
+        $posts);
 }
 
 /** My bonus to a check with a SKILLS skill: its ability's modifier, plus my Proficiency Bonus if I'm proficient. */

@@ -67,6 +67,23 @@ copies the code over (never `config.php` or `var/`), makes the symlink, runs the
 `db/seed.sql` and `db/areas/*.sql` (heroes are untouched; monsters respawn and the Delve rerolls), and runs the selftest
 on the server.
 
+## The bulletin board
+
+The board in the Town Square shows the newest three rows of `bulletins`. Post straight into the database, no deploy
+needed: until a hero reads it with `inspect bulletin`, the square tells them a new notice is pinned there.
+`bin/bulletin.sh` does the SQL (and the quoting), on `local` or the `server`; the VS Code tasks
+"Local/Server: list, post, update, delete bulletin" run it. In the text, `\n` starts a new line.
+
+```sh
+bin/bulletin.sh server list
+bin/bulletin.sh server post "The miller's cellar is clear.\nDrinks at the Lantern tonight."
+bin/bulletin.sh server update 2 "The miller's cellar is clear. Drinks at the Lantern tomorrow."
+bin/bulletin.sh server delete 2
+```
+
+Each post's id is the board's version, compared with every hero's `last_bulletin_id`. So an update isn't announced; to
+re-announce a post, delete it and post it again.
+
 ## Schema changes
 
 To change a table, add a file to `db/migrations/` named so it sorts after the others, with the ALTERs (one statement

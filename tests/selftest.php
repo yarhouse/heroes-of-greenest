@@ -1837,6 +1837,18 @@ try {
             choices(with_stats(hero('Testa')))['ask marta dunmore'], true)
         && array_is_list(choices(with_stats(hero('Testa')))['ask marta dunmore']) && !says(run_command(hero('Testa'), 'ask marta about the hello'), 'nothing to say'),
         'buttons: ask a townsperson, then a topic');
+
+    // The Town Square's bulletin board: posts are rows added by hand, and reading the board marks them read.
+    q("UPDATE users SET room_id = 1, last_bulletin_id = 0 WHERE name = 'Testa'");
+    q("INSERT INTO bulletins (text) VALUES ('Selftest news.\nA second line.')");
+    $post = (int) db()->lastInsertId();
+    check(says(run_command(hero('Testa'), 'look'), "A new notice is pinned to the bulletin board. Try 'inspect bulletin'"),
+        'an unread post: the square points at the board');
+    $board = run_command(hero('Testa'), 'inspect board');
+    check(says($board, 'shingle roof') && says($board, '  (just now) Selftest news.')
+        && says($board, '    A second line.') && hero('Testa')['last_bulletin_id'] === $post
+        && !says(run_command(hero('Testa'), 'look'), 'new notice'),
+        'reading the board shows the newest posts and marks them read');
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'ask about wood'), 'no one here to talk to'), 'nobody to ask in the fields');
 
