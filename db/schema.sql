@@ -55,6 +55,8 @@ CREATE TABLE monsters (
     size ENUM('tiny', 'small', 'medium', 'large', 'huge', 'gargantuan') NOT NULL,
     type ENUM('aberration', 'beast', 'celestial', 'construct', 'dragon', 'elemental', 'fey', 'fiend',
         'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NOT NULL,
+    perception TINYINT UNSIGNED NOT NULL DEFAULT 10, -- passive Perception: spots a sneaking hero's Stealth up to this
+    aggressive BOOLEAN NOT NULL DEFAULT FALSE, -- attacks a hero it sees come in (Riftshadow's ACT AGGRESSIVE)
     gear VARCHAR(100) NOT NULL DEFAULT '' -- items ids it carries, e.g. '23,50'; a kill's loot comes from these
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -175,6 +177,8 @@ CREATE TABLE users (
     gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
+    sneaking BOOLEAN NOT NULL DEFAULT FALSE, -- 'sneak' is on: a Stealth check on entering a room with monsters
+    stealth TINYINT NULL, -- that check's total while it hides me in this room (15 or more); NULL once I'm seen
     resting ENUM('short', 'long') NULL, -- finishes on the first command after rest_until
     rest_until DATETIME NULL,
     -- A hireling (HIRELINGS in game.php) always at my side, its monsters row; it leaves once hired_until passes.

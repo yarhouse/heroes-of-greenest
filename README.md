@@ -104,7 +104,7 @@ humanoids are mostly race "human", so role words in their names pick the SRD's N
 one a Guard Captain), and a creature the SRD lacks gets a stand-in of about its strength (the Sewers' mind flayers are
 a Darkmantle, a Grick and an Otyugh). The
 weapons, body armor and shields a monster carries become the SRD items they're closest to (its `gear`), and a kill's
-loot comes from those.
+loot comes from those. A monster is aggressive if Riftshadow's is (`ACT AGGRESSIVE`) and it doesn't start asleep.
 
 ## The Delve
 
@@ -162,7 +162,12 @@ Advantage on your next attack (Push and Slow need distances). Damage has SRD typ
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions of Healing and Uncommon +1 Weapons and Shield; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
 with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
-Disadvantage. Rest with `rest` (short, 10 minutes: Hit Dice heal you) or `sleep` (long, an hour: full HP) in a safe
+Disadvantage. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
+their CR). `sneak` makes a Stealth check each time you enter a room with monsters: 15 or more hides you from each one
+whose passive Perception is lower (heavy armor and some medium give Disadvantage), and attacking from hiding gives
+Advantage on Initiative and your first attack and surprises the monster (Disadvantage on its Initiative). A fight,
+speaking or dying ends sneaking. Rest with
+`rest` (short, 10 minutes: Hit Dice heal you) or `sleep` (long, an hour: full HP) in a safe
 room: the town square, the Swaying Lantern or the temple. The hero sheet counts down the time left, an open page finishes the rest
 by itself, and a fight that leaves you at half HP or less ends with where to rest. At
 the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a

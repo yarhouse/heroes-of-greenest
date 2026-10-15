@@ -7,6 +7,7 @@
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
 -- Monster stats are SRD stat blocks by Riftshadow race (the converter's CREATURES), else nearest CR = level / 12.
+-- A monster is aggressive if Riftshadow's is and it starts awake.
 -- A monster's gear is the SRD items its Riftshadow gear maps to; a kill's loot comes from it.
 SET NAMES utf8mb4;
 
@@ -322,25 +323,26 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 (6143, 'south', 6142)
 ;
 
-INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, gear) VALUES
-(6000, 'John The Lumberjack', 10, '1d8', 0, 'Club', 1, 2, '1d4', 0, 10, 0, 0, 0, 0, 0, 0, 'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid', '11') /* SRD Commoner, Rift human level 6 */,
-(6002, 'Brown Bear', 11, '3d10+6', 1, 'Bite', 2, 5, '1d8+3', 1, 200, 3, 1, 2, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'large', 'beast', '') /* SRD Brown Bear, Rift bear level 8 */,
-(6004, 'Fallow Deer', 13, '1d8', 3, 'Ram', 1, 2, '1d4', 0, 10, 0, 3, 0, -4, 2, -3, 'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast', '') /* SRD Deer, Rift human level 2 */,
-(6005, 'Brown Fox', 12, '1d6', 2, 'Bite', 1, 1, '1d4-1', 0, 10, -1, 2, 0, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', '') /* SRD Jackal, Rift fox level 2 */,
-(6100, 'Vicious Warg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1, 'piercing', NULL, NULL, '', '', '', 'large', 'fey', '') /* SRD Worg, Rift human level 5 */,
-(6101, 'Ferocious Warg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1, 'piercing', NULL, NULL, '', '', '', 'large', 'fey', '') /* SRD Worg, Rift human level 5 */,
-(6102, 'Large, Grey Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'medium', 'beast', '') /* SRD Wolf, Rift wolf level 3 */,
-(6103, 'Large, Black Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'medium', 'beast', '') /* SRD Wolf, Rift wolf level 3 */,
-(6112, 'Green Wyrmling', 17, '7d8+7', 3, 'Rend', 2, 4, '1d10+2', 2, 450, 2, 3, 1, 2, 2, 1, 'slashing', '1d6', 'poison', '', 'poison', '', 'medium', 'dragon', '50') /* SRD Green Dragon Wyrmling, Rift dragon level 25 */,
-(6115, 'Shargugh', 15, '4d4', 4, 'Needle Sword', 1, 6, '1d4+4', 0.25, 50, -4, 4, 0, 2, 1, 0, 'piercing', NULL, NULL, '', '', '', 'tiny', 'fey', '') /* SRD Sprite, Rift human level 10 */,
-(6116, 'Elder Druid', 13, '8d8+8', 1, 'Vine Staff', 2, 5, '1d8+3', 2, 450, 0, 1, 1, 1, 3, 0, 'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid', '7') /* SRD Druid, Rift human level 17 */
+INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, perception, aggressive, gear) VALUES
+(6000, 'John The Lumberjack', 10, '1d8', 0, 'Club', 1, 2, '1d4', 0, 10, 0, 0, 0, 0, 0, 0, 'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, FALSE, '11') /* SRD Commoner, Rift human level 6 */,
+(6002, 'Brown Bear', 11, '3d10+6', 1, 'Bite', 2, 5, '1d8+3', 1, 200, 3, 1, 2, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'large', 'beast', 13, FALSE, '') /* SRD Brown Bear, Rift bear level 8 */,
+(6004, 'Fallow Deer', 13, '1d8', 3, 'Ram', 1, 2, '1d4', 0, 10, 0, 3, 0, -4, 2, -3, 'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast', 14, FALSE, '') /* SRD Deer, Rift human level 2 */,
+(6005, 'Brown Fox', 12, '1d6', 2, 'Bite', 1, 1, '1d4-1', 0, 10, -1, 2, 0, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 15, FALSE, '') /* SRD Jackal, Rift fox level 2 */,
+(6100, 'Vicious Warg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1, 'piercing', NULL, NULL, '', '', '', 'large', 'fey', 14, TRUE, '') /* SRD Worg, Rift human level 5 */,
+(6101, 'Ferocious Warg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1, 'piercing', NULL, NULL, '', '', '', 'large', 'fey', 14, TRUE, '') /* SRD Worg, Rift human level 5 */,
+(6102, 'Large, Grey Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'medium', 'beast', 15, TRUE, '') /* SRD Wolf, Rift wolf level 3 */,
+(6103, 'Large, Black Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2, 'piercing', NULL, NULL, '', '', '', 'medium', 'beast', 15, TRUE, '') /* SRD Wolf, Rift wolf level 3 */,
+(6112, 'Green Wyrmling', 17, '7d8+7', 3, 'Rend', 2, 4, '1d10+2', 2, 450, 2, 3, 1, 2, 2, 1, 'slashing', '1d6', 'poison', '', 'poison', '', 'medium', 'dragon', 14, TRUE, '50') /* SRD Green Dragon Wyrmling, Rift dragon level 25 */,
+(6115, 'Shargugh', 15, '4d4', 4, 'Needle Sword', 1, 6, '1d4+4', 0.25, 50, -4, 4, 0, 2, 1, 0, 'piercing', NULL, NULL, '', '', '', 'tiny', 'fey', 13, FALSE, '') /* SRD Sprite, Rift human level 10 */,
+(6116, 'Elder Druid', 13, '8d8+8', 1, 'Vine Staff', 2, 5, '1d8+3', 2, 450, 0, 1, 1, 1, 3, 0, 'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid', 15, TRUE, '7') /* SRD Druid, Rift human level 17 */
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
     str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
     wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
     extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
-    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, gear = new.gear;
+    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, perception = new.perception,
+    aggressive = new.aggressive, gear = new.gear;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES

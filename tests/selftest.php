@@ -190,7 +190,8 @@ try {
         }
     }
     check(says(run_command(hero('Testa'), 'help'), 'say <text>'), 'help lists commands');
-    q("UPDATE users SET resting = NULL, rest_until = NULL WHERE name = 'Testa'"); // the loop above ran 'rest'
+    // the loop above ran 'rest' and 'sneak'
+    q("UPDATE users SET resting = NULL, rest_until = NULL, sneaking = FALSE WHERE name = 'Testa'");
 
     // help, Tab and the buttons hide exactly the features a hero's own handler refuses, for every class and level.
     $help = run_command(hero('Testa'), 'help');
@@ -1582,6 +1583,88 @@ try {
         "Cloud's Jaunt: a Goliath flees without a roll");
     q('UPDATE spawns SET conditions = \'\' WHERE id = 9999');
 
+    // Aggro and stealth (Sly, a Dwarf Rogue, Criminal: proficient in Stealth; Leather Armor, Shortsword). Room 2 has
+    // the dummy (passive Perception 10) and a Lurker that attacks whoever it sees come in (12).
+    $hero('Sly', 'rogue', 'dwarf', 'criminal');
+    q("INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
+        con_save, int_save, wis_save, cha_save, damage_type, perception, aggressive)
+        VALUES (9998, 'Lurker', 10, '2d6', 0, 'Club', 1, 3, '1d4', 0.125, 25, 0, 0, 0, 0, 0, 0, 'bludgeoning', 12,
+        TRUE)");
+    q('INSERT INTO spawns (id, room_id, monster_id, hp, max_hp) VALUES (9998, 2, 9998, 30, 30)');
+    $stealth = skill_bonus(with_stats(hero('Sly')), 'stealth');
+    $away = fn (bool $sneak = false) => q(
+        "UPDATE users SET fighting = NULL, foe_first = FALSE, room_id = 1, sneaking = ? WHERE name = 'Sly'",
+        [(int) $sneak]
+    );
+    $away();
+    $dice_queue = [10, 5]; // initiative: I go first, so it doesn't swing yet
+    $out = run_command(hero('Sly'), 'n');
+    check(says($out, 'The Lurker attacks you! Initiative: you ') && says($out, ', it 5.') && !says($out, 'Club')
+        && hero('Sly')['fighting'] === 9998 && hero('Sly')['foe_first'] === 0 && $dice_queue === [],
+        'an aggressive monster attacks a hero it sees come in');
+    $away();
+    $dice_queue = [1, 20, 2]; // initiative: it goes first and swings now (a natural 2 misses)
+    $out = run_command(hero('Sly'), 'n');
+    check(says($out, "The Lurker's Club misses you") && hero('Sly')['foe_first'] === 0 && $dice_queue === [],
+        'winning Initiative it attacks at once, and the hero acts first after that');
+    $away();
+    q("UPDATE users SET level = 6 WHERE name = 'Sly'");
+    check(!says(run_command(hero('Sly'), 'n'), 'attacks you') && hero('Sly')['fighting'] === null,
+        'it leaves a hero more than 5 levels above its CR alone');
+    q("UPDATE users SET level = 1 WHERE name = 'Sly'");
+    check(in_array('sneak', actions(hero('Sly')), true) && !in_array('sneak', actions(hero('Testa') + ['room_id' => 1]),
+        true), 'a sneak button outside safe rooms');
+    $away();
+    check(says(run_command(hero('Sly'), 'sneak'), 'You move quietly') && hero('Sly')['sneaking'] === 1,
+        'sneak turns sneaking on');
+    $dice_queue = [2, 10, 5];
+    $out = run_command(hero('Sly'), 'n');
+    check(says($out, '(Stealth ' . (2 + $stealth) . ': too loud to hide.)') && says($out, 'The Lurker attacks you!')
+        && $dice_queue === [], 'a Stealth check under 15 hides nothing');
+    check(says($out, 'You stop sneaking.') && hero('Sly')['sneaking'] === 0, 'a fight ends sneaking');
+    check(says(run_command(hero('Sly'), 'sneak'), "can't sneak in the middle of a fight"), 'no sneaking in a fight');
+    $away(true);
+    q('UPDATE monsters SET perception = 25 WHERE id = 9998');
+    $dice_queue = [15, 10, 5];
+    $out = run_command(hero('Sly'), 'n');
+    check(says($out, '(Stealth ' . (15 + $stealth) . ': the Lurker notices you.)')
+        && says($out, 'The Lurker attacks you!') && $dice_queue === [],
+        'a passive Perception as high as the check spots the hero');
+    q('UPDATE monsters SET perception = 12 WHERE id = 9998');
+    $away(true);
+    $dice_queue = [15];
+    $out = run_command(hero('Sly'), 'n');
+    check(says($out, '(Stealth ' . (15 + $stealth) . ': nothing here notices you.)') && !says($out, 'attacks you')
+        && hero('Sly')['stealth'] === 15 + $stealth && hero('Sly')['fighting'] === null,
+        'sneaking past passive Perception: no attack');
+    check(says(run_command(hero('Sly'), 'score'), 'hidden (Stealth ' . (15 + $stealth) . ')'), 'score shows it');
+    // Initiative with Advantage (3, 12) against Disadvantage (15, 2); the attack with Advantage (4, 14); Shortsword
+    // 1d6 3, Sneak Attack 1d6 2; the Club a natural 1.
+    $dice_queue = [3, 12, 15, 2, 4, 14, 3, 2, 1];
+    $out = run_command(hero('Sly'), 'kill lurker');
+    check(says($out, "You attack the Lurker from hiding! It's surprised. Initiative: you ")
+        && says($out, ', with Advantage, it 2, with Disadvantage.') && says($out, ', with Advantage) for ')
+        && says($out, 'with Sneak Attack') && hero('Sly')['stealth'] === null && hero('Sly')['sneaking'] === 0
+        && $dice_queue === [],
+        'attacking from hiding: Advantage on Initiative and the first attack, the monster surprised; it ends sneaking');
+    q("UPDATE users SET hp = 1, sneaking = TRUE, advantage = FALSE WHERE name = 'Sly'"); // as if left on somehow
+    $dice_queue = [1, 20, 1, 1]; // a natural 1; the Club crits for 2
+    check(says(run_command(hero('Sly'), 'kill'), 'You have died!') && hero('Sly')['room_id'] === START_ROOM
+        && hero('Sly')['sneaking'] === 0 && $dice_queue === [], 'waking in town ends sneaking');
+    $away(true);
+    q('UPDATE spawns SET dead_since = NOW() WHERE id = 9998');
+    $dice_queue = [1, 2]; // the dummy is the only monster: 1 on the check; it isn't aggressive
+    check(says(run_command(hero('Sly'), 'n'), '(Stealth ' . (1 + $stealth) . ': too loud to hide.)')
+        && hero('Sly')['fighting'] === null && $dice_queue === [2], 'a monster that is not aggressive never attacks');
+    $dice_queue = [];
+    check(with_stats(hero('Testa'))['noisy'] && !with_stats(hero('Sly'))['noisy'],
+        "Chain Mail gives Disadvantage on Stealth, Leather Armor doesn't");
+    check(says(run_command(hero('Sly'), 'sneak'), 'You stop sneaking.') && hero('Sly')['sneaking'] === 0,
+        'sneak again stops');
+    run_command(hero('Sly'), 'sneak');
+    check(says(run_command(hero('Sly'), 'say psst'), 'You stop sneaking.') && hero('Sly')['sneaking'] === 0
+        && !says(run_command(hero('Sly'), 'say hello'), 'sneaking'), 'speaking ends sneaking');
+
     // Hirelings (Hire, a Fighter: Greatsword +4, 2d6+2). A Guard: AC 16, 11 HP, Spear +3 for 1d6+1.
     save_account('Hire', 'correct horse');
     create('Hire', 'fighter');
@@ -1682,6 +1765,10 @@ try {
         'the priests want their donation');
 
     // Converted areas (db/areas/*.sql). Kobold Mines hangs off the Southern Fields.
+    check(q('SELECT id, aggressive FROM monsters WHERE id IN (24700, 6002, 6000) ORDER BY id')
+        ->fetchAll(PDO::FETCH_KEY_PAIR) === [6000 => 0, 6002 => 0, 24700 => 1],
+        "Riftshadow's aggressive monsters are, unless they start asleep (the Brown Bear)");
+    q('UPDATE monsters SET aggressive = FALSE'); // so walking through the areas and the Delve starts no fights
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 's'), 'Within a Dark Crevice'), 'Southern Fields lead south to Kobold Mines');
     check(says(run_command(hero('Testa'), 'd'), 'Exits: east west up down'), 'converted exits inside the area');

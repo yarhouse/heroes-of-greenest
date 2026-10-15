@@ -62,159 +62,163 @@ INSERT INTO delve (seed) VALUES (0);
 -- Greenest's own monsters start at 1001 and copy an SRD stat block as noted.
 DELETE FROM spawns;
 -- Saves are each stat block's SAVE column, Str Dex Con Int Wis Cha. The second line: the attack's damage type, any
--- extra damage and its type, then Resistances, Immunities and Vulnerabilities to damage, then size and type.
+-- extra damage and its type, then Resistances, Immunities and Vulnerabilities to damage, then size and type, then its
+-- passive Perception and whether it's aggressive, attacking a hero it sees come in: 1-16 (the Delve's monsters) and the
+-- kobolds raiding the Southern Fields are. The converter sets it from Riftshadow instead.
 INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save,
     con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities,
-    vulnerabilities, size, type) VALUES
+    vulnerabilities, size, type, perception, aggressive) VALUES
 (1, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,                 -- p.353
-    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, TRUE),
 (2, 'Kobold Warrior', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,      -- p.302
-    'piercing', NULL, NULL, '', '', '', 'small', 'dragon'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon', 8, TRUE),
 (3, 'Goblin Minion', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1,           -- p.290
-    'piercing', NULL, NULL, '', '', '', 'small', 'fey'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'fey', 9, TRUE),
 (4, 'Bandit', 12, '2d8+2', 1, 'Scimitar', 1, 3, '1d6+1', 0.125, 25, 0, 1, 1, 0, 0, 0,                 -- p.261
-    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, TRUE),
 (5, 'Goblin Warrior', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1,         -- p.290
-    'slashing', NULL, NULL, '', '', '', 'small', 'fey'),
+    'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, TRUE),
 (6, 'Wolf', 12, '2d8+2', 2, 'Bite', 1, 4, '1d6+2', 0.25, 50, 2, 2, 1, -4, 1, -2,                      -- p.364
-    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast', 15, TRUE),
 (7, 'Skeleton', 14, '2d8+4', 3, 'Shortsword', 1, 5, '1d6+3', 0.25, 50, 0, 3, 2, -2, -1, -3,           -- p.325
-    'piercing', NULL, NULL, '', 'poison', 'bludgeoning', 'medium', 'undead'),
+    'piercing', NULL, NULL, '', 'poison', 'bludgeoning', 'medium', 'undead', 9, TRUE),
 (8, 'Zombie', 8, '2d8+6', -2, 'Slam', 1, 3, '1d8+1', 0.25, 50, 1, -2, 3, -4, 0, -3,                   -- p.343
-    'bludgeoning', NULL, NULL, '', 'poison', '', 'medium', 'undead'),
+    'bludgeoning', NULL, NULL, '', 'poison', '', 'medium', 'undead', 8, TRUE),
 (9, 'Hobgoblin Warrior', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1,    -- p.298
-    'slashing', NULL, NULL, '', '', '', 'medium', 'fey'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'fey', 10, TRUE),
 (10, 'Gnoll Warrior', 15, '6d8', 1, 'Rend', 1, 4, '1d6+2', 0.5, 100, 2, 1, 0, -2, 0, -2,              -- p.289
-    'piercing', NULL, NULL, '', '', '', 'medium', 'fiend'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'fiend', 10, TRUE),
 (11, 'Goblin Boss', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0,               -- p.290
-    'slashing', NULL, NULL, '', '', '', 'small', 'fey'),
+    'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, TRUE),
 (12, 'Bugbear Warrior', 14, '6d8+6', 2, 'Light Hammer', 1, 4, '3d4+2', 1, 200, 2, 2, 1, -1, 0, -1,    -- p.272
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'fey'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'fey', 10, TRUE),
 (13, 'Ogre', 11, '8d10+24', -1, 'Greatclub', 1, 6, '2d8+4', 2, 450, 4, -1, 3, -3, -2, -2,             -- p.312
-    'bludgeoning', NULL, NULL, '', '', '', 'large', 'giant'),
+    'bludgeoning', NULL, NULL, '', '', '', 'large', 'giant', 8, TRUE),
 (14, 'Bandit Captain', 15, '8d8+16', 3, 'Scimitar', 2, 5, '1d6+3', 2, 450, 4, 5, 2, 2, 2, 2,          -- p.261
-    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, TRUE),
 (15, 'Hobgoblin Captain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1,     -- p.299
-    'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey'),
+    'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey', 10, TRUE),
 (16, 'Troll', 15, '9d10+45', 1, 'Rend', 3, 7, '2d6+4', 5, 1800, 4, 1, 5, -2, -1, -2,                  -- p.333
-    'slashing', NULL, NULL, '', '', '', 'large', 'giant'),
+    'slashing', NULL, NULL, '', '', '', 'large', 'giant', 15, TRUE),
 (17, 'Boar', 11, '2d8+4', 0, 'Gore', 1, 3, '1d6+1', 0.25, 50, 1, 0, 2, -4, -1, -3,                    -- p.346
-    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast', 9, FALSE),
 (18, 'Panther', 13, '3d8', 3, 'Rend', 1, 5, '1d6+3', 0.25, 50, 2, 3, 0, -4, 2, -2,                    -- p.358
-    'slashing', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'beast', 14, FALSE),
 (19, 'Riding Horse', 11, '2d10+2', 1, 'Hooves', 1, 5, '1d8+3', 0.25, 50, 3, 1, 1, -4, 0, -2,          -- p.360
-    'bludgeoning', NULL, NULL, '', '', '', 'large', 'beast'),
+    'bludgeoning', NULL, NULL, '', '', '', 'large', 'beast', 10, FALSE),
 (20, 'Black Bear', 11, '3d8+6', 1, 'Rend', 2, 4, '1d6+2', 0.5, 100, 2, 1, 2, -4, 1, -2,               -- p.345
-    'slashing', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'beast', 15, FALSE),
 (21, 'Ape', 12, '3d8+6', 2, 'Fist', 2, 5, '1d4+3', 0.5, 100, 3, 2, 2, -2, 1, -2,                      -- p.344
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast', 13, FALSE),
 (22, 'Dire Wolf', 14, '3d10+6', 2, 'Bite', 1, 5, '1d10+3', 1, 200, 3, 2, 2, -4, 1, -2,                -- p.347
-    'piercing', NULL, NULL, '', '', '', 'large', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'large', 'beast', 15, FALSE),
 (23, 'Giant Spider', 14, '4d10+4', 3, 'Bite', 1, 5, '1d8+3', 1, 200, 2, 3, 1, -4, 0, -3,              -- p.353
-    'piercing', '2d6', 'poison', '', '', '', 'large', 'beast'),
+    'piercing', '2d6', 'poison', '', '', '', 'large', 'beast', 14, FALSE),
 (24, 'Brown Bear', 11, '3d10+6', 1, 'Bite', 2, 5, '1d8+3', 1, 200, 3, 1, 2, -4, 1, -2,                -- p.346
-    'piercing', NULL, NULL, '', '', '', 'large', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'large', 'beast', 13, FALSE),
 (25, 'Deer', 13, '1d8', 3, 'Ram', 1, 2, '1d4', 0, 10, 0, 3, 0, -4, 2, -3,                              -- p.347
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'beast', 14, FALSE),
 (26, 'Jackal', 12, '1d6', 2, 'Bite', 1, 1, '1d4-1', 0, 10, -1, 2, 0, -4, 1, -2,                        -- p.356
-    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast', 15, FALSE),
 (27, 'Worg', 13, '4d10+4', 1, 'Bite', 1, 5, '1d8+3', 0.5, 100, 3, 1, 1, -2, 0, -1,                     -- p.342
-    'piercing', NULL, NULL, '', '', '', 'large', 'fey'),
+    'piercing', NULL, NULL, '', '', '', 'large', 'fey', 14, FALSE),
 (28, 'Green Dragon Wyrmling', 17, '7d8+7', 3, 'Rend', 2, 4, '1d10+2', 2, 450, 2, 3, 1, 2, 2, 1,        -- p.293
-    'slashing', '1d6', 'poison', '', 'poison', '', 'medium', 'dragon'),
+    'slashing', '1d6', 'poison', '', 'poison', '', 'medium', 'dragon', 14, FALSE),
 (29, 'Commoner', 10, '1d8', 0, 'Club', 1, 2, '1d4', 0, 10, 0, 0, 0, 0, 0, 0,                           -- p.275
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, FALSE),
 (30, 'Druid', 13, '8d8+8', 1, 'Vine Staff', 2, 5, '1d8+3', 2, 450, 0, 1, 1, 1, 3, 0,                   -- p.282
-    'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', '1d4', 'poison', '', '', '', 'medium', 'humanoid', 15, FALSE),
 (31, 'Sprite', 15, '4d4', 4, 'Needle Sword', 1, 6, '1d4+4', 0.25, 50, -4, 4, 0, 2, 1, 0,               -- p.329
-    'piercing', NULL, NULL, '', '', '', 'tiny', 'fey'),
+    'piercing', NULL, NULL, '', '', '', 'tiny', 'fey', 13, FALSE),
 (32, 'Guard', 16, '2d8+2', 1, 'Spear', 1, 3, '1d6+1', 0.125, 25, 1, 1, 1, 0, 0, 0,                     -- p.296
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 12, FALSE),
 (33, 'Guard Captain', 18, '10d8+30', 4, 'Longsword', 2, 6, '2d10+4', 4, 1100, 4, 2, 3, 1, 2, 1,        -- p.296
-    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid', 14, FALSE),
 (34, 'Cultist', 12, '2d8', 1, 'Ritual Sickle', 1, 3, '1d4+1', 0.125, 25, 0, 1, 0, 0, 2, 0,             -- p.278
-    'slashing', '1', 'necrotic', '', '', '', 'medium', 'humanoid'),
+    'slashing', '1', 'necrotic', '', '', '', 'medium', 'humanoid', 10, FALSE),
 (35, 'Cultist Fanatic', 13, '8d8+8', 2, 'Pact Blade', 1, 4, '1d8+2', 2, 450, 0, 2, 1, 0, 4, 1,         -- p.278
-    'slashing', '2d6', 'necrotic', '', '', '', 'medium', 'humanoid'),
+    'slashing', '2d6', 'necrotic', '', '', '', 'medium', 'humanoid', 12, FALSE),
 (36, 'Priest Acolyte', 13, '2d8+2', 0, 'Mace', 1, 4, '1d6+2', 0.25, 50, 2, 0, 1, 0, 2, 0,              -- p.316
-    'bludgeoning', '1d4', 'radiant', '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', '1d4', 'radiant', '', '', '', 'medium', 'humanoid', 12, FALSE),
 (37, 'Priest', 13, '7d8+7', 0, 'Mace', 2, 5, '1d6+3', 2, 450, 3, 0, 1, 1, 3, 1,                        -- p.316
-    'bludgeoning', '2d4', 'radiant', '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', '2d4', 'radiant', '', '', '', 'medium', 'humanoid', 15, FALSE),
 (38, 'Mage', 15, '18d8', 2, 'Arcane Burst', 3, 6, '3d8+3', 6, 2300, -1, 2, 0, 6, 4, 0,                 -- p.305
-    'force', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'force', NULL, NULL, '', '', '', 'medium', 'humanoid', 14, FALSE),
 (39, 'Scout', 13, '3d8+3', 2, 'Shortsword', 2, 4, '1d6+2', 0.5, 100, 0, 2, 1, 0, 1, 0,                 -- p.322
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 15, FALSE),
 (40, 'Spy', 12, '6d8', 4, 'Shortsword', 1, 4, '1d6+2', 1, 200, 0, 2, 0, 1, 2, 3,                       -- p.329
-    'piercing', '2d6', 'poison', '', '', '', 'medium', 'humanoid'),
+    'piercing', '2d6', 'poison', '', '', '', 'medium', 'humanoid', 16, FALSE),
 (41, 'Tough', 12, '5d8+10', 1, 'Mace', 1, 4, '1d6+2', 0.5, 100, 2, 1, 2, 0, 0, 0,                      -- p.332
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, FALSE),
 (42, 'Tough Boss', 16, '11d8+33', 2, 'Warhammer', 2, 5, '2d8+3', 4, 1100, 5, 2, 5, 0, 0, 2,            -- p.332
-    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'bludgeoning', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, FALSE),
 (43, 'Knight', 18, '8d8+16', 0, 'Greatsword', 2, 5, '2d6+3', 3, 700, 3, 0, 4, 0, 2, 2,                 -- p.302
-    'slashing', '1d8', 'radiant', '', '', '', 'medium', 'humanoid'),
+    'slashing', '1d8', 'radiant', '', '', '', 'medium', 'humanoid', 10, FALSE),
 (44, 'Noble', 15, '2d8', 1, 'Rapier', 1, 3, '1d8+1', 0.125, 25, 0, 1, 0, 1, 2, 3,                      -- p.312
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 12, FALSE),
 (45, 'Pirate', 14, '6d8+6', 5, 'Dagger', 2, 5, '1d4+3', 1, 200, 0, 5, 1, -1, 1, 4,                     -- p.314
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 11, FALSE),
 (46, 'Pirate Captain', 17, '13d8+26', 7, 'Rapier', 3, 7, '2d8+4', 6, 2300, 3, 7, 2, 0, 5, 6,           -- p.314
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 15, FALSE),
 (47, 'Warrior Infantry', 13, '2d8', 0, 'Spear', 1, 3, '1d6+1', 0.125, 25, 1, 0, 0, -1, 0, -1,          -- p.336
-    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'humanoid', 10, FALSE),
 (48, 'Warrior Veteran', 17, '10d8+20', 3, 'Greatsword', 2, 5, '2d6+3', 3, 700, 3, 1, 2, 0, 0, 0,       -- p.337
-    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'humanoid', 12, FALSE),
 (49, 'Bat', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -4, 1, -3,                            -- p.345
-    'piercing', NULL, NULL, '', '', '', 'tiny', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'tiny', 'beast', 11, FALSE),
 (50, 'Spider', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -5, 0, -4,                         -- p.361
-    'piercing', '1d4', 'poison', '', '', '', 'tiny', 'beast'),
+    'piercing', '1d4', 'poison', '', '', '', 'tiny', 'beast', 10, FALSE),
 (51, 'Giant Fire Beetle', 13, '1d6+1', 0, 'Bite', 1, 1, '1', 0, 10, -1, 0, 1, -5, -2, -4,              -- p.351
-    'fire', NULL, NULL, 'fire', '', '', 'small', 'beast'),
+    'fire', NULL, NULL, 'fire', '', '', 'small', 'beast', 8, FALSE),
 (52, 'Swarm of Insects', 11, '3d8+6', 1, 'Bites', 1, 3, '2d4+1', 0.5, 100, -4, 1, 2, -5, -2, -5,       -- p.361
-    'poison', NULL, NULL, 'bludgeoning,piercing,slashing', '', '', 'medium', 'beast'),
+    'poison', NULL, NULL, 'bludgeoning,piercing,slashing', '', '', 'medium', 'beast', 8, FALSE),
 (53, 'Venomous Snake', 12, '2d4', 2, 'Bite', 1, 4, '1d4+2', 0.125, 25, -4, 2, 0, -5, 0, -4,            -- p.363
-    'piercing', '1d6', 'poison', '', '', '', 'tiny', 'beast'),
+    'piercing', '1d6', 'poison', '', '', '', 'tiny', 'beast', 10, FALSE),
 (54, 'Ochre Jelly', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5,        -- p.312
-    'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze'),
+    'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze', 8, FALSE),
 (55, 'Homunculus', 13, '1d4+2', 2, 'Bite', 1, 4, '1', 0, 10, -3, 2, 2, 0, 2, 0,                        -- p.299
-    'piercing', NULL, NULL, '', 'poison', '', 'tiny', 'construct'),
+    'piercing', NULL, NULL, '', 'poison', '', 'tiny', 'construct', 10, FALSE),
 (56, 'Animated Armor', 18, '6d8+6', 2, 'Slam', 2, 4, '1d6+2', 1, 200, 2, 0, 1, -5, -4, -5,             -- p.259
-    'bludgeoning', NULL, NULL, '', 'poison,psychic', '', 'medium', 'construct'),
+    'bludgeoning', NULL, NULL, '', 'poison,psychic', '', 'medium', 'construct', 6, FALSE),
 (57, 'Shadow', 12, '5d8+5', 2, 'Draining Swipe', 1, 4, '1d6+2', 0.5, 100, -2, 2, 1, -2, 0, -1,         -- p.322
-    'necrotic', NULL, NULL, 'acid,cold,fire,lightning,thunder', 'necrotic,poison', 'radiant', 'medium', 'undead'),
+    'necrotic', NULL, NULL, 'acid,cold,fire,lightning,thunder', 'necrotic,poison', 'radiant', 'medium', 'undead',
+    10, FALSE),
 (58, 'Red Dragon Wyrmling', 17, '10d8+30', 2, 'Rend', 2, 6, '1d10+4', 4, 1100, 4, 2, 3, 1, 2, 2,       -- p.318
-    'slashing', '1d6', 'fire', '', 'fire', '', 'medium', 'dragon'),
+    'slashing', '1d6', 'fire', '', 'fire', '', 'medium', 'dragon', 14, FALSE),
 (59, 'Sea Hag', 14, '7d8+21', 1, 'Claw', 1, 5, '2d6+3', 2, 450, 3, 1, 3, 1, 1, 1,                      -- p.322
-    'slashing', NULL, NULL, '', '', '', 'medium', 'fey'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'fey', 11, FALSE),
 (60, 'Giant Constrictor Snake', 12, '8d12+8', 2, 'Bite', 1, 6, '2d6+4', 2, 450, 4, 2, 1, -5, 0, -4,    -- p.350
-    'piercing', NULL, NULL, '', '', '', 'huge', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'huge', 'beast', 12, FALSE),
 (61, 'Basilisk', 15, '8d8+16', -1, 'Bite', 1, 5, '2d6+3', 3, 700, 3, -1, 2, -4, -1, -2,                -- p.262
-    'piercing', '2d6', 'poison', '', '', '', 'medium', 'monstrosity'),
+    'piercing', '2d6', 'poison', '', '', '', 'medium', 'monstrosity', 9, FALSE),
 (62, 'Lemure', 9, '2d8', -3, 'Vile Slime', 1, 2, '1d4', 0, 10, 0, -3, 0, -5, 0, -4,                    -- p.304
-    'poison', NULL, NULL, 'cold', 'fire,poison', '', 'medium', 'fiend'),
+    'poison', NULL, NULL, 'cold', 'fire,poison', '', 'medium', 'fiend', 10, FALSE),
 (63, 'Ettin', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1,            -- p.284
-    'slashing', NULL, NULL, '', '', '', 'large', 'giant'),
+    'slashing', NULL, NULL, '', '', '', 'large', 'giant', 14, FALSE),
 (64, 'Darkmantle', 11, '5d6+5', 3, 'Crush', 1, 5, '1d6+3', 0.5, 100, 3, 1, 1, -4, 0, -3,               -- p.278
-    'bludgeoning', NULL, NULL, '', '', '', 'small', 'aberration'),
+    'bludgeoning', NULL, NULL, '', '', '', 'small', 'aberration', 10, FALSE),
 (65, 'Grick', 14, '12d8', 2, 'Beak', 2, 4, '2d6+2', 2, 450, 2, 2, 0, -4, 2, -3,                        -- p.295
-    'piercing', NULL, NULL, '', '', '', 'medium', 'aberration'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'aberration', 12, FALSE),
 (66, 'Otyugh', 14, '11d10+44', 0, 'Tentacle', 3, 6, '2d8+3', 5, 1800, 3, 0, 7, -2, 1, -2,              -- p.313
-    'piercing', NULL, NULL, '', '', '', 'large', 'aberration'),
+    'piercing', NULL, NULL, '', '', '', 'large', 'aberration', 11, FALSE),
 (67, 'Wererat', 13, '11d8+11', 3, 'Scratch', 2, 5, '1d6+3', 2, 450, 0, 3, 1, 0, 0, -1,                 -- p.338
-    'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity'),
+    'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity', 14, FALSE),
 (68, 'Mastiff', 12, '1d8+1', 2, 'Bite', 1, 3, '1d6+1', 0.125, 25, 1, 2, 1, -4, 3, -2,                  -- p.357
-    'piercing', NULL, NULL, '', '', '', 'medium', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'medium', 'beast', 15, FALSE),
 (1001, 'Giant Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3,              -- SRD Giant Rat
-    'piercing', NULL, NULL, '', '', '', 'small', 'beast'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE),
 (1002, 'Kobold', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1,           -- SRD Kobold Warrior
-    'piercing', NULL, NULL, '', '', '', 'small', 'dragon'),
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon', 8, TRUE),
 (1003, 'Kobold Skirmisher', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1, -- SRD Kobold Warrior
-    'piercing', NULL, NULL, '', '', '', 'small', 'dragon')
+    'piercing', NULL, NULL, '', '', '', 'small', 'dragon', 8, TRUE)
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
     str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
     wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
     extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
-    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type;
+    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, perception = new.perception,
+    aggressive = new.aggressive;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES

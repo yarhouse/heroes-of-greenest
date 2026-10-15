@@ -8,8 +8,9 @@ declare(strict_types=1);
 // links Greenest room 6 south to area room 24600, and 24600 back the opposite way.
 //
 // Kept: room text, exits inside the area, the monsters each reset places and the gear resets hand them (weapons, body
-// armor and shields, as the SRD items they're closest to). Dropped: doors and keys, traps, extra descriptions, scripts
-// and flags, floor objects, and gear the SRD items don't cover (helms, rings, potions...).
+// armor and shields, as the SRD items they're closest to), and which monsters are aggressive. Dropped: doors and keys,
+// traps, extra descriptions, scripts and other flags, floor objects, and gear the SRD items don't cover (helms, rings,
+// potions...).
 // Riftshadow ids (vnums) are kept as ids; Greenest's own content stays below 1001 and 24000 isn't used.
 
 if (PHP_SAPI !== 'cli') {
@@ -178,6 +179,8 @@ foreach (records($sec['MOBS']) as $vnum => $body) {
         'race' => preg_split('/\s+/', trim($s[4]))[3] ?? '',
         'level' => (int) $s[5],
         'gear' => [],
+        // Rift's aggressive monsters attack only while awake, so one that starts asleep never does.
+        'aggressive' => preg_match('/^ACT AGGRESSIVE$/m', $s[5]) && !preg_match('/^sleeping /m', $s[5]),
     ];
 }
 
@@ -350,6 +353,7 @@ foreach (array_keys($used_mobs) as $vnum) {
     $r = borrow($m, $srd);
     $srd_name = str_replace("''", "'", substr($r['name'], 1, -1));
     $r = ['id' => $vnum, 'name' => str($m['name'])] + $r + ['gear' => str(gear($m['gear'], $items))];
+    $r['aggressive'] = $m['aggressive'] ? 'TRUE' : 'FALSE';
     $sql_mobs[] = '(' . implode(', ', $r) . ") /* SRD $srd_name, Rift {$m['race']} level {$m['level']} */";
 }
 
@@ -366,6 +370,7 @@ echo <<<SQL
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
 -- Monster stats are SRD stat blocks by Riftshadow race (the converter's CREATURES), else nearest CR = level / 12.
+-- A monster is aggressive if Riftshadow's is and it starts awake.
 -- A monster's gear is the SRD items its Riftshadow gear maps to; a kill's loot comes from it.
 SET NAMES utf8mb4;
 

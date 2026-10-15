@@ -332,6 +332,7 @@ const COMMANDS = [
     'west' => 'move west (or w)',
     'up' => 'move up (or u)',
     'down' => 'move down (or d)',
+    'sneak' => 'move quietly, or stop: a Stealth check as you enter a room with monsters can keep them from seeing you',
     'kill <monster>' => 'attack; one round per command (or k)',
     'reckless <monster>' => 'Barbarian 2: attack with Advantage, but attacks on you get it too',
     'shove <monster>' => 'knock a foe Prone, in place of one attack: attacks on it get Advantage',
@@ -613,6 +614,7 @@ function run_command(array $me, string $input): array
     $out = match (true) {
         $verb === '' => [],
         in_array($verb, DIRS, true) => cmd_move($me, $verb),
+        $verb === 'sneak' => cmd_sneak($me),
         $verb === 'l' || $verb === 'look' || $verb === 'inspect' => trim($arg) === '' ? cmd_look($me)
             : cmd_inspect($me, trim($arg)),
         $verb === 'ask' || $verb === 'speak' || $verb === 'talk' => cmd_ask($me, trim($arg)),
@@ -1119,8 +1121,69 @@ function cmd_move(array $me, string $dir): array
         delve_refresh();
     }
     q('UPDATE users SET room_id = ?, resting = NULL, rest_until = NULL WHERE id = ?', [$to, $me['id']]);
-    $stop = $me['resting'] !== null ? ['You stop resting.'] : [];
-    return [...$stop, ...cmd_look(['room_id' => (int) $to] + $me)];
+    $lines = $me['resting'] !== null ? ['You stop resting.'] : [];
+    $me['room_id'] = (int) $to;
+    array_push($lines, ...cmd_look($me));
+    arrive($me, $lines);
+    return $lines;
+}
+
+/**
+ * I've just come into my room. Sneaking, I make a Stealth check (Disadvantage in noisy armor): 15 or more hides me
+ * (the Hide action, SRD 5.2.1 p.183; shortcut: every room has cover), from every monster whose passive Perception is
+ * below it. The first aggressive monster that sees me attacks, unless I'm more than 5 levels above its CR (Riftshadow's
+ * rule, so the Southern Fields' kobolds leave veterans be). Monsters that come back while I'm here haven't seen me.
+ */
+function arrive(array &$me, array &$lines): void
+{
+    $monsters = room_monsters((int) $me['room_id']);
+    $me['stealth'] = null;
+    if ($me['sneaking'] && $monsters) {
+        $total = d20($me['noisy'] ? -1 : 0, lucky($me)) + skill_bonus($me, 'stealth');
+        $me['stealth'] = $total >= 15 ? $total : null;
+        $seen = array_unique(array_map(fn ($m) => "the {$m['name']}",
+            array_filter($monsters, fn ($m) => !hidden_from($me, $m))));
+        $lines[] = "(Stealth $total" . with($me['noisy'] ? -1 : 0) . ': ' . match (true) {
+            $me['stealth'] === null => 'too loud to hide.)',
+            $seen === [] => 'nothing here notices you.)',
+            default => implode(', ', $seen) . (count($seen) > 1 ? ' notice' : ' notices') . ' you.)',
+        };
+    }
+    q('UPDATE users SET stealth = ? WHERE id = ?', [$me['stealth'], $me['id']]);
+    foreach ($monsters as $foe) {
+        if ($foe['aggressive'] && !hidden_from($me, $foe) && $me['level'] <= (float) $foe['cr'] + 5) {
+            start_fight($me, $foe, $lines, "The {$foe['name']} attacks you!");
+            // If it won Initiative it has had its turn, so from here I go first each round.
+            $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
+            q('UPDATE users SET foe_first = FALSE WHERE id = ?', [$me['id']]);
+            if (!$over) {
+                $lines[] = fight_status($me, $foe);
+            }
+            return;
+        }
+    }
+}
+
+/** True if my Stealth total hides me from $foe: it's above its passive Perception. */
+function hidden_from(array $me, array $foe): bool
+{
+    return $me['stealth'] !== null && $me['stealth'] > $foe['perception'];
+}
+
+/** Turns sneaking on or off. It takes effect as I enter the next room; a fight, speaking or dying ends it. */
+function cmd_sneak(array $me): array
+{
+    if ($me['fighting'] !== null) {
+        return ["You can't sneak in the middle of a fight."];
+    }
+    q('UPDATE users SET sneaking = ?, stealth = NULL WHERE id = ?', [(int) !$me['sneaking'], $me['id']]);
+    if ($me['sneaking']) {
+        return ['You stop sneaking.'];
+    }
+    return ['You move quietly. Entering a room with monsters, a Stealth check of 15 or more hides you from those '
+        . "that don't notice it (their passive Perception). Attack one from hiding for Advantage on Initiative and "
+        . 'your first attack, and it may be surprised.',
+        ...($me['noisy'] ? ['Your armor is noisy: Disadvantage on Stealth.'] : [])];
 }
 
 /** Respawns monsters in the room whose timer ran out (rolling their HP), then returns the living ones, oldest first. */
@@ -1195,34 +1258,8 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
     $lines = [];
     $me['volley'] = $ranged && $me['fighting'] === null;
     if ($me['fighting'] === null) {
-        $mine = d20(0, lucky($me)) + mod($me['dexterity']) + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
-        $theirs = roll('1d20') + $foe['initiative'];
-        $me['foe_first'] = $theirs > $mine; // ties go to the hero
-        $me['fighting'] = $foe['id'];
-        q(
-            'UPDATE users SET fighting = ?, foe_first = ?, resting = NULL, rest_until = NULL WHERE id = ?',
-            [$foe['id'], (int) $me['foe_first'], $me['id']]
-        );
-        $lines[] = "You attack the {$foe['name']}! Initiative: you $mine, it $theirs.";
-        if ($me['class'] === 'monk' && $me['level'] >= 2) {
-            focus_on_initiative($me, $lines);
-        }
-        if ($me['class'] === 'bard' && $me['level'] >= 18 && $me['uses_spent'] > max(0, $me['uses'] - 2)) {
-            $me['uses_spent'] = max(0, $me['uses'] - 2); // Superior Inspiration
-            q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
-            $lines[] = 'Superior Inspiration: you have ' . ($me['uses'] - $me['uses_spent']) . ' Bardic Inspiration.';
-        }
-        // My effects from earlier fights now last only their own time, even if I'm back against the same spawn.
-        q('UPDATE effects SET during = NULL WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
-        $foe['effects'] = effects_on('spawn_id', $foe['id']);
-        // What's left on it from fights nobody is still in has worn off, and my own old hold is gone.
-        if (!q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch()) {
-            [$foe['conditions'], $foe['grappled_by']] = ['', null];
-        } elseif ($foe['grappled_by'] === $me['id']) {
-            $foe['grappled_by'] = null;
-        }
-        q('UPDATE spawns SET conditions = ?, grappled_by = ? WHERE id = ?',
-            [$foe['conditions'], $foe['grappled_by'], $foe['id']]);
+        $how = hidden_from($me, $foe) ? ' from hiding!' : '!';
+        start_fight($me, $foe, $lines, "You attack the {$foe['name']}$how");
     }
     // In a volley the foe spends this round closing in, so my shots go unanswered.
     $over = !$me['volley'] && $me['foe_first'] && monster_turn($me, $foe, $lines);
@@ -1246,11 +1283,61 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         $over = $over || (!$me['volley'] && !$me['foe_first'] && monster_turn($me, $foe, $lines));
     }
     if (!$over) {
-        $h = $me['hireling'];
-        $lines[] = "You: {$me['hp']}/{$me['max_hp']} HP.  "
-            . ($h ? "{$h['name']}: {$h['hp']}/{$h['max_hp']} HP.  " : '') . "{$foe['name']}: {$foe['hp']} HP.";
+        $lines[] = fight_status($me, $foe);
     }
     return $lines;
+}
+
+/** The line closing a round: everyone's HP. */
+function fight_status(array $me, array $foe): string
+{
+    $h = $me['hireling'];
+    return "You: {$me['hp']}/{$me['max_hp']} HP.  " . ($h ? "{$h['name']}: {$h['hp']}/{$h['max_hp']} HP.  " : '')
+        . "{$foe['name']}: {$foe['hp']} HP.";
+}
+
+/**
+ * Rolls Initiative against $foe, opening with the line $opening, and clears what's left of earlier fights. Hidden from
+ * it, I have Advantage on Initiative and my first attack roll (Invisible, SRD 5.2.1 p.184), and it's surprised unless
+ * already fighting: Disadvantage on its Initiative (p.13). Either way I'm seen, and stop sneaking. shortcut: the
+ * Advantage waits for my next attack roll even if I open with a spell that has none.
+ */
+function start_fight(array &$me, array &$foe, array &$lines, string $opening): void
+{
+    $unseen = hidden_from($me, $foe);
+    $surprised = $unseen && !q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
+    $mine = d20((int) $unseen, lucky($me)) + mod($me['dexterity']) + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
+    $theirs = d20($surprised ? -1 : 0) + $foe['initiative'];
+    $me['foe_first'] = $theirs > $mine; // ties go to the hero
+    $me['fighting'] = $foe['id'];
+    $me['advantage'] = $me['advantage'] || $unseen;
+    q(
+        'UPDATE users SET fighting = ?, foe_first = ?, advantage = ?, sneaking = FALSE, stealth = NULL, resting = NULL,
+         rest_until = NULL WHERE id = ?',
+        [$foe['id'], (int) $me['foe_first'], (int) $me['advantage'], $me['id']]
+    );
+    $lines[] = $opening . ($surprised ? " It's surprised." : '') . ' Initiative: you ' . $mine . with($unseen ? 1 : 0)
+        . ", it $theirs" . with($surprised ? -1 : 0) . '.' . ($me['sneaking'] ? ' You stop sneaking.' : '');
+    [$me['sneaking'], $me['stealth']] = [false, null];
+    if ($me['class'] === 'monk' && $me['level'] >= 2) {
+        focus_on_initiative($me, $lines);
+    }
+    if ($me['class'] === 'bard' && $me['level'] >= 18 && $me['uses_spent'] > max(0, $me['uses'] - 2)) {
+        $me['uses_spent'] = max(0, $me['uses'] - 2); // Superior Inspiration
+        q('UPDATE users SET uses_spent = ? WHERE id = ?', [$me['uses_spent'], $me['id']]);
+        $lines[] = 'Superior Inspiration: you have ' . ($me['uses'] - $me['uses_spent']) . ' Bardic Inspiration.';
+    }
+    // My effects from earlier fights now last only their own time, even if I'm back against the same spawn.
+    q('UPDATE effects SET during = NULL WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
+    $foe['effects'] = effects_on('spawn_id', $foe['id']);
+    // What's left on it from fights nobody is still in has worn off, and my own old hold is gone.
+    if (!q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch()) {
+        [$foe['conditions'], $foe['grappled_by']] = ['', null];
+    } elseif ($foe['grappled_by'] === $me['id']) {
+        $foe['grappled_by'] = null;
+    }
+    q('UPDATE spawns SET conditions = ?, grappled_by = ? WHERE id = ?',
+        [$foe['conditions'], $foe['grappled_by'], $foe['id']]);
 }
 
 /** My turn starts: every condition modeled so far ends here. */
@@ -1951,7 +2038,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             $me['hp'] = (int) ceil($me['max_hp'] / 4);
             q(
                 'UPDATE users SET hp = ?, temp_hp = 0, shape = NULL, gold = gold - gold DIV 2, ' . END_FIGHT
-                    . ', room_id = ? WHERE id = ?',
+                    . ', sneaking = FALSE, stealth = NULL, room_id = ? WHERE id = ?',
                 [$me['hp'], START_ROOM, $me['id']]
             );
             end_concentration($me);
@@ -3195,6 +3282,9 @@ function gear(array $me): array
     return [
         'ac' => $ac + ($worn['shield']['ac'] ?? 0),
         'armored' => $armor !== null,
+        // Disadvantage on Stealth (SRD 5.2.1 p.92): heavy armor, and Padded, Scale Mail and Half Plate (and their +1s)
+        'noisy' => $armor !== null && ($armor['armor'] === 'heavy'
+            || preg_match('/^(Padded Armor|Scale Mail|Half Plate Armor)\b/', $armor['name']) === 1),
         'shield_ac' => $worn['shield']['ac'] ?? 0,
         ...wielding($me, $worn['weapon'] ?? null, isset($worn['shield']) || isset($worn['offhand']), $arts),
         'offhand' => isset($worn['offhand']) ? wielding($me, $worn['offhand'], true, $arts) : null,
@@ -3755,6 +3845,7 @@ function hero_sheet(array $me): array
         'status' => array_values(array_filter([
             $me['raging'] ? 'raging' : null,
             $me['innate'] ? 'Innate Sorcery' : null,
+            $me['sneaking'] ? ($me['stealth'] !== null ? "hidden (Stealth {$me['stealth']})" : 'sneaking') : null,
             isset($me['shape_name']) ? "Wild Shape: {$me['shape_name']}" : null,
             $me['class'] === 'monk' && !$me['arts'] ? 'no Martial Arts' : null,
             ...explode(',', $me['conditions']),
@@ -3884,7 +3975,12 @@ function cmd_say(array $me, string $text): array
         return ['Say what?'];
     }
     q('INSERT INTO events (room_id, user_id, text) VALUES (?, ?, ?)', [$me['room_id'], $me['id'], $text]);
-    return ["You say: $text"];
+    if (!$me['sneaking']) {
+        return ["You say: $text"];
+    }
+    // Louder than a whisper ends hiding (the Hide action, SRD 5.2.1 p.183), so speaking ends sneaking too.
+    q('UPDATE users SET sneaking = FALSE, stealth = NULL WHERE id = ?', [$me['id']]);
+    return ["You say: $text", 'You stop sneaking.'];
 }
 
 function cmd_who(): array
@@ -3948,7 +4044,7 @@ function actions(array $me): array
         ...(objects_here('room_id', (int) $me['room_id']) ? ['get '] : []),
         ...array_values(array_intersect(DIRS, $exits)),
         ...$cast,
-        ...($safe ? ['rest', 'sleep'] : []),
+        ...($safe ? ['rest', 'sleep'] : ['sneak']),
         ...($me['room_id'] === LANTERN ? ['hire '] : []),
         ...(stock((int) $me['room_id']) ? ['list', 'buy ', 'sell '] : []),
         ...($me['room_id'] === TEMPLE ? ['list', 'pray '] : []),

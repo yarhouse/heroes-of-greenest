@@ -11,6 +11,10 @@ This repo copy is the source; the claude.ai Project holds a copy.
 - [ ] **More to inspect and more townsfolk.** Riftshadow's extra descriptions (`E` blocks, 67 in all) could become `features` rows in `convert-area.php`; NPCs in the dungeons (a captive, a hermit); townsfolk who react to `say` keywords as Riftshadow's and Luminari's speech triggers do; hooks the town now hints at (the dragon mark on kobold gear, the Fields of the Dead, Ysolde's interest in the Wood, the keep's bricked-up stair).
 - [ ] **Map fog of war.** Show a room's shape only once a hero has been next to it, and its contents only once inside. Needs a per-hero visited-rooms table.
 - [ ] **Autocomplete command arguments.** After `kill `, suggest the monsters in the room; likewise items for `get`/`drop`/`equip`/`drink`. Today `play.js` only completes command names, from `COMMANDS`.
+- [ ] **More aggro and stealth.** Aggressive monsters that join in while you stay (after you kill the first of two, the
+  other waits until you come back in); sleeping monsters that a noisy hero wakes (Rift's start-asleep aggressive ones
+  are simply peaceful today); a `hide` in the room you're in; monsters that ambush heroes (their Stealth against a
+  hero's passive Perception); Naturally Stealthy and Pass without Trace; skill proficiency from class choices.
 - [ ] **Monster traits.** Pack Tactics, Undead Fortitude and the other stat-block traits are ignored; monsters use their main attack × Multiattack.
 - [ ] **Deeper Delve.** Stairs to deeper floors with higher CR, more themes, rerolling when the boss dies.
 - [ ] **Adventuring gear in the shops.** Acid, Alchemist's Fire and Holy Water thrown in place of an attack (a
@@ -45,7 +49,8 @@ Costs, most expensive first: room layout content (Kobold Mines' 174 rooms, the D
 ### Open questions
 
 - [ ] Start with step 1, or go straight to a grid?
-- [ ] How far apart does a fight start? Fixed, by room size, or by which side you entered from? Surprise or stealth?
+- [ ] How far apart does a fight start? Fixed, by room size, or by which side you entered from? (Surprise and stealth
+  are in: a hidden hero could start closer.)
 - [ ] Command vocabulary: bundled turns (`kill` paths and swings, `shoot` stays put, `back off`, `cover`) and/or chess-style `move c3`?
 - [ ] Does `flee` stay a Dex contest, or become moving to an exit (Disengage or take the opportunity attack)?
 - [ ] Ammunition and thrown weapons: track arrows and bolts, and pick daggers and javelins back up after the fight (SRD recovers half the ammunition)?

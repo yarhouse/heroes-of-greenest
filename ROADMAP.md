@@ -73,3 +73,12 @@ Any time: **approve account requests** (friends ask on the login page):
   failure waits 24 hours (Influence's rule, used for all three), recorded in `checks`. The Lantern's ledger lists every
   hero. Seven townsfolk: Marta (the Lantern), Sergeant Hollis (the keep gate), Brannoc (smithy), Old Pell
   (apothecary), Ysolde Vane (curio loft), Sister Wren (temple) and Tamsin the miller.
+- 2026-10-15 **Aggro and stealth**, combining ArchaicQuest's, Riftshadow's and Luminari's: with no ticks, an aggressive
+  monster (`monsters.aggressive`) attacks when a hero comes into its room, not after; it leaves alone a hero more than
+  5 levels above its CR (Riftshadow's rule). If it wins Initiative it swings at once. `sneak` toggles a Stealth check on
+  entering a room with monsters: 15 or more (the Hide action's DC; every room counts as having cover) hides you from
+  each monster whose passive Perception (`monsters.perception`, from its stat block) is lower, and the total stays on
+  `users.stealth` until a fight starts. A fight, `say` or dying turns sneaking off (`sneak` refuses mid-fight).
+  Attacking from hiding is the Invisible condition's Advantage on Initiative and the first attack, and a monster nobody
+  is fighting yet is surprised. The Delve's monsters (1-16) and the Southern Fields' kobolds are aggressive; converted
+  areas follow Riftshadow's flag, unless the monster starts asleep.

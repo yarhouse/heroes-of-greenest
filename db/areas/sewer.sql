@@ -7,6 +7,7 @@
 -- Load after seed.sql (which clears every exit and spawn). Safe to re-run: updates rows in place and rebuilds this
 -- area's exits and spawns (respawning its monsters and ending fights in it), never touches heroes.
 -- Monster stats are SRD stat blocks by Riftshadow race (the converter's CREATURES), else nearest CR = level / 12.
+-- A monster is aggressive if Riftshadow's is and it starts awake.
 -- A monster's gear is the SRD items its Riftshadow gear maps to; a kill's loot comes from it.
 SET NAMES utf8mb4;
 
@@ -756,38 +757,39 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 (7129, 'down', 7221)
 ;
 
-INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, gear) VALUES
-(7000, 'Horrifying Mudmonster', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5, 'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze', '') /* SRD Ochre Jelly, Rift human level 12 */,
-(7001, 'Small Bat', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -4, 1, -3, 'piercing', NULL, NULL, '', '', '', 'tiny', 'beast', '') /* SRD Bat, Rift bat level 1 */,
-(7002, 'Great Sewer Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', '') /* SRD Giant Rat, Rift human level 5 */,
-(7003, 'Small Spider', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -5, 0, -4, 'piercing', '1d4', 'poison', '', '', '', 'tiny', 'beast', '') /* SRD Spider, Rift human level 1 */,
-(7004, 'Giant Earth Beetle', 13, '1d6+1', 0, 'Bite', 1, 1, '1', 0, 10, -1, 0, 1, -5, -2, -4, 'fire', NULL, NULL, 'fire', '', '', 'small', 'beast', '') /* SRD Giant Fire Beetle, Rift human level 8 */,
-(7005, 'Maggot', 11, '3d8+6', 1, 'Bites', 1, 3, '2d4+1', 0.5, 100, -4, 1, 2, -5, -2, -5, 'poison', NULL, NULL, 'bludgeoning,piercing,slashing', '', '', 'medium', 'beast', '') /* SRD Swarm of Insects, Rift human level 3 */,
-(7006, 'Slithering Snake', 12, '2d4', 2, 'Bite', 1, 4, '1d4+2', 0.125, 25, -4, 2, 0, -5, 0, -4, 'piercing', '1d6', 'poison', '', '', '', 'tiny', 'beast', '') /* SRD Venomous Snake, Rift snake level 4 */,
-(7007, 'Evil Wanderer', 12, '6d8', 4, 'Shortsword', 1, 4, '1d6+2', 1, 200, 0, 2, 0, 1, 2, 3, 'piercing', '2d6', 'poison', '', '', '', 'medium', 'humanoid', '') /* SRD Spy, Rift human level 10 */,
-(7008, 'Homonculus', 13, '1d4+2', 2, 'Bite', 1, 4, '1', 0, 10, -3, 2, 2, 0, 2, 0, 'piercing', NULL, NULL, '', 'poison', '', 'tiny', 'construct', '') /* SRD Homunculus, Rift human level 11 */,
-(7010, 'Evil Chreffn', 18, '6d8+6', 2, 'Slam', 2, 4, '1d6+2', 1, 200, 2, 0, 1, -5, -4, -5, 'bludgeoning', NULL, NULL, '', 'poison,psychic', '', 'medium', 'construct', '') /* SRD Animated Armor, Rift human level 12 */,
-(7011, 'Shadowy Morkoth', 12, '5d8+5', 2, 'Draining Swipe', 1, 4, '1d6+2', 0.5, 100, -2, 2, 1, -2, 0, -1, 'necrotic', NULL, NULL, 'acid,cold,fire,lightning,thunder', 'necrotic,poison', 'radiant', 'medium', 'undead', '') /* SRD Shadow, Rift human level 10 */,
-(7013, 'Horrifying Mudmonster', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5, 'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze', '') /* SRD Ochre Jelly, Rift human level 12 */,
-(7040, 'Red Dragon', 17, '10d8+30', 2, 'Rend', 2, 6, '1d10+4', 4, 1100, 4, 2, 3, 1, 2, 2, 'slashing', '1d6', 'fire', '', 'fire', '', 'medium', 'dragon', '50') /* SRD Red Dragon Wyrmling, Rift human level 32 */,
-(7041, 'Sea Hag', 14, '7d8+21', 1, 'Claw', 1, 5, '2d6+3', 2, 450, 3, 1, 3, 1, 1, 1, 'slashing', NULL, NULL, '', '', '', 'medium', 'fey', '') /* SRD Sea Hag, Rift human level 14 */,
-(7042, 'Guardian Naga', 12, '8d12+8', 2, 'Bite', 1, 6, '2d6+4', 2, 450, 4, 2, 1, -5, 0, -4, 'piercing', NULL, NULL, '', '', '', 'huge', 'beast', '') /* SRD Giant Constrictor Snake, Rift human level 12 */,
-(7043, 'Scaled Basilisk', 15, '8d8+16', -1, 'Bite', 1, 5, '2d6+3', 3, 700, 3, -1, 2, -4, -1, -2, 'piercing', '2d6', 'poison', '', '', '', 'medium', 'monstrosity', '') /* SRD Basilisk, Rift human level 13 */,
-(7044, 'Lemure Blob', 9, '2d8', -3, 'Vile Slime', 1, 2, '1d4', 0, 10, 0, -3, 0, -5, 0, -4, 'poison', NULL, NULL, 'cold', 'fire,poison', '', 'medium', 'fiend', '') /* SRD Lemure, Rift human level 5 */,
-(7045, 'Jones', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1, 'slashing', NULL, NULL, '', '', '', 'large', 'giant', '') /* SRD Ettin, Rift human level 10 */,
-(7046, 'Herald', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1, 'slashing', NULL, NULL, '', '', '', 'large', 'giant', '') /* SRD Ettin, Rift human level 6 */,
-(7200, 'Master Mindflayer', 14, '11d10+44', 0, 'Tentacle', 3, 6, '2d8+3', 5, 1800, 3, 0, 7, -2, 1, -2, 'piercing', NULL, NULL, '', '', '', 'large', 'aberration', '') /* SRD Otyugh, Rift human level 14 */,
-(7201, 'Senior Mindflayer', 14, '12d8', 2, 'Beak', 2, 4, '2d6+2', 2, 450, 2, 2, 0, -4, 2, -3, 'piercing', NULL, NULL, '', '', '', 'medium', 'aberration', '7') /* SRD Grick, Rift human level 8 */,
-(7202, 'Junior Mindflayer', 11, '5d6+5', 3, 'Crush', 1, 5, '1d6+3', 0.5, 100, 3, 1, 1, -4, 0, -3, 'bludgeoning', NULL, NULL, '', '', '', 'small', 'aberration', '7') /* SRD Darkmantle, Rift human level 6 */,
-(7203, 'Ugly Wererat', 13, '11d8+11', 3, 'Scratch', 2, 5, '1d6+3', 2, 450, 0, 3, 1, 0, 0, -1, 'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity', '18') /* SRD Wererat, Rift human level 6 */,
-(7204, 'Gigantic Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', '') /* SRD Giant Rat, Rift human level 12 */
+INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, perception, aggressive, gear) VALUES
+(7000, 'Horrifying Mudmonster', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5, 'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze', 8, FALSE, '') /* SRD Ochre Jelly, Rift human level 12 */,
+(7001, 'Small Bat', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -4, 1, -3, 'piercing', NULL, NULL, '', '', '', 'tiny', 'beast', 11, FALSE, '') /* SRD Bat, Rift bat level 1 */,
+(7002, 'Great Sewer Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, TRUE, '') /* SRD Giant Rat, Rift human level 5 */,
+(7003, 'Small Spider', 12, '1d4-1', 2, 'Bite', 1, 4, '1', 0, 10, -4, 2, -1, -5, 0, -4, 'piercing', '1d4', 'poison', '', '', '', 'tiny', 'beast', 10, TRUE, '') /* SRD Spider, Rift human level 1 */,
+(7004, 'Giant Earth Beetle', 13, '1d6+1', 0, 'Bite', 1, 1, '1', 0, 10, -1, 0, 1, -5, -2, -4, 'fire', NULL, NULL, 'fire', '', '', 'small', 'beast', 8, FALSE, '') /* SRD Giant Fire Beetle, Rift human level 8 */,
+(7005, 'Maggot', 11, '3d8+6', 1, 'Bites', 1, 3, '2d4+1', 0.5, 100, -4, 1, 2, -5, -2, -5, 'poison', NULL, NULL, 'bludgeoning,piercing,slashing', '', '', 'medium', 'beast', 8, FALSE, '') /* SRD Swarm of Insects, Rift human level 3 */,
+(7006, 'Slithering Snake', 12, '2d4', 2, 'Bite', 1, 4, '1d4+2', 0.125, 25, -4, 2, 0, -5, 0, -4, 'piercing', '1d6', 'poison', '', '', '', 'tiny', 'beast', 10, TRUE, '') /* SRD Venomous Snake, Rift snake level 4 */,
+(7007, 'Evil Wanderer', 12, '6d8', 4, 'Shortsword', 1, 4, '1d6+2', 1, 200, 0, 2, 0, 1, 2, 3, 'piercing', '2d6', 'poison', '', '', '', 'medium', 'humanoid', 16, FALSE, '') /* SRD Spy, Rift human level 10 */,
+(7008, 'Homonculus', 13, '1d4+2', 2, 'Bite', 1, 4, '1', 0, 10, -3, 2, 2, 0, 2, 0, 'piercing', NULL, NULL, '', 'poison', '', 'tiny', 'construct', 10, FALSE, '') /* SRD Homunculus, Rift human level 11 */,
+(7010, 'Evil Chreffn', 18, '6d8+6', 2, 'Slam', 2, 4, '1d6+2', 1, 200, 2, 0, 1, -5, -4, -5, 'bludgeoning', NULL, NULL, '', 'poison,psychic', '', 'medium', 'construct', 6, FALSE, '') /* SRD Animated Armor, Rift human level 12 */,
+(7011, 'Shadowy Morkoth', 12, '5d8+5', 2, 'Draining Swipe', 1, 4, '1d6+2', 0.5, 100, -2, 2, 1, -2, 0, -1, 'necrotic', NULL, NULL, 'acid,cold,fire,lightning,thunder', 'necrotic,poison', 'radiant', 'medium', 'undead', 10, TRUE, '') /* SRD Shadow, Rift human level 10 */,
+(7013, 'Horrifying Mudmonster', 8, '7d10+14', -2, 'Pseudopod', 1, 4, '3d6+2', 2, 450, 2, -2, 2, -4, -2, -5, 'acid', NULL, NULL, 'acid', 'lightning,slashing', '', 'large', 'ooze', 8, TRUE, '') /* SRD Ochre Jelly, Rift human level 12 */,
+(7040, 'Red Dragon', 17, '10d8+30', 2, 'Rend', 2, 6, '1d10+4', 4, 1100, 4, 2, 3, 1, 2, 2, 'slashing', '1d6', 'fire', '', 'fire', '', 'medium', 'dragon', 14, TRUE, '50') /* SRD Red Dragon Wyrmling, Rift human level 32 */,
+(7041, 'Sea Hag', 14, '7d8+21', 1, 'Claw', 1, 5, '2d6+3', 2, 450, 3, 1, 3, 1, 1, 1, 'slashing', NULL, NULL, '', '', '', 'medium', 'fey', 11, TRUE, '') /* SRD Sea Hag, Rift human level 14 */,
+(7042, 'Guardian Naga', 12, '8d12+8', 2, 'Bite', 1, 6, '2d6+4', 2, 450, 4, 2, 1, -5, 0, -4, 'piercing', NULL, NULL, '', '', '', 'huge', 'beast', 12, FALSE, '') /* SRD Giant Constrictor Snake, Rift human level 12 */,
+(7043, 'Scaled Basilisk', 15, '8d8+16', -1, 'Bite', 1, 5, '2d6+3', 3, 700, 3, -1, 2, -4, -1, -2, 'piercing', '2d6', 'poison', '', '', '', 'medium', 'monstrosity', 9, TRUE, '') /* SRD Basilisk, Rift human level 13 */,
+(7044, 'Lemure Blob', 9, '2d8', -3, 'Vile Slime', 1, 2, '1d4', 0, 10, 0, -3, 0, -5, 0, -4, 'poison', NULL, NULL, 'cold', 'fire,poison', '', 'medium', 'fiend', 10, TRUE, '') /* SRD Lemure, Rift human level 5 */,
+(7045, 'Jones', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1, 'slashing', NULL, NULL, '', '', '', 'large', 'giant', 14, TRUE, '') /* SRD Ettin, Rift human level 10 */,
+(7046, 'Herald', 12, '10d10+30', -1, 'Battleaxe', 2, 7, '2d8+5', 4, 1100, 5, -1, 3, -2, 0, -1, 'slashing', NULL, NULL, '', '', '', 'large', 'giant', 14, FALSE, '') /* SRD Ettin, Rift human level 6 */,
+(7200, 'Master Mindflayer', 14, '11d10+44', 0, 'Tentacle', 3, 6, '2d8+3', 5, 1800, 3, 0, 7, -2, 1, -2, 'piercing', NULL, NULL, '', '', '', 'large', 'aberration', 11, TRUE, '') /* SRD Otyugh, Rift human level 14 */,
+(7201, 'Senior Mindflayer', 14, '12d8', 2, 'Beak', 2, 4, '2d6+2', 2, 450, 2, 2, 0, -4, 2, -3, 'piercing', NULL, NULL, '', '', '', 'medium', 'aberration', 12, TRUE, '7') /* SRD Grick, Rift human level 8 */,
+(7202, 'Junior Mindflayer', 11, '5d6+5', 3, 'Crush', 1, 5, '1d6+3', 0.5, 100, 3, 1, 1, -4, 0, -3, 'bludgeoning', NULL, NULL, '', '', '', 'small', 'aberration', 10, TRUE, '7') /* SRD Darkmantle, Rift human level 6 */,
+(7203, 'Ugly Wererat', 13, '11d8+11', 3, 'Scratch', 2, 5, '1d6+3', 2, 450, 0, 3, 1, 0, 0, -1, 'slashing', NULL, NULL, '', '', '', 'medium', 'monstrosity', 14, TRUE, '18') /* SRD Wererat, Rift human level 6 */,
+(7204, 'Gigantic Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE, '') /* SRD Giant Rat, Rift human level 12 */
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
     str_save = new.str_save, dex_save = new.dex_save, con_save = new.con_save, int_save = new.int_save,
     wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
     extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
-    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, gear = new.gear;
+    vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, perception = new.perception,
+    aggressive = new.aggressive, gear = new.gear;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES
