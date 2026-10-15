@@ -71,7 +71,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
                             <div class="progress-bar"></div>
                         </div>
                     </div>
-                    <div id="tiles" class="row row-cols-3 g-1"></div>
+                    <div id="tiles" class="d-flex justify-content-between"></div>
                     <div id="abilities" class="row row-cols-6 g-1" aria-label="Ability modifiers and scores"></div>
                     <dl id="rows" class="vstack gap-1 small m-0"></dl>
                     <div id="status"></div>

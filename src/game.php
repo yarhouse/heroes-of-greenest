@@ -670,7 +670,7 @@ function heal_hint(array $me): array
         return [];
     }
     $where = $u['safe'] ? 'You can rest here'
-        : 'Rest in a safe room, ( ) on the map: the town square, the Lantern or the temple';
+        : 'Rest in a safe room, green on the map: the town square, the Lantern or the temple';
     return ["You're hurt (HP {$u['hp']}/{$u['max_hp']}). $where. 'rest' (10 min) spends Hit Dice ({$u['dice']} left); "
         . "'sleep' (1 h) heals you fully."];
 }
@@ -3929,43 +3929,51 @@ function cmd_map(array $me): array
         'SELECT id FROM rooms WHERE safe AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
         $ids
     )->fetchAll(PDO::FETCH_COLUMN);
-
-    // Rooms are 3 characters wide, 4 apart; links sit between them and poke past the edge for exits off the map.
-    $grid = array_fill(0, 4 * MAP_REACH + 3, array_fill(0, 8 * MAP_REACH + 5, ' '));
-    foreach ($at as $id => [$x, $y]) {
-        $row = 2 * ($y + MAP_REACH) + 1;
-        $col = 4 * ($x + MAP_REACH) + 2;
-        $dirs = $exits[$id] ?? [];
-        $up = in_array('up', $dirs, true);
-        $down = in_array('down', $dirs, true);
-        $grid[$row][$col] = match (true) {
-            $id === $here => '@',
-            $up && $down => '↕',
-            $up => '^',
-            $down => 'v',
-            default => ' ',
-        };
-        [$grid[$row][$col - 1], $grid[$row][$col + 1]] = in_array($id, $safe, true) ? ['(', ')'] : ['[', ']'];
-        foreach ($dirs as $dir) {
-            match ($dir) {
-                'north' => $grid[$row - 1][$col] = '│',
-                'south' => $grid[$row + 1][$col] = '│',
-                'east' => $grid[$row][$col + 2] = '─',
-                'west' => $grid[$row][$col - 2] = '─',
-                default => null,
-            };
-        }
-    }
-    $lines = array_map(fn ($chars) => rtrim(implode('', $chars)), $grid);
-
     // Not room_monsters(): its respawn rolls HP, and drawing the map must not spend dice.
     $foes = q(
         'SELECT m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.room_id = ?
          AND (s.dead_since IS NULL OR s.dead_since < NOW() - INTERVAL s.respawn_secs SECOND) ORDER BY s.id',
         [$here]
     )->fetchAll(PDO::FETCH_COLUMN);
+
+    // Each room is a 5x3 floor (: when safe) walled by #, sharing walls with its neighbours; an exit is a gap in the
+    // wall. Stairs sit in the right-hand corners (< up, > down); monsters in your room stand around you by initial.
+    // play.js colours these glyphs, so keep them in step with MAP_CELLS there.
+    $grid = array_fill(0, 8 * MAP_REACH + 5, array_fill(0, 12 * MAP_REACH + 7, ' '));
+    foreach ($at as $id => [$x, $y]) {
+        $top = 4 * ($y + MAP_REACH) + 1;
+        $left = 6 * ($x + MAP_REACH) + 1;
+        for ($r = $top - 1; $r <= $top + 3; $r++) {
+            for ($c = $left - 1; $c <= $left + 5; $c++) {
+                $inside = $r >= $top && $r < $top + 3 && $c >= $left && $c < $left + 5;
+                if ($inside) {
+                    $grid[$r][$c] = in_array($id, $safe, true) ? ':' : '.';
+                } elseif ($grid[$r][$c] === ' ') {
+                    $grid[$r][$c] = '#';
+                }
+            }
+        }
+        foreach ($exits[$id] ?? [] as $dir) {
+            match ($dir) {
+                'north' => $grid[$top - 1][$left + 2] = '.',
+                'south' => $grid[$top + 3][$left + 2] = '.',
+                'west' => $grid[$top + 1][$left - 1] = '.',
+                'east' => $grid[$top + 1][$left + 5] = '.',
+                'up' => $grid[$top][$left + 4] = '<',
+                'down' => $grid[$top + 2][$left + 4] = '>',
+            };
+        }
+        if ($id === $here) {
+            $grid[$top + 1][$left + 2] = '@';
+            $spots = [[1, 0], [1, 4], [0, 1], [0, 3], [2, 1], [2, 3]];
+            foreach (array_slice($foes, 0, count($spots)) as $i => $name) {
+                $grid[$top + $spots[$i][0]][$left + $spots[$i][1]] = strtolower($name[0]);
+            }
+        }
+    }
+    $lines = array_map(fn ($chars) => rtrim(implode('', $chars)), $grid);
     $lines[] = $foes ? 'Here: ' . implode(', ', $foes) : 'Here: no monsters';
-    $lines[] = '@ you  ^ v stairs  ( ) safe';
+    $lines[] = '@ you  < > stairs  : safe  a-z monsters';
     return $lines;
 }
 

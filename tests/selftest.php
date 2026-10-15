@@ -267,15 +267,16 @@ try {
     // Mill Bridge (stair down) south.
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
     $map = cmd_map(hero('Testa'));
-    check(mb_substr($map[5], 5, 11) === '[v]─(@)─( )' && mb_substr($map[3], 9, 3) === '[ ]'
-        && mb_substr($map[4], 10, 1) === '│' && mb_substr($map[7], 9, 3) === '[v]', 'map: rooms, links, safe, stairs');
-    check($map[0] === '' && $map[5][0] === ' ', 'map: nothing beyond the reach of the Town Square');
+    check(substr($map[10], 7, 17) === '......::@::.:::::' && $map[11][11] === '>' && $map[15][17] === '>'
+        && substr($map[8], 14, 3) === '#.#', 'map: rooms, exits as gaps in walls, safe floors, stairs');
+    check(count($map) === 23 && max(array_map('strlen', array_slice($map, 0, -2))) <= 31,
+        'map: nothing beyond the reach of the Town Square');
     $foe = q('SELECT room_id FROM spawns ORDER BY id LIMIT 1')->fetchColumn();
     q('UPDATE users SET room_id = ? WHERE name = ?', [$foe, 'Testa']);
     $dice_queue = [6];
     $map = cmd_map(hero('Testa'));
-    check(str_starts_with($map[count($map) - 2], 'Here: ') && !says($map, 'no monsters') && $dice_queue === [6],
-        'map: names monsters in your room, rolls no dice');
+    check(str_starts_with($map[count($map) - 2], 'Here: ') && !says($map, 'no monsters') && ctype_lower($map[10][13])
+        && $dice_queue === [6], 'map: shows and names monsters in your room, rolls no dice');
     $dice_queue = [];
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
 

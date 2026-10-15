@@ -42,7 +42,17 @@ async function send(cmd) {
         /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>,
          *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], logout?: boolean }} */
         const data = await res.json();
-        for (const line of data.lines ?? []) print(line);
+        const lines = data.lines ?? [];
+        const map = data.map ?? [];
+        // The map command's reply holds the map itself: draw it in colour like the sheet's, the rest as text.
+        const drawn = map.join('\n');
+        const at = map.length ? lines.findIndex((_, i) => lines.slice(i, i + map.length).join('\n') === drawn) : -1;
+        for (const line of at < 0 ? lines : lines.slice(0, at)) print(line);
+        if (at >= 0) {
+            log.append(drawMap(el('div', 'map'), map));
+            log.scrollTop = log.scrollHeight;
+            for (const line of lines.slice(at + map.length)) print(line);
+        }
         if (data.commands) commands = data.commands;
         base = data.actions ?? [];
         choices = data.choices ?? {};
@@ -108,12 +118,17 @@ function drawHero(h, map) {
     byId('hp-text').textContent = `${h.hp}/${h.max_hp}` + (h.temp_hp ? ` +${h.temp_hp} temp` : '');
     const hp = h.hp / h.max_hp;
     bar('hp-bar', h.hp, h.max_hp, hp > 0.5 ? 'bg-success' : hp > 0.25 ? 'bg-warning' : 'bg-danger');
-    byId('tiles').replaceChildren(tile('AC', h.ac), tile('Prof', signed(h.prof)), tile('Gold', h.gold));
+    byId('tiles').replaceChildren(...[['AC', h.ac], ['Prof', signed(h.prof)], ['Gold', h.gold]].map(([k, v]) => {
+        const stat = el('span', 'text-body-secondary', k + ' ');
+        stat.append(el('span', 'text-body', v));
+        return stat;
+    }));
     byId('abilities').replaceChildren(
-        ...h.abilities.map(([name, score, mod, save]) => tile(name, signed(mod), score, `save ${signed(save)}`)),
+        ...h.abilities.map(([name, score, mod]) => tile(name, signed(mod), score)),
     );
     const attack = `${signed(h.to_hit)} · ${h.damage}` + (h.attacks > 1 ? ` ×${h.attacks}` : '');
-    byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources, ...h.origin].map(([k, v]) => {
+    // Not h.origin (species, background): 'score' shows those, and the map needs the room.
+    byId('rows').replaceChildren(...[[h.weapon, attack], ...h.resources].map(([k, v]) => {
         const row = el('div', 'd-flex justify-content-between gap-3');
         row.append(el('dt', 'fw-normal text-body-secondary', k), el('dd', 'm-0 text-end', v));
         return row;
@@ -126,7 +141,33 @@ function drawHero(h, map) {
     if (h.rest_secs > 0) restTimer = setTimeout(() => (queue = queue.then(() => send(''))), h.rest_secs * 1000 + 1000);
     byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
     bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
-    byId('map').textContent = map.join('\n');
+    drawMap(byId('map'), map);
+}
+
+/**
+ * cmd_map() in game.php: glyph => [CSS class, what to show]. Any other glyph but a space is a monster's initial.
+ * @type {Record<string, [string, string]>}
+ */
+const MAP_CELLS = { '#': ['w', ' '], '.': ['f', '·'], ':': ['s', '·'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'] };
+
+/**
+ * One span per cell, so walls join into solid blocks. The last two lines (who's here, the legend) stay text.
+ * @param {HTMLElement} box @param {string[]} lines
+ */
+function drawMap(box, lines) {
+    // Empty rows at the top and bottom are directions with no rooms; skip them to save height.
+    const first = lines.findIndex((line) => line !== '');
+    lines = lines.slice(first, lines.length - 2).join('\n').trimEnd().split('\n').concat(lines.slice(-2));
+    box.replaceChildren(...lines.map((line, i) => {
+        if (i >= lines.length - 2) return el('div', 'map-text', line);
+        const row = el('div', 'map-row');
+        for (const ch of line) {
+            const [cls, show] = MAP_CELLS[ch] ?? (ch === ' ' ? ['', ' '] : ['foe', ch]);
+            row.append(el('span', cls, show));
+        }
+        return row;
+    }));
+    return box;
 }
 
 /** Echoes a command and queues it, whether typed or a button. @param {string} cmd */

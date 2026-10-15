@@ -5,7 +5,15 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-Nothing queued: pick the next task from `BACKLOG.md`.
+1. **Distance on the fight** (tactical step 1 from `BACKLOG.md`). One `distance` (feet) column with the fight state;
+   in a 1-on-1 fight with no obstacles a 2D grid reduces to this number. Gives ranged and thrown weapons
+   (Disadvantage once adjacent; a free shot while the monster closes), advance-and-attack in one command, reach
+   weapons, Disengage, Dash, retreat to an exit with an opportunity attack, monsters that close or kite. About one
+   `fight()` change plus a few commands. Show it on the map: a room's floor is 5 squares across, so a foe 15 ft away
+   can stand 3 cells from `@`, stepping in as it closes (and `Here:` can say "kobold, 15 ft").
+2. **Fog of war and a bigger map.** A per-hero visited-rooms table, written on each move. A room's shape shows once
+   you've been next to it, its contents only while you're in it. With that, the map can grow past `MAP_REACH` 2 to the
+   explored part of the floor, centred on `@` and scrolling in the sidebar, like the reference maps in `ref/ascii maps/`.
 
 Any time: **approve account requests** (friends ask on the login page):
 `ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
@@ -82,3 +90,10 @@ Any time: **approve account requests** (friends ask on the login page):
   Attacking from hiding is the Invisible condition's Advantage on Initiative and the first attack, and a monster nobody
   is fighting yet is surprised. The Delve's monsters (1-16) and the Southern Fields' kobolds are aggressive; converted
   areas follow Riftshadow's flag, unless the monster starts asleep.
+- 2026-10-15 **The map is carved rooms in colour**, after the DCSS-style reference images in `ref/ascii maps/` (local
+  only; `ref/` is gitignored). Room placement is unchanged (`MAP_REACH` 2 around you). Each room is a 5x3 floor
+  sharing walls with its neighbours, and an exit is a gap in the wall. `cmd_map()` still returns plain text (`#` wall,
+  `.` floor, `:` safe floor, `<` `>` stairs in the right-hand corners, `@` you, monsters in your room by initial
+  around you), so the API sends no HTML. `play.js` colours it cell by cell (`MAP_CELLS`) in the sidebar and for the
+  `map` command, and skips empty rows at the edges. To make room, the hero card dropped the Species and Background
+  rows, put AC, Prof and Gold on one line and took the save line off the ability tiles (all still in `score`).

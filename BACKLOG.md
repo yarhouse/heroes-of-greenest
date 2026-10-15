@@ -9,7 +9,8 @@ This repo copy is the source; the claude.ai Project holds a copy.
 - [ ] **Choose Hit Dice to spend.** The SRD lets you spend them one at a time during a short rest; today `rest` spends
   them automatically until full HP. Worth it only if saving dice for later starts to matter.
 - [ ] **More to inspect and more townsfolk.** Riftshadow's extra descriptions (`E` blocks, 67 in all) could become `features` rows in `convert-area.php`; NPCs in the dungeons (a captive, a hermit); townsfolk who react to `say` keywords as Riftshadow's and Luminari's speech triggers do; hooks the town now hints at (the dragon mark on kobold gear, the Fields of the Dead, Ysolde's interest in the Wood, the keep's bricked-up stair).
-- [ ] **Map fog of war.** Show a room's shape only once a hero has been next to it, and its contents only once inside. Needs a per-hero visited-rooms table.
+- [ ] **A south gate past the Mill Bridge.** Reshape the town's south edge: one more lone room (or a short path) between the Mill Bridge (5) and the Southern Fields (6), maybe Greenest's south gate with its walls and a guard to `ask`. The Mill Bridge's south exit goes to it, and it leads on to the Fields, where the Wood and the mines already connect, so no area moves. Gives the town a clear edge on the map.
+- [ ] **Terrain on the map.** `convert-area.php` reads each Riftshadow room's sector (inside, city, field, forest, hills, water...) and throws it away. Keep it in a `rooms.terrain` column (tag the town's rooms by hand in `seed.sql`, the Delve as inside) and give each its own floor in `MAP_CELLS`: trees in the Wood, water in the sewers, cobbles in town.
 - [ ] **Autocomplete command arguments.** After `kill `, suggest the monsters in the room; likewise items for `get`/`drop`/`equip`/`drink`. Today `play.js` only completes command names, from `COMMANDS`.
 - [ ] **More aggro and stealth.** Aggressive monsters that join in while you stay (after you kill the first of two, the
   other waits until you come back in); sleeping monsters that a noisy hero wakes (Rift's start-asleep aggressive ones
@@ -39,8 +40,8 @@ Example board (`cmd_map` already draws ASCII and the font is monospace):
 
 Each step ships alone and doesn't block the next.
 
-- [ ] **Step 1: distance on the fight.** One `distance` (feet) column with the fight state. In a 1-on-1 fight with no obstacles a 2D grid reduces to this number. Gives ranged and thrown weapons (Disadvantage once adjacent; a free shot while the monster closes), advance-and-attack in one command, reach weapons, Disengage, Dash, retreat to an exit with an opportunity attack, monsters that close or kite. About one `fight()` change plus a few commands.
-- [ ] **Step 2: optional room layouts.** A layout column on `rooms` (ASCII like above). Rooms with one fight on (x, y) with line of sight (Bresenham) and cover; rooms without one stay a plain distance. Distance becomes computed from positions, so step 1's commands keep working. The Delve generator draws its own layouts.
+- Step 1, **distance on the fight**, is queued in `ROADMAP.md`.
+- [ ] **Step 2: optional room layouts.** A layout column on `rooms` (ASCII like above). Rooms with one fight on (x, y) with line of sight (Bresenham) and cover; rooms without one stay a plain distance. Distance becomes computed from positions, so step 1's commands keep working. The Delve generator draws its own layouts. The map already draws rooms as cells with these glyphs (`#` wall, `.` floor, `@` you), so a room with a layout can show its board in place of its 5x3 floor while you're in it.
 - [ ] **Step 3: group fights on a shared board.** Several heroes and monsters, one initiative order, across players who aren't online together. Needs a per-room encounter table and a turn timeout (play-by-post style: no action in N hours means you Dodge), computed on read.
 - Skipped: **cross-room shooting** (`shoot north goblin`). Finding the target is easy, but with no ticks a monster hit from 2 rooms away can't walk to you, and "feet per room" is made up. **Coordinate math** is the cheap part (BFS and line of sight on ~100 cells).
 
