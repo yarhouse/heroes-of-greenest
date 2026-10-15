@@ -39,6 +39,9 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <title>Heroes of Greenest: <?= $me ? 'Account' : 'Request an account' ?></title>
 <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
 <link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
 <main class="login">
