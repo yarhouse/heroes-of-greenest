@@ -290,7 +290,7 @@ const FEATS = [
     'alert' => ['name' => 'Alert', 'about' => 'add your Proficiency Bonus to Initiative'],
     'savage' => ['name' => 'Savage Attacker',
         'about' => "once a turn, roll a weapon hit's damage twice, keep the best"],
-    'skilled' => ['name' => 'Skilled', 'about' => 'three more skills (not used in play)'],
+    'skilled' => ['name' => 'Skilled', 'about' => 'three more skills (not chosen yet, so not used)'],
     'cleric' => ['name' => 'Magic Initiate (Cleric)', 'spells' => ['Sacred Flame', 'Cure Wounds'],
         'about' => 'Sacred Flame, and Cure Wounds free once a long rest'],
     'wizard' => ['name' => 'Magic Initiate (Wizard)', 'spells' => ['Fire Bolt', 'Ray of Frost', 'Magic Missile'],
@@ -299,7 +299,7 @@ const FEATS = [
 
 /**
  * Backgrounds (SRD 5.2.1 p.83): the three abilities it can raise (+2 and +1, or +1 each, none past 20), its Origin
- * feat and its skills (shown only). Its tool and equipment are left out: heroes start with their class's kit.
+ * feat and its skills (used in skill checks, see SKILLS). Its tool and equipment are left out: heroes start with their class's kit.
  */
 const BACKGROUNDS = [
     'acolyte' => ['name' => 'Acolyte', 'abilities' => ['intelligence', 'wisdom', 'charisma'], 'feat' => 'cleric',
@@ -312,9 +312,20 @@ const BACKGROUNDS = [
         'skills' => 'Athletics, Intimidation'],
 ];
 
+/** The skills (SRD 5.2.1 p.9), => the ability each check uses. A background's skills add my Proficiency Bonus. */
+const SKILLS = [
+    'acrobatics' => 'dexterity', 'animal handling' => 'wisdom', 'arcana' => 'intelligence', 'athletics' => 'strength',
+    'deception' => 'charisma', 'history' => 'intelligence', 'insight' => 'wisdom', 'intimidation' => 'charisma',
+    'investigation' => 'intelligence', 'medicine' => 'wisdom', 'nature' => 'intelligence', 'perception' => 'wisdom',
+    'performance' => 'charisma', 'persuasion' => 'charisma', 'religion' => 'intelligence',
+    'sleight of hand' => 'dexterity', 'stealth' => 'dexterity', 'survival' => 'wisdom',
+];
+
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
     'look' => 'describe where you are (or l)',
+    'inspect <thing>' => 'look closer at something or someone here (or look <thing>); some reward a skill check',
+    'ask <npc> about <topic>' => "talk to someone here; 'ask <npc>' (or speak) says what they'll talk about",
     'north' => 'move north (or n)',
     'south' => 'move south (or s)',
     'east' => 'move east (or e)',
@@ -602,7 +613,9 @@ function run_command(array $me, string $input): array
     $out = match (true) {
         $verb === '' => [],
         in_array($verb, DIRS, true) => cmd_move($me, $verb),
-        $verb === 'l' || $verb === 'look' => cmd_look($me),
+        $verb === 'l' || $verb === 'look' || $verb === 'inspect' => trim($arg) === '' ? cmd_look($me)
+            : cmd_inspect($me, trim($arg)),
+        $verb === 'ask' || $verb === 'speak' || $verb === 'talk' => cmd_ask($me, trim($arg)),
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
@@ -642,7 +655,7 @@ function run_command(array $me, string $input): array
         default => ["Huh? Type 'help' for commands."],
     };
     // look already lists what was said in the room, so don't repeat it.
-    $shows_room = $verb === 'l' || $verb === 'look' || in_array($verb, DIRS, true);
+    $shows_room = (in_array($verb, ['l', 'look', 'inspect'], true) && trim($arg) === '') || in_array($verb, DIRS, true);
     return array_merge($rested, $shows_room ? [] : $heard, $out, $me['fighting'] !== null ? heal_hint($me) : []);
 }
 
@@ -919,6 +932,9 @@ function cmd_look(array $me): array
     if (isset($me['hireling'])) { // a hero fresh from character creation has no stats yet, and no hireling
         $lines[] = "Your {$me['hireling']['name']} is here, with you.";
     }
+    foreach (npcs_here((int) $me['room_id']) as $n) {
+        $lines[] = $n['name'] . (str_contains($n['name'], ',') ? ', is here.' : ' is here.');
+    }
     foreach (room_monsters((int) $me['room_id']) as $m) {
         $lines[] = a_an($m['name']) . ' is here' . ($m['id'] === $me['fighting'] ? ', fighting you.' : '.');
     }
@@ -935,7 +951,159 @@ function cmd_look(array $me): array
     foreach (array_reverse($said) as $s) {
         $lines[] = "{$s['name']} said here " . ago((int) $s['mins']) . ": {$s['text']}";
     }
+    $features = array_map(fn ($f) => strtok($f['keywords'], ' '), features_here((int) $me['room_id']));
+    if ($features) {
+        $lines[] = 'You could inspect: ' . implode(', ', $features) . '.';
+    }
     return $lines;
+}
+
+function features_here(int $room_id): array
+{
+    return q('SELECT * FROM features WHERE room_id = ? ORDER BY id', [$room_id])->fetchAll();
+}
+
+function npcs_here(int $room_id): array
+{
+    return q('SELECT * FROM npcs WHERE room_id = ? ORDER BY id', [$room_id])->fetchAll();
+}
+
+/** What a player typed after look, inspect or ask, without a leading "at the" or "about a". */
+function bare(string $target): string
+{
+    return preg_replace('/^((at|about|the|an?|to)\s+)+/i', '', $target) ?? $target;
+}
+
+/** The townsperson here whose name names($target) matches. */
+function find_npc(array $me, string $target): ?array
+{
+    foreach (npcs_here((int) $me['room_id']) as $n) {
+        if (names(bare($target), $n['name'])) {
+            return $n;
+        }
+    }
+    return null;
+}
+
+/** 'Marta Dunmore, the innkeeper' is Marta Dunmore. */
+function short_name(array $npc): string
+{
+    return explode(',', $npc['name'])[0];
+}
+
+/** An NPC's topics, the greeting ('hello') first if they have one. */
+function topics_of(array $npc): array
+{
+    return q("SELECT * FROM topics WHERE npc_id = ? ORDER BY keywords NOT LIKE 'hello%', id", [$npc['id']])->fetchAll();
+}
+
+/** What an NPC will talk about, for a line after their greeting or description. */
+function topics_line(array $npc): string
+{
+    $words = array_map(fn ($t) => strtok($t['keywords'], ' '), topics_of($npc));
+    $words = array_values(array_diff($words, ['hello']));
+    if ($words === []) {
+        return short_name($npc) . " has nothing much to say.";
+    }
+    return short_name($npc) . ' will talk about: ' . implode(', ', $words)
+        . ". Try 'ask " . strtolower(strtok($npc['name'], ' ,')) . " about {$words[0]}'.";
+}
+
+/**
+ * Looks closer at a feature of this room, or at a townsperson here (Search or Study, SRD 5.2.1 p.187, p.189): its text,
+ * and its secret if my skill check finds it.
+ */
+function cmd_inspect(array $me, string $target): array
+{
+    $npc = find_npc($me, $target);
+    if ($npc !== null) {
+        return [$npc['about'], topics_line($npc)];
+    }
+    foreach (features_here((int) $me['room_id']) as $f) {
+        if (names(bare($target), $f['keywords'])) {
+            $text = str_replace('{roster}', implode("\n", roster()), $f['text']);
+            return [...explode("\n", $text), ...secret($me, $f, "feature {$f['id']}")];
+        }
+    }
+    return ["You see no " . bare($target) . " here worth a closer look."];
+}
+
+/** Every hero in Greenest, a line each, as the Swaying Lantern's ledger lists them. */
+function roster(): array
+{
+    $heroes = q('SELECT name, class, species, level, setup FROM users WHERE name IS NOT NULL ORDER BY name')
+        ->fetchAll();
+    return array_map(fn ($h) => sprintf('  %-16s %s', $h['name'], $h['setup'] !== null ? '(just arrived)'
+        : ucwords(trim("{$h['species']} {$h['class']}")) . ", level {$h['level']}"), $heroes);
+}
+
+/** My bonus to a check with a SKILLS skill: its ability's modifier, plus my Proficiency Bonus if I'm proficient. */
+function skill_bonus(array $me, string $skill): int
+{
+    $mine = array_map('trim', explode(',', strtolower(BACKGROUNDS[$me['background'] ?? '']['skills'] ?? '')));
+    return mod((int) $me[SKILLS[$skill]]) + (in_array($skill, $mine, true) ? $me['prof_bonus'] : 0);
+}
+
+/**
+ * A feature's or topic's secret, if my check with its skill beats its DC. A success stands; after a failure I wait 24
+ * hours to try again (the Influence action's rule, SRD 5.2.1 p.184, used for Search and Study too). [] if it has none.
+ */
+function secret(array $me, array $row, string $what): array
+{
+    if ($row['skill'] === null) {
+        return [];
+    }
+    $skill = str_replace(' Of ', ' of ', ucwords($row['skill']));
+    $done = q(
+        'SELECT passed, at > NOW() - INTERVAL 1 DAY AS recent FROM checks WHERE user_id = ? AND what = ?',
+        [$me['id'], $what]
+    )->fetch();
+    if ($done && $done['passed']) {
+        return [$row['secret']];
+    }
+    if ($done && $done['recent']) {
+        return ["(Your $skill check fell short today. Try again tomorrow.)"];
+    }
+    $total = d20(0, lucky($me)) + skill_bonus($me, $row['skill']);
+    $passed = $total >= (int) $row['dc'];
+    q('REPLACE INTO checks (user_id, what, passed) VALUES (?, ?, ?)', [$me['id'], $what, (int) $passed]);
+    return ["($skill check: " . vs($total, (int) $row['dc']) . ($passed ? ', success)' : ', fail)'),
+        ...($passed ? [$row['secret']] : [])];
+}
+
+/**
+ * Asks a townsperson here about a topic ('ask marta about the ledger', 'ask marta ledger', or 'ask about ledger' with
+ * one of them here). With no topic, their greeting and what they'll talk about. A topic with a skill is an Influence
+ * check (SRD 5.2.1 p.184), its secret the reward.
+ */
+function cmd_ask(array $me, string $arg): array
+{
+    $here = npcs_here((int) $me['room_id']);
+    if ($here === []) {
+        return ["There's no one here to talk to."];
+    }
+    [$who, $topic] = array_pad(preg_split('/(^|\s+)about\s+/i', $arg, 2) ?: [$arg], 2, '');
+    $npc = $who === '' && count($here) === 1 ? $here[0] : find_npc($me, $who);
+    if ($npc === null && $topic === '' && str_contains($who, ' ')) {
+        [$who, $topic] = explode(' ', $who, 2);
+        $npc = find_npc($me, $who);
+    }
+    if ($npc === null) {
+        return [$who === '' ? 'Ask whom? ' . implode(' or ', array_map('short_name', $here)) . '.'
+            : "There's nobody called $who here."];
+    }
+    $topics = topics_of($npc);
+    $topic = bare($topic);
+    if ($topic === '') {
+        $hello = $topics && str_starts_with($topics[0]['keywords'], 'hello') ? [$topics[0]['reply']] : [];
+        return [...$hello, topics_line($npc)];
+    }
+    foreach ($topics as $t) {
+        if (names($topic, $t['keywords'])) {
+            return [...explode("\n", $t['reply']), ...secret($me, $t, "topic {$t['id']}")];
+        }
+    }
+    return [short_name($npc) . " has nothing to say about $topic.", topics_line($npc)];
 }
 
 function cmd_move(array $me, string $dir): array
@@ -3784,6 +3952,8 @@ function actions(array $me): array
         ...($me['room_id'] === LANTERN ? ['hire '] : []),
         ...(stock((int) $me['room_id']) ? ['list', 'buy ', 'sell '] : []),
         ...($me['room_id'] === TEMPLE ? ['list', 'pray '] : []),
+        ...(npcs_here((int) $me['room_id']) ? ['ask '] : []),
+        ...(npcs_here((int) $me['room_id']) || features_here((int) $me['room_id']) ? ['inspect '] : []),
         'look',
         'inventory',
     ];
@@ -3824,6 +3994,15 @@ function choices(array $me): array
         'wild' => $has('wild') ? [...($me['shape'] !== null ? [['your own form', 'wild']] : []),
             ...$pick('wild', $names(wild_forms($me)))] : [],
     ];
+    $npcs = npcs_here((int) $me['room_id']);
+    $c['inspect'] = $pick('inspect', [...array_map(fn ($f) => strtok($f['keywords'], ' '),
+        features_here((int) $me['room_id'])), ...array_map(fn ($n) => strtolower(short_name($n)), $npcs)]);
+    foreach ($npcs as $n) {
+        $ask = 'ask ' . strtolower(short_name($n));
+        $c['ask'][] = [strtolower(short_name($n)), "$ask "];
+        $c[$ask] = array_map(fn ($t) => [strtok($t['keywords'], ' '), "$ask about " . strtok($t['keywords'], ' ')],
+            array_values(array_filter(topics_of($n), fn ($t) => !str_starts_with($t['keywords'], 'hello'))));
+    }
     foreach (['kill', 'breathe', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land'] as $verb) {
         $c[$verb] = $verb === 'kill' || $has($verb) ? $pick($verb, $foes) : [];
     }

@@ -1,7 +1,7 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
 -- Dropping migrations tells bin/migrate.php this database matches this file, so it marks every migration done.
-DROP TABLE IF EXISTS migrations, requests, effects, spells, delve, objects, events, users, items, levels, spawns,
+DROP TABLE IF EXISTS migrations, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
     monsters, exits, rooms;
 
 CREATE TABLE rooms (
@@ -288,4 +288,50 @@ CREATE TABLE requests (
     pass_hash VARCHAR(255) NOT NULL,
     note VARCHAR(200) NOT NULL, -- who's asking, so the DM knows them
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Something in a room to look closer at (`look <thing>`), and townsfolk to talk to (`ask <npc> about <topic>`). A
+-- feature or topic with a skill reveals its `secret` on a check against `dc`: a Search or Study (SRD 5.2.1 p.187, p.189)
+-- or an Influence (p.184). World content: seed.sql rewrites these, keeping their ids.
+CREATE TABLE features (
+    id INT UNSIGNED PRIMARY KEY,
+    room_id INT UNSIGNED NOT NULL,
+    keywords VARCHAR(80) NOT NULL, -- words that name it; the first is how the room lists it
+    text TEXT NOT NULL, -- a line per line; {roster} becomes a line per hero
+    skill VARCHAR(20) NULL, -- a SKILLS key in game.php
+    dc TINYINT UNSIGNED NULL,
+    secret TEXT NULL,
+    KEY (room_id),
+    FOREIGN KEY (room_id) REFERENCES rooms (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Townsfolk: never fought, never moved. Not monsters rows, so no attack or spell can reach them.
+CREATE TABLE npcs (
+    id INT UNSIGNED PRIMARY KEY,
+    room_id INT UNSIGNED NOT NULL,
+    name VARCHAR(60) NOT NULL, -- 'Marta Dunmore, the innkeeper': any word of it finds her
+    about TEXT NOT NULL, -- what `look <npc>` shows
+    KEY (room_id),
+    FOREIGN KEY (room_id) REFERENCES rooms (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE topics (
+    id INT UNSIGNED PRIMARY KEY,
+    npc_id INT UNSIGNED NOT NULL,
+    keywords VARCHAR(80) NOT NULL, -- as for features
+    reply TEXT NOT NULL,
+    skill VARCHAR(20) NULL,
+    dc TINYINT UNSIGNED NULL,
+    secret TEXT NULL,
+    FOREIGN KEY (npc_id) REFERENCES npcs (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A hero's skill check on a feature or topic. A success stands; a failure can be tried again after 24 hours (p.184).
+CREATE TABLE checks (
+    user_id INT UNSIGNED NOT NULL,
+    what VARCHAR(20) NOT NULL, -- 'feature 3' or 'topic 12': no foreign key, so seed.sql can rewrite them
+    passed BOOLEAN NOT NULL,
+    at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, what),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

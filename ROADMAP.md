@@ -66,3 +66,10 @@ Any time: **approve account requests** (friends ask on the login page):
   crafting. The temple of Chauntea (room 12, safe, east of the Mill Bridge) sells `pray cure` (Cure Wounds, 50 GP),
   `heal` (Cure Wounds until full HP, a casting per 12 HP missing) and `aid` (Aid, 200 GP), cast by the SRD Priest
   (Wis +3).
+- 2026-10-14 **Inspect and ask:** `look <thing>` (or `inspect`) shows a room's `features`, and `ask <npc> about <topic>`
+  (or `speak`) talks to the townsfolk in `npcs` and `topics`, all original text in `seed.sql`. Townsfolk aren't
+  monsters, so nothing can fight them. A feature or topic may hide a secret behind a skill check (a Search, Study or
+  Influence, SRD 5.2.1 p.184-189): d20 + ability + Proficiency Bonus for a background's skills. A success stands; a
+  failure waits 24 hours (Influence's rule, used for all three), recorded in `checks`. The Lantern's ledger lists every
+  hero. Seven townsfolk: Marta (the Lantern), Sergeant Hollis (the keep gate), Brannoc (smithy), Old Pell
+  (apothecary), Ysolde Vane (curio loft), Sister Wren (temple) and Tamsin the miller.

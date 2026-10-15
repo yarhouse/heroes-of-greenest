@@ -248,8 +248,9 @@ try {
         'with a potion, drink, then the potions I carry');
     q('DELETE FROM objects WHERE item_id = 60 AND user_id = ?', [hero('Testa')['id']]);
     q("UPDATE users SET fighting = NULL, room_id = 1 WHERE name = 'Testa'");
-    check(actions(hero('Testa')) === ['north', 'south', 'east', 'west', 'rest', 'sleep', 'look', 'inventory'],
-        'buttons in the Town Square: exits, and rests since it is safe');
+    check(actions(hero('Testa'))
+        === ['north', 'south', 'east', 'west', 'rest', 'sleep', 'inspect ', 'look', 'inventory'],
+        'buttons in the Town Square: exits, rests since it is safe, and things to inspect');
     $score = run_command(hero('Testa'), 'score');
     check(says($score, 'Testa, level 1 Fighter') && says($score, 'Str 15 (+2)') && says($score, 'Int 8 (-1)')
         && says($score, 'HP 11/11   AC 17   Proficiency Bonus +2'), 'score: Standard Array Fighter, AC and HP');
@@ -1700,6 +1701,56 @@ try {
     $forms = fn (int $level): array => array_column(wild_forms(['level' => $level]), 'name');
     check(!array_intersect(['Bat', 'Swarm of Insects'], $forms(4)) && in_array('Bat', $forms(8), true),
         'no Wild Shape forms that fly before Druid 8');
+
+    // Inspecting the town and asking its people, with skill checks behind some of it (Testa: Dex 14, Wis 10).
+    q("UPDATE users SET room_id = ?, fighting = NULL, background = NULL WHERE name IN ('Testa', 'Testb')", [LANTERN]);
+    q('DELETE FROM checks');
+    $look = run_command(hero('Testa'), 'look');
+    check(says($look, 'Marta Dunmore, the innkeeper, is here.') && says($look, 'You could inspect: ledger, lantern.'),
+        'look shows the townsfolk and what to inspect');
+    $dice_queue = [1];
+    $ledger = run_command(hero('Testa'), 'look at the ledger');
+    check(says($ledger, 'GUESTS OF THE SWAYING LANTERN') && says($ledger, '  Testa ') && says($ledger, '  Testb ')
+        && says($ledger, 'Fighter, level') && says($ledger, '(Sleight of Hand check: 3 vs DC 10, fail)')
+        && !says($ledger, 'Two kobolds'), 'the ledger lists every hero; a failed check hides its secret');
+    $dice_queue = [20];
+    check(says(run_command(hero('Testa'), 'inspect ledger'), 'Try again tomorrow') && $dice_queue === [20],
+        'a failed check waits a day, without rolling');
+    q('UPDATE checks SET at = NOW() - INTERVAL 25 HOUR');
+    check(says(run_command(hero('Testa'), 'inspect ledger'), 'Two kobolds') && $dice_queue === [],
+        'a day later it rolls again, and a success shows the secret');
+    $dice_queue = [1];
+    $again = run_command(hero('Testa'), 'inspect ledger');
+    check(says($again, 'Two kobolds') && !says($again, 'check:') && $dice_queue === [1], 'a success stands');
+    $dice_queue = [];
+    check(says(run_command(hero('Testa'), 'inspect dragon'), 'You see no dragon here'), 'inspect needs a real thing');
+    check(says(run_command(hero('Testa'), 'look marta'), 'apron full of keys')
+        && says(run_command(hero('Testa'), 'inspect marta'), 'will talk about: ledger, trouble'),
+        'inspecting a townsperson describes them and what they talk about');
+    q("UPDATE users SET background = 'soldier' WHERE name = 'Testa'");
+    $t = with_stats(hero('Testa'));
+    check(skill_bonus($t, 'athletics') === mod($t['strength']) + $t['prof_bonus']
+        && skill_bonus($t, 'stealth') === mod($t['dexterity']) && skill_bonus($t, 'insight') === mod($t['wisdom']),
+        "skill checks: ability modifier, plus Proficiency Bonus in the background's skills");
+    check(says(run_command(hero('Testa'), 'ask marta'), 'Rooms upstairs')
+        && says(run_command(hero('Testa'), 'speak marta dunmore'), "Try 'ask marta about ledger'"),
+        'ask (or speak) with no topic: their greeting and what they talk about');
+    check(says(run_command(hero('Testa'), 'ask about the lantern'), 'grandmother'), 'ask about, with one person here');
+    check(says(run_command(hero('Testa'), 'ask marta wood'), 'it was green'), 'ask <npc> <topic>, without about');
+    check(says(run_command(hero('Testa'), 'ask marta about weather'), 'nothing to say about weather')
+        && says(run_command(hero('Testa'), 'ask bob about wood'), 'nobody called bob'), "ask what they don't know");
+    $dice_queue = [19];
+    $talk = run_command(hero('Testa'), 'ask marta about the raids');
+    check(says($talk, 'Who steals hinges?') && says($talk, '(Insight check: 19 vs DC 15, success)')
+        && says($talk, 'frightened'), 'a topic with a skill: an Influence check unlocks more');
+    $dice_queue = [];
+    check(in_array('ask ', actions(hero('Testa')), true) && in_array('inspect ', actions(hero('Testa')), true)
+        && in_array(['ledger', 'ask marta dunmore about ledger'],
+            choices(with_stats(hero('Testa')))['ask marta dunmore'], true)
+        && array_is_list(choices(with_stats(hero('Testa')))['ask marta dunmore']) && !says(run_command(hero('Testa'), 'ask marta about the hello'), 'nothing to say'),
+        'buttons: ask a townsperson, then a topic');
+    q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
+    check(says(run_command(hero('Testa'), 'ask about wood'), 'no one here to talk to'), 'nobody to ask in the fields');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
