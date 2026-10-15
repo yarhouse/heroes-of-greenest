@@ -53,7 +53,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
             <button type="button" class="btn-close ms-auto" data-bs-dismiss="offcanvas" data-bs-target="#hero"
                 aria-label="Close"></button>
         </div>
-        <div class="offcanvas-body">
+        <div class="offcanvas-body d-flex flex-column flex-grow-1 pb-0">
             <section id="sheet" class="card w-100" hidden>
                 <header class="card-header d-flex align-items-baseline justify-content-between gap-2">
                     <h2 id="hero-name" class="h5 m-0"></h2>
@@ -83,7 +83,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
                 </div>
                 <pre id="map" class="card-footer m-0" aria-label="Map"></pre>
             </section>
-            <p class="aside"><a href="account.php">Account and password</a></p>
+            <p class="aside mt-auto mb-0"><a href="account.php">Account and password</a></p>
         </div>
     </aside>
 </main>
