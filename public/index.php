@@ -30,7 +30,8 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Heroes of Greenest</title>
 <link rel="stylesheet" href="vendor/bootstrap/bootstrap.min.css">
-<link rel="stylesheet" href="style.css">
+<!-- ?v= is the file's mtime: the host caches these for 30 days, so a deploy must change the URL. -->
+<link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -91,7 +92,7 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
     </aside>
 </main>
 <script src="vendor/bootstrap/bootstrap.bundle.min.js"></script>
-<script src="play.js"></script>
+<script src="play.js?v=<?= filemtime(__DIR__ . '/play.js') ?>"></script>
 <?php else : ?>
 <main class="login">
     <h1>Heroes of Greenest</h1>
