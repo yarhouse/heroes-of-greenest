@@ -5,8 +5,7 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Healing is hard to find.** "Where are Hit Dice to spend? My character never seems to heal." Today Hit Dice are spent only automatically at the end of a `rest` (short rest): it works only in a safe room (Town Square, Swaying Lantern), takes 10 real minutes, moving cancels it, and it only resolves on your next command after the time is up. There's no natural healing. Ideas: show the time left in the score panel, say where to rest when HP is low, maybe let `rest` spend Hit Dice one at a time as in the SRD.
-2. **Schema migrations.** `bin/deploy.sh` reloads the world but schema changes still need their ALTERs run on the server by hand.
+Nothing queued: pick the next task from `BACKLOG.md`.
 
 Any time: **approve account requests** (friends ask on the login page):
 `ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
@@ -52,3 +51,10 @@ Any time: **approve account requests** (friends ask on the login page):
   more), `dismiss`. Three `users` columns; it goes wherever its hero goes and leaves when the paid time runs out. It
   attacks your foe after your action, a foe's turn goes at it on a d2, and at 0 HP it's gone (the gold with it). It
   starts at its stat block's average HP and either rest heals it fully. No `order` and no conditions on its rolls yet.
+- 2026-10-14 **Healing:** rests stay as they were (safe rooms, 10 min / 1 h, Hit Dice spent automatically until full HP,
+  so none are wasted). What changed is finding them: the hero sheet counts down a rest, an open page sends a command
+  when it's up so it finishes by itself, and a fight that ends at half HP or less says where to rest and how many Hit
+  Dice are left. Choosing how many Hit Dice to spend is in the backlog.
+- 2026-10-14 **Schema migrations:** `db/migrations/*.sql`, applied in name order by `bin/migrate.php` and recorded in a
+  `migrations` table; `bin/deploy.sh` runs it locally and on the server before the world reload. `schema.sql` stays
+  the whole schema (each change is made there too) and drops `migrations`, so a fresh load marks every file done.

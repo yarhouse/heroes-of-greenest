@@ -19,6 +19,7 @@ let choices = {};
 const history = [];
 let historyPos = 0;
 let queue = Promise.resolve(); // keeps replies in the order commands were typed
+let restTimer = 0;
 
 /** @param {string} text @param {string} [cls] @returns {HTMLDivElement} */
 function print(text, cls) {
@@ -58,8 +59,8 @@ async function send(cmd) {
  * hero_sheet() in game.php.
  * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, temp_hp: number, ac: number,
  *   prof: number, abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string,
- *   attacks: number, resources: [string, string][], origin: [string, string][], status: string[], xp: number,
- *   xp_from: number,
+ *   attacks: number, resources: [string, string][], origin: [string, string][], status: string[], rest_secs: number,
+ *   xp: number, xp_from: number,
  *   xp_next: number | null, gold: number }} Hero
  */
 
@@ -120,6 +121,9 @@ function drawHero(h, map) {
     const status = byId('status');
     status.replaceChildren(...h.status.map((s) => el('span', 'badge text-bg-warning fw-normal', s)));
     status.hidden = h.status.length === 0;
+    // A rest finishes on the next command, so send an empty one when it's up (the server applies it then).
+    clearTimeout(restTimer);
+    if (h.rest_secs > 0) restTimer = setTimeout(() => (queue = queue.then(() => send(''))), h.rest_secs * 1000 + 1000);
     byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
     bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
     byId('map').textContent = map.join('\n');

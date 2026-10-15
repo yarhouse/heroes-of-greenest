@@ -11,7 +11,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - `src/delve.php` — the Delve: a dungeon below the Mill Cellar, generated from a weekly seed (rooms 50001-50999) and rebuilt when a hero next reaches its stair (room 50000).
 - `bin/adduser.php` — the only way to create a hero or reset a password (no public signup, no email). `bin/reclass.php` sends a hero back to character creation.
 - `bin/convert-area.php` — turns a Riftshadow `.are` file into `db/areas/<name>.sql` (see README). Run locally only.
-- `db/schema.sql` — all tables, DESTRUCTIVE. `db/seed.sql` — world content, re-runnable, never touches heroes.
+- `db/schema.sql` — all tables, DESTRUCTIVE; always the whole current schema. `db/migrations/*.sql` — a table change, also made in `schema.sql`; `bin/migrate.php` applies pending ones (deploy runs it). `db/seed.sql` — world content, re-runnable, never touches heroes.
 - `db/areas/*.sql` — GENERATED dungeons; never hand-edit. Load after `seed.sql`, which clears all exits and spawns.
 - `db/areas/src/*.are` — Riftshadow area files we've edited (renamed, rewritten); convert from these, not `../riftshadow`.
 - `tests/selftest.php` — end-to-end checks, run in a rolled-back transaction.

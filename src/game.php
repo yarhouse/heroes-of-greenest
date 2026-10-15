@@ -624,7 +624,20 @@ function run_command(array $me, string $input): array
     };
     // look already lists what was said in the room, so don't repeat it.
     $shows_room = $verb === 'l' || $verb === 'look' || in_array($verb, DIRS, true);
-    return array_merge($rested, $shows_room ? [] : $heard, $out);
+    return array_merge($rested, $shows_room ? [] : $heard, $out, $me['fighting'] !== null ? heal_hint($me) : []);
+}
+
+/** Once a fight is over (won, fled or died), says how to heal if it left me at half HP or less. */
+function heal_hint(array $me): array
+{
+    $u = q('SELECT u.fighting, u.hp, u.max_hp, u.level - u.hit_dice_spent AS dice, r.safe
+            FROM users u JOIN rooms r ON r.id = u.room_id WHERE u.id = ?', [$me['id']])->fetch();
+    if ($u['fighting'] !== null || $u['hp'] > intdiv($u['max_hp'], 2)) {
+        return [];
+    }
+    $where = $u['safe'] ? 'You can rest here' : 'Rest in a safe room, ( ) on the map: the town square or the Lantern';
+    return ["You're hurt (HP {$u['hp']}/{$u['max_hp']}). $where. 'rest' (10 min) spends Hit Dice ({$u['dice']} left); "
+        . "'sleep' (1 h) heals you fully."];
 }
 
 /** What others said in my room since my last command. Advances my read pointer either way. */
@@ -3376,6 +3389,10 @@ function hero_sheet(array $me): array
     $free = q('SELECT id, name FROM spells WHERE level > 0 AND FIND_IN_SET(id, ?) ORDER BY level, name',
         [implode(',', origin_spells($me))])->fetchAll(PDO::FETCH_KEY_PAIR);
     $spent = explode(',', $me['origin_spent']);
+    $rest_secs = $me['resting'] === null ? 0 : max(0, (int) q(
+        'SELECT TIMESTAMPDIFF(SECOND, NOW(), rest_until) FROM users WHERE id = ?',
+        [$me['id']]
+    )->fetchColumn());
     return [
         'name' => $me['name'],
         'level' => $me['level'],
@@ -3440,8 +3457,9 @@ function hero_sheet(array $me): array
             ...explode(',', $me['conditions']),
             ...array_column($me['effects'], 'spell'),
             ($spell = concentrating($me)) === null ? null : "concentrating on $spell",
-            $me['resting'] !== null ? "taking a {$me['resting']} rest" : null,
+            $rest_secs > 0 ? "{$me['resting']} rest, " . (int) ceil($rest_secs / 60) . ' min left' : null,
         ])),
+        'rest_secs' => $rest_secs, // play.js sends a command when it's up, so the rest finishes on its own
         // Shown, not ruled where SPECIES says so. A hero from before species has none of this.
         'origin' => $o === [] ? [] : [
             ['Species', trim(ucfirst(isset($o['feat']) ? '' : (string) $me['lineage']) . " {$o['name']}") . ': '

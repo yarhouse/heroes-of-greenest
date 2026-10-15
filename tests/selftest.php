@@ -49,6 +49,10 @@ function line(array $lines, string $text): string
     return array_values(array_filter($lines, fn ($l) => str_contains($l, $text)))[0] ?? '';
 }
 
+$migrated = q("SHOW TABLES LIKE 'migrations'")->fetch()
+    ? q('SELECT name FROM migrations')->fetchAll(PDO::FETCH_COLUMN) : [];
+check(array_diff(array_map('basename', glob(__DIR__ . '/../db/migrations/*.sql') ?: []), $migrated) === [],
+    'every db/migrations file is applied (php bin/migrate.php)');
 check(cookie_path('/heroes-of-greenest/api.php') === '/heroes-of-greenest/' && cookie_path('/index.php') === '/',
     'the session cookie is scoped to the game folder');
 
@@ -377,6 +381,9 @@ try {
     check(says(run_command(hero('Testa'), 'rest'), 'settle in for a short rest'), 'rest starts a short rest');
     check(says(run_command(hero('Testa'), 'sleep'), 'already taking a short rest (10 min to go)'),
         'one rest at a time');
+    $sheet = hero_sheet(with_stats(hero('Testa')));
+    check(in_array('short rest, 10 min left', $sheet['status'], true) && $sheet['rest_secs'] > 590,
+        'the hero sheet shows the time left, for play.js to finish the rest');
     check(!says(run_command(hero('Testa'), 'score'), 'You finish'), 'a rest takes time');
     q("UPDATE users SET rest_until = NOW() WHERE name = 'Testa'");
     $dice_queue = [6];
@@ -402,6 +409,12 @@ try {
     $out = run_command(hero('Testa'), 'n');
     check(says($out, 'You stop resting.') && hero('Testa')['resting'] === null, 'leaving the room cancels a rest');
     check(says(run_command(hero('Testa'), 'rest'), "isn't safe to rest here"), 'rest only in safe rooms');
+    q("UPDATE users SET hp = 5 WHERE name = 'Testa'");
+    check(says(heal_hint(hero('Testa')), "You're hurt (HP 5/11). Rest in a safe room")
+        && says(heal_hint(hero('Testa')), '(1 left)'), 'hurt after a fight away from town: where to rest');
+    q("UPDATE users SET hp = 6 WHERE name = 'Testa'");
+    check(heal_hint(hero('Testa')) === [], 'no hint above half HP');
+    q("UPDATE users SET hp = 11 WHERE name = 'Testa'");
     run_command(hero('Testa'), 's');
 
     // Combat, with every roll queued. Testa wears Kit A: +4 to hit, 2d6+2 damage, AC 17, initiative +2.
@@ -439,6 +452,7 @@ try {
     $out = run_command(hero('Testa'), 'flee');
     check(says($out, 'cuts you off (4 vs 15)') && says($out, 'hits you (22 vs AC 17) for 4')
         && hero('Testa')['hp'] === 7, 'a failed flee draws one attack');
+    check(!says($out, "You're hurt"), 'no heal hint while still fighting');
 
     q("UPDATE users SET hp = 1, gold = 100 WHERE name = 'Testa'");
     q('UPDATE spawns SET hp = 30 WHERE id = 9999'); // so the Greatsword's Graze doesn't finish it
@@ -447,6 +461,7 @@ try {
     $t = hero('Testa');
     check(says($out, 'You have died!') && $t['room_id'] === START_ROOM && $t['hp'] === 3 && $t['gold'] === 50
         && $t['fighting'] === null, 'death: back to town with 1/4 HP and half the gold');
+    check(says($out, "You're hurt (HP 3/11). You can rest here."), 'and told to rest there');
 
     run_command(hero('Testa'), 'n');
     $dice_queue = [1, 20, 1, 1]; // initiative 3 vs 20: the dummy goes first, and both roll natural 1s

@@ -15,6 +15,7 @@ mysql -u root -e "CREATE DATABASE greenest; CREATE USER 'greenest'@'localhost' I
 
 cp config.php.example config.php        # then edit the DB settings
 mysql -u greenest -p greenest < db/schema.sql   # DESTRUCTIVE: wipes all tables
+php bin/migrate.php                     # marks the migrations done; after that, applies new ones
 mysql -u greenest -p greenest < db/seed.sql     # world content; safe to re-run (respawns monsters)
 cat db/areas/*.sql | mysql -u greenest -p greenest   # converted dungeons; load after seed.sql, every time
 php bin/adduser.php Aaron               # an account; prompts for a password
@@ -62,9 +63,23 @@ ssh -t $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/adduser.php Aaron"
 ```
 
 After that, every update is `bin/deploy.sh`. It refuses to run with uncommitted changes or a failing local selftest,
-copies the code over (never `config.php` or `var/`), makes the symlink, reloads `db/seed.sql` and `db/areas/*.sql`
-(heroes are untouched; monsters respawn and the Delve rerolls), and runs the selftest on the server. If a commit
-changes `db/schema.sql`, run its ALTERs on the server first.
+copies the code over (never `config.php` or `var/`), makes the symlink, runs the pending schema migrations, reloads
+`db/seed.sql` and `db/areas/*.sql` (heroes are untouched; monsters respawn and the Delve rerolls), and runs the selftest
+on the server.
+
+## Schema changes
+
+To change a table, add a file to `db/migrations/` named so it sorts after the others, with the ALTERs (one statement
+each when you can: MySQL commits each ALTER on its own), and make the same change in `db/schema.sql`, which stays the
+whole current schema. `php bin/migrate.php` runs each file not yet in the `migrations` table, in name order, and stops
+at the first error; `bin/deploy.sh` runs it locally and then on the server, before the world reload. A database
+without that table (a fresh `schema.sql` load, which drops it) is taken to be current, so its files are only marked
+done. The selftest fails while a migration is pending.
+
+```sh
+printf 'ALTER TABLE users ADD COLUMN title VARCHAR(40) NULL;\n' > db/migrations/2026-10-20-title.sql
+php bin/migrate.php                     # applied 2026-10-20-title.sql
+```
 
 ## Dungeons from Riftshadow
 
@@ -147,7 +162,9 @@ Advantage on your next attack (Push and Slow need distances). Damage has SRD typ
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield and Potion of Healing; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
 with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
-Disadvantage. Rest with `rest` (short) or `sleep` (long) in a safe room: the town square or the Swaying Lantern. At
+Disadvantage. Rest with `rest` (short, 10 minutes: Hit Dice heal you) or `sleep` (long, an hour: full HP) in a safe
+room: the town square or the Swaying Lantern. The hero sheet counts down the time left, an open page finishes the rest
+by itself, and a fight that leaves you at half HP or less ends with where to rest. At
 the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a
 day: it follows you, attacks your foe after you, takes some of its attacks, and heals when you rest. The plan and
 what's left out are in the project's `d20-plan.md`. "5E compatible."

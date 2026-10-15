@@ -1,7 +1,8 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
-DROP TABLE IF EXISTS requests, effects, spells, delve, objects, events, users, items, levels, spawns, monsters, exits,
-    rooms;
+-- Dropping migrations tells bin/migrate.php this database matches this file, so it marks every migration done.
+DROP TABLE IF EXISTS migrations, requests, effects, spells, delve, objects, events, users, items, levels, spawns,
+    monsters, exits, rooms;
 
 CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
