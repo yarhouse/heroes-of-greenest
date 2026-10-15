@@ -49,6 +49,9 @@ function line(array $lines, string $text): string
     return array_values(array_filter($lines, fn ($l) => str_contains($l, $text)))[0] ?? '';
 }
 
+check(cookie_path('/heroes-of-greenest/api.php') === '/heroes-of-greenest/' && cookie_path('/index.php') === '/',
+    'the session cookie is scoped to the game folder');
+
 db()->beginTransaction();
 try {
     check(save_account('Testa', 'short') !== '', 'rejects a short password');

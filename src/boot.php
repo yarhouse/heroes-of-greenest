@@ -36,6 +36,12 @@ function is_https(): bool
     return !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 }
 
+/** The folder an entry point is served from, as a cookie path: '/heroes-of-greenest/' when hosted, '/' under php -S. */
+function cookie_path(string $script): string
+{
+    return rtrim(dirname($script), '/\\') . '/';
+}
+
 /** Security headers, session start, and refusal of cross-site POSTs. Call first in every web entry point. */
 function web_init(): void
 {
@@ -55,14 +61,20 @@ function web_init(): void
     ini_set('session.gc_maxlifetime', (string) (SESSION_DAYS * 86400));
     ini_set('session.gc_probability', '1');
     ini_set('session.gc_divisor', '100');
+    // Scoped to the game's folder so the rest of yarhouse.dev never receives the session cookie.
+    $path = cookie_path($_SERVER['SCRIPT_NAME'] ?? '/');
     session_set_cookie_params([
         'lifetime' => SESSION_DAYS * 86400,
-        'path' => '/',
+        'path' => $path,
         'secure' => is_https(),
         'httponly' => true,
         'samesite' => 'Strict',
     ]);
     session_start();
+    // shortcut: expires the cookie set on '/' before scoping (logs those heroes out once); drop after 2026-11-15.
+    if ($path !== '/' && isset($_COOKIE['greenest'])) {
+        setcookie('greenest', '', ['expires' => 1, 'path' => '/']);
+    }
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $origin = $_SERVER['HTTP_ORIGIN'] ?? null;
