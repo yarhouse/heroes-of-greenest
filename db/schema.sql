@@ -8,7 +8,9 @@ CREATE TABLE rooms (
     id INT UNSIGNED PRIMARY KEY,
     name VARCHAR(80) NOT NULL,
     description TEXT NOT NULL,
-    safe BOOLEAN NOT NULL DEFAULT FALSE -- heroes can rest here
+    safe BOOLEAN NOT NULL DEFAULT FALSE, -- heroes can rest here
+    terrain VARCHAR(20) NULL, -- Riftshadow's sector (forest, field, inside...): what a generated battle board holds
+    layout TEXT NULL -- a hand-drawn battle board, rows of . # % , ~ (see board() in game.php); NULL: generated
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE exits (

@@ -35,6 +35,9 @@ INSERT INTO rooms (id, name, description, safe) VALUES
  'Worn steps spiral down beneath the mill. The tunnels below are never the same from one week to the next.', FALSE)
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, description = new.description, safe = new.safe;
+-- What the town's battle boards hold (board() in game.php): streets, a road, a field, and rooms with tables.
+UPDATE rooms SET terrain = CASE WHEN id IN (1, 2, 4) THEN 'city' WHEN id = 5 THEN 'road' WHEN id = 6 THEN 'field'
+    ELSE 'inside' END WHERE id <= 99;
 
 DELETE FROM exits;
 INSERT INTO exits (room_id, dir, to_room) VALUES

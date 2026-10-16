@@ -32,12 +32,6 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-6. **Battle maps** (step 2). A layout column on `rooms` (ASCII like below), so rooms come in any size: a hall can be
-   20 by 12 squares and still be one cell on the zone map. Step 1's open boards gain walls, cover and terrain:
-   line of sight (Bresenham), cover, difficult terrain, monsters walking around obstacles (BFS), and monsters' spots
-   in the layout. Step 1's commands keep working. Rooms without a hand-drawn layout get one generated from their
-   terrain, the same every time: takes in the backlog's terrain idea (`convert-area.php` keeps Riftshadow's sector in `rooms.terrain`, the town's are tagged by hand;
-   forest gives trees as half cover, water difficult terrain). The Delve generator draws its own layouts.
 7. **Shared fights others can join** (step 3). The fight belongs to the room, not the hero: a per-room encounter
    table, one initiative order for every hero and monster in it. A hero who walks into a room mid-fight rolls
    Initiative, is slotted into the order and appears at the edge of the exit they came through. Players aren't online
@@ -234,3 +228,16 @@ Any time: **approve account requests** (friends ask on the login page):
   around rock, the rest left off; all of Greenest always shows. Heroes from before start with nothing explored outside
   town. A Delve rebuild forgets its rooms. `play.js` puts the map's rows in a scrolling box, at most 21 rows high, kept
   centred on `@`, also when the phone drawer opens.
+- 2026-10-16 **Battle maps** (task 6): a room's board is its hand-drawn `rooms.layout` (rows of `.` `#` `%` `,` `~`,
+  any size up to 26x19, a letter where its monster starts), else generated from `rooms.terrain` (Riftshadow's sector,
+  kept by `convert-area.php`; the town's tagged in `seed.sql`; the Sewers, Kobold Mines and Delve are all `cave`, the
+  sixth column of `ZONES`) by `TERRAIN`'s mix, `mt_rand` seeded by the room as the Delve is by the week, keeping the
+  squares by its exits clear and every open square connected. `#` rock blocks moving and sight; `%` a tree, boulder or
+  table blocks moving and gives half cover (+2 AC) to a shot past it; `,` and `~` are difficult terrain. Sight is a
+  Bresenham line (`sight()`); `in_reach()` needs it past 5 ft. Every walker (hero, monster, hireling) takes the
+  cheapest path (`paths()`, Dijkstra; no cutting corners of rock or trees; `toward()` picks the straightest first step
+  among the cheapest), and a shooter walks to a square with a line. No hand-drawn boards yet: Aaron sends rooms (the
+  Delve boss room, the Mill Cellar...) and they go in `db/layouts.sql`, a new hand-edited file loaded after the areas.
+  The board's glyphs are ASCII in PHP and swapped for the font's in `play.js` (`MAP_CELLS`): Aaron wants Dungeon
+  Mode's own trees, rocks and water there later. Shortcuts: half cover doesn't help Dex saves, and creatures give no
+  cover.

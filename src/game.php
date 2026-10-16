@@ -8,16 +8,30 @@ require_once __DIR__ . '/delve.php';
 
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
 const MAP_STEPS = ['north' => [0, -1], 'south' => [0, 1], 'east' => [1, 0], 'west' => [-1, 0]]; // up/down: marks only
-// Zones: ranges of room ids, each its own map (cmd_map() stops at an exit into another zone), and the battle board
-// its rooms get in a fight, wide and deep in 5-ft squares: against a Speed 30 monster, about 1 free shot in town, 2
-// in the Woods, 0 to 1 underground. Roads get theirs, from 100, as they're built.
+// Zones: ranges of room ids, each its own map (cmd_map() stops at an exit into another zone), the battle board its
+// rooms get in a fight, wide and deep in 5-ft squares (against a Speed 30 monster, about 1 free shot in town, 2 in the
+// Woods, 0 to 1 underground), and the terrain every room there has, if not each its own. Roads get theirs, from 100,
+// as they're built.
 const ZONES = [
-    [1, 99, 'Greenest', 8, 6],
-    [6000, 6099, 'Wood of Sharp Teeth', 16, 10],
-    [6100, 6199, 'Deep Wood', 16, 10],
-    [7000, 7499, 'The Sewers', 6, 5],
-    [24600, 24799, 'Kobold Mines', 6, 5],
-    [50000, 50999, 'The Delve', 6, 5],
+    [1, 99, 'Greenest', 8, 6, null],
+    [6000, 6099, 'Wood of Sharp Teeth', 16, 10, null],
+    [6100, 6199, 'Deep Wood', 16, 10, null],
+    [7000, 7499, 'The Sewers', 6, 5, 'cave'], // Riftshadow's sectors there are mountains, forest...
+    [24600, 24799, 'Kobold Mines', 6, 5, 'cave'],
+    [50000, 50999, 'The Delve', 6, 5, 'cave'],
+];
+// What a generated battle board holds, by terrain, as percents of its squares: # rock (blocks moving and sight), % a
+// tree, boulder or table (blocks moving; half cover), , undergrowth or rubble and ~ shallows (difficult terrain).
+const TERRAIN = [
+    'forest' => ['%' => 12, ',' => 10],
+    'field' => ['%' => 4, ',' => 4],
+    'road' => ['%' => 3],
+    'city' => ['%' => 4],
+    'hills' => ['%' => 6, ',' => 6],
+    'mountains' => ['#' => 6, '%' => 6],
+    'inside' => ['%' => 5],
+    'cave' => ['#' => 8, ',' => 8],
+    'water' => ['~' => 35, '%' => 3],
 ];
 const STEPS = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]]; // a square's eight neighbours
 const ONLINE_MINUTES = 10;
@@ -1427,16 +1441,14 @@ function cmd_action(array $me, string $how, string $to): array
  */
 function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free = false, string $how = 'back off'): bool
 {
-    [, , , $w, $h] = zone((int) $me['room_id']);
     [$mine, $there] = [my_square($me), [$foe['x'], $foe['y']]];
-    $key = fn ($p) => [-feet($p, $there), feet($p, $mine), abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
+    $ways = paths((int) $me['room_id'], $mine, array_values(array_filter([$there, hire_square($me)])));
+    $key = fn ($p, $c) => [-feet($p, $there), $c, abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
     $best = $mine;
-    for ($x = 0; $x < $w; $x++) {
-        for ($y = 0; $y < $h; $y++) {
-            if (feet([$x, $y], $mine) <= $feet && !in_array([$x, $y], [$there, hire_square($me)], true)
-                && $key([$x, $y]) < $key($best)) {
-                $best = [$x, $y];
-            }
+    foreach ($ways as $k => [$cost]) {
+        $p = array_map('intval', explode(',', $k));
+        if ($cost <= $feet && $key($p, $cost) < $key($best, $ways[implode(',', $best)][0])) {
+            $best = $p;
         }
     }
     if ($best === $mine) {
@@ -1454,7 +1466,7 @@ function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free 
 /** Square $to (like c3) of my room's board as [x, y], or null if it isn't one. */
 function board_square(array $me, string $to): ?array
 {
-    [, , , $w, $h] = zone((int) $me['room_id']);
+    [$w, $h] = board_size((int) $me['room_id']);
     if (!preg_match('/^([a-z])(\d{1,2})$/', strtolower($to), $m) || ord($m[1]) - 97 >= $w || $m[2] < 1
         || $m[2] > $h) {
         return null;
@@ -1485,7 +1497,7 @@ function fight(
     if ($me['fighting'] === null) {
         $unseen = hidden_from($me, $foe);
         start_fight($me, $foe, $lines, "You attack the {$foe['name']}" . ($unseen ? ' from hiding!' : '!'));
-        if ($unseen && feet(my_square($me), [$foe['x'], $foe['y']]) > $reach) { // unnoticed, before the first turn
+        if ($unseen && !in_reach((int) $me['room_id'], my_square($me), [$foe['x'], $foe['y']], $reach)) { // unnoticed
             $me['moved'] = 0;
             walk($me, $foe, [$foe['x'], $foe['y']], $me['speed'], $lines, $reach); // toward it: no opportunity attack
             $me['moved'] = null;
@@ -1501,7 +1513,13 @@ function fight(
             if ($hostile) {
                 unward($me, $lines);
             }
+            $cover = $me['far'] ? sight((int) $me['room_id'], my_square($me), [$foe['x'], $foe['y']]) ?? 0 : 0;
+            if ($cover) {
+                $lines[] = "The {$foe['name']} has half cover (+2 AC).";
+            }
+            $foe['ac'] += $cover; // shortcut: not on its Dex saves, which half cover also helps
             $over = $act($me, $foe, $lines);
+            $foe['ac'] -= $cover;
         }
         $over = $over || ($me['hireling'] !== null && hireling_turn($me, $foe, $lines));
         $over = $over || end_turn($me, $foe, $lines);
@@ -1548,42 +1566,48 @@ function end_turn(array &$me, array &$foe, array &$lines): bool
 }
 
 /**
- * Before my action: if my foe is more than $reach feet off, I walk toward it with what's left of my Speed. If that
- * can't get me there I Dash, as far again, and return false: the Dash was my action.
+ * Before my action: if a $reach-ft attack can't reach my foe from here (too far, or no line to it), I walk to where
+ * one can with what's left of my Speed. If that can't get me there I Dash, as far again, and return false: the Dash
+ * was my action.
  */
 function close_in(array &$me, array &$foe, int $reach, array &$lines): bool
 {
     $there = [$foe['x'], $foe['y']];
-    if (feet(my_square($me), $there) <= $reach) {
+    $room = (int) $me['room_id'];
+    if (in_reach($room, my_square($me), $there, $reach)) {
         return true;
     }
-    walk($me, $foe, $there, $me['speed'] - $me['moved'], $lines, $reach); // toward it: no step leaves its reach
-    if (feet(my_square($me), $there) <= $reach) {
+    walk($me, $foe, $there, $me['speed'] - $me['moved'], $lines, $reach);
+    if (in_reach($room, my_square($me), $there, $reach)) {
         $lines[] = "You close in on the {$foe['name']}.";
         return true;
     }
     walk($me, $foe, $there, $me['speed'], $lines, $reach);
     $off = feet(my_square($me), $there);
-    $lines[] = "You run at the {$foe['name']}" . ($off > $reach ? ", $off ft off." : '.');
+    $lines[] = "You run at the {$foe['name']}" . ($off > 5 ? ", $off ft off." : '.');
     return false;
 }
 
 /**
- * Walks me square by square toward $to, up to $feet, stopping once I'm there or within $stop feet of my foe. A step
- * out of its reach draws its opportunity attack (once a round: its Reaction), unless $free (Disengage). Saves my square
+ * Walks me square by square toward $to, up to $feet (difficult terrain costs double), stopping once I'm there, or
+ * when $stop isn't 0, where a $stop-ft attack reaches my foe (see in_reach()). A step out of its reach draws its
+ * opportunity attack (once a round: its Reaction), unless $free (Disengage). Saves my square
  * and the feet of Speed I've used. Returns true if that attack ended the fight.
  */
 function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int $stop = 0, bool $free = false): bool
 {
+    $room = (int) $me['room_id'];
+    $rows = board($room);
     $at = my_square($me);
     $there = [$foe['x'], $foe['y']];
-    for ($left = $feet; $left >= 5 && $at !== $to && feet($at, $there) > $stop; $left -= 5) {
-        $next = toward((int) $me['room_id'], $at, $to, array_filter([$there, hire_square($me)]));
-        if ($next === $at) {
+    for ($left = $feet; $at !== $to && ($stop === 0 || !in_reach($room, $at, $there, $stop));) {
+        $next = toward($room, $at, $to, array_values(array_filter([$there, hire_square($me)])), $stop);
+        if ($next === $at || step_cost($rows, $next) > $left) {
             break;
         }
+        $left -= step_cost($rows, $next);
         $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
-        [$at, $me['x'], $me['y'], $me['moved']] = [$next, $next[0], $next[1], $me['moved'] + 5];
+        [$at, $me['x'], $me['y'], $me['moved']] = [$next, $next[0], $next[1], $me['moved'] + step_cost($rows, $next)];
         if ($foe['grappled_by'] === $me['id'] && feet($at, $there) > 5) { // out of my reach, my hold breaks
             $foe['grappled_by'] = null;
             q('UPDATE spawns SET grappled_by = NULL WHERE id = ?', [$foe['id']]);
@@ -1613,6 +1637,9 @@ function cmd_step(array $me, string $to): array
     if ($sq === null) {
         return ['Move where? Name a square on the board, like b3 (a1 is the top left).'];
     }
+    if (!open_square(board((int) $me['room_id']), $sq)) {
+        return [square($sq) . ' is blocked: rock or a tree.'];
+    }
     if ($sq === [$foe['x'], $foe['y']] || $sq === hire_square($me)) {
         return [$sq === hire_square($me) ? "Your {$me['hireling']['name']} is there." : "The {$foe['name']} is there."];
     }
@@ -1621,9 +1648,11 @@ function cmd_step(array $me, string $to): array
         return $lines;
     }
     $left = $me['speed'] - $me['moved'];
-    if (feet(my_square($me), $sq) > $left) {
-        return [...$lines, "You have $left ft of movement left this turn, and " . square($sq) . ' is '
-            . feet(my_square($me), $sq) . ' ft away.'];
+    $cost = paths((int) $me['room_id'], my_square($me), array_values(array_filter([[$foe['x'], $foe['y']],
+        hire_square($me)])))[implode(',', $sq)][0] ?? null;
+    if ($cost === null || $cost > $left) {
+        return [...$lines, $cost === null ? "You can't get to " . square($sq) . ' from here.'
+            : "You have $left ft of movement left this turn, and " . square($sq) . " is $cost ft away."];
     }
     if (walk($me, $foe, $sq, $left, $lines)) {
         return $lines;
@@ -1659,20 +1688,23 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
     $me['fighting'] = $foe['id'];
     $me['advantage'] = $me['advantage'] || $unseen;
     // Where we stand: I'm where I came in or last moved, and it where it last stood, or if that's stale (or it never
-    // fought) across the board from me, at the far end of my row if I'm mid-board.
-    [, , , $w, $h] = zone((int) $me['room_id']);
+    // fought) at its board's letter, if the board was drawn by hand, else across the board from me (at the far end of
+    // my row if I'm mid-board), or the open square nearest that.
+    $room = (int) $me['room_id'];
+    [$w, $h] = board_size($room);
     $spot = my_square($me);
     if ($foe['x'] === null || ($foe['stale'] && !$others)) {
         $across = [$w - 1 - $spot[0], $h - 1 - $spot[1]];
-        [$foe['x'], $foe['y']] = feet($across, $spot) >= 10 ? $across : [$spot[0] < $w / 2 ? $w - 1 : 0, $spot[1]];
+        [$foe['x'], $foe['y']] = mark($room) ?? (feet($across, $spot) >= 10 ? $across
+            : [$spot[0] < $w / 2 ? $w - 1 : 0, $spot[1]]);
     }
-    if ([$foe['x'], $foe['y']] === $spot) { // it waits on my square, so I'm beside it
-        $spot[0] += $spot[0] > 0 ? -1 : 1;
+    if ([$foe['x'], $foe['y']] === $spot || !open_square(board($room), [$foe['x'], $foe['y']])) {
+        [$foe['x'], $foe['y']] = open_near($room, [$foe['x'], $foe['y']], [$spot]);
     }
     [$me['x'], $me['y']] = $spot;
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$foe['x'], $foe['y'], $foe['id']]);
     if ($me['hireling'] !== null) { // my hireling starts beside me, nearest the foe
-        $there = beside((int) $me['room_id'], $spot, [$foe['x'], $foe['y']], [[$foe['x'], $foe['y']]]);
+        $there = beside($room, $spot, [$foe['x'], $foe['y']], [[$foe['x'], $foe['y']]]);
         [$me['hireling']['x'], $me['hireling']['y']] = $there;
         q('UPDATE users SET hireling_x = ?, hireling_y = ? WHERE id = ?', [$there[0], $there[1], $me['id']]);
     }
@@ -1923,13 +1955,13 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
 /** Push: my foe goes up to 10 ft straight away from me, as far as the board allows. */
 function push(array $me, array &$foe, array &$lines): void
 {
-    [, , , $w, $h] = zone((int) $me['room_id']);
+    $rows = board((int) $me['room_id']);
     $mine = my_square($me);
     $from = [$foe['x'], $foe['y']];
     $at = $from;
     for ($n = 0; $n < 2; $n++) {
         $next = [$at[0] + ($at[0] <=> $mine[0]), $at[1] + ($at[1] <=> $mine[1])];
-        if ($next[0] < 0 || $next[0] >= $w || $next[1] < 0 || $next[1] >= $h) {
+        if (!open_square($rows, $next) || $next === hire_square($me)) {
             break;
         }
         $at = $next;
@@ -2386,6 +2418,11 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
     $a = $shot ? ['attack' => $foe['shot'], 'to_hit' => $foe['shot_hit'], 'damage' => $foe['shot_damage'],
         'damage_type' => $foe['shot_type'], 'extra_damage' => null, 'extra_type' => null] : $foe;
     $long = $shot && feet([$foe['x'], $foe['y']], my_square($me)) > $foe['shot_range']; // Disadvantage
+    $cover = $shot ? sight((int) $me['room_id'], [$foe['x'], $foe['y']], my_square($me)) ?? 0 : 0;
+    if ($cover) {
+        $lines[] = 'You have half cover (+2 AC).';
+    }
+    $ac = $me['ac'] + $cover;
     // In melee it fights my hireling if that's all it can reach, or on a d2 if it can reach us both (an opportunity
     // attack is always at me).
     $hire = hire_square($me);
@@ -2426,17 +2463,17 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $total = $d20 + $a['to_hit'] + $bonus;
         $its = "The {$foe['name']}'s {$a['attack']}";
         $with = with($edge) . $note;
-        if ($d20 === 1 || ($d20 < 20 && $total < $me['ac'])) {
-            $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$me['ac']}") . "$with).";
+        if ($d20 === 1 || ($d20 < 20 && $total < $ac)) {
+            $lines[] = "$its misses you (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$ac}") . "$with).";
             continue;
         }
         // Cutting Words: when my die could turn the hit, spend a Bardic Inspiration and take it off the roll.
-        if ($cutting && $d20 < 20 && $total - $me['ac'] < $me['bardic'] && spend_uses($me)) {
+        if ($cutting && $d20 < 20 && $total - $ac < $me['bardic'] && spend_uses($me)) {
             $cutting = false;
             $cut = roll('1d' . $me['bardic']);
             [$total, $with] = [$total - $cut, "$with, -$cut Cutting Words"];
-            if ($total < $me['ac']) {
-                $lines[] = "$its misses you ($total vs AC {$me['ac']}$with).";
+            if ($total < $ac) {
+                $lines[] = "$its misses you ($total vs AC {$ac}$with).";
                 continue;
             }
         }
@@ -2466,7 +2503,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         }
         $me['hp'] -= $dmg - $soaked;
         $hit_me = $me['class'] === 'ranger' && $me['level'] >= 7;
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$me['ac']}$with) for $dmg "
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$ac}$with) for $dmg "
             . "damage$note" . ($soaked ? " ($soaked to temporary HP)" : '')
             . ($deflected ? ", $deflected deflected" : '')
             . ($endured ? ", $endured shrugged off (Stone's Endurance)" : '') . '.';
@@ -2533,19 +2570,17 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
     $held = $hire !== null && feet($at, $hire) <= 5;
     $shoot = $foe['shot'] !== null && feet($at, $mine) > 5 && !$held;
     [$want, $need] = $shoot ? [$foe['shot_range'], $foe['shot_long']] : [$foe['reach'], $foe['reach']];
-    if ($held && feet($at, $mine) > $need) {
+    if ($held && !in_reach($room, $at, $mine, $need)) {
         // A square in its move that reaches me and stays beside the hireling, else it fights the hireling.
         $spots = [];
-        for ($x = 0; $x < zone($room)[3]; $x++) {
-            for ($y = 0; $y < zone($room)[4]; $y++) {
-                $p = [$x, $y];
-                if (feet($p, $at) <= $speed && feet($p, $mine) <= $need && feet($p, $hire) <= 5
-                    && !in_array($p, [$mine, $hire], true)) {
-                    $spots[] = $p;
-                }
+        foreach (paths($room, $at, [$mine, $hire]) as $k => [$cost]) {
+            $p = array_map('intval', explode(',', $k));
+            if ($cost <= $speed && in_reach($room, $p, $mine, $need) && feet($p, $hire) <= 5) {
+                $spots[] = [$cost, $p];
             }
         }
-        usort($spots, fn ($a, $b) => feet($a, $at) <=> feet($b, $at));
+        sort($spots);
+        $spots = array_column($spots, 1);
         if ($spots === []) {
             return 'hireling';
         }
@@ -2554,20 +2589,21 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
         $lines[] = "The {$foe['name']} closes in.";
         return 'melee';
     }
-    if ($speed === 0 && feet($at, $mine) > $need) {
+    if ($speed === 0 && !in_reach($room, $at, $mine, $need)) {
         $lines[] = "The {$foe['name']} can't move.";
         return null;
     }
+    $rows = board($room);
     $walked = 0;
     $reacted = false; // my hireling's Reaction
     foreach ([[$want, $speed], [$need, 2 * $speed]] as [$stop, $limit]) { // its move, then a Dash if need be
-        while (feet($at, $mine) > $stop && $walked < $limit) {
-            $next = toward($room, $at, $mine, array_filter([$mine, $hire]));
-            if ($next === $at) {
+        while (!in_reach($room, $at, $mine, $stop)) {
+            $next = toward($room, $at, $mine, array_values(array_filter([$mine, $hire])), $stop);
+            if ($next === $at || $walked + step_cost($rows, $next) > $limit) {
                 break;
             }
             $passing = $hire !== null && !$reacted && feet($at, $hire) <= 5 && feet($next, $hire) > 5;
-            [$at, $walked, $foe['x'], $foe['y']] = [$next, $walked + 5, $next[0], $next[1]];
+            [$at, $walked, $foe['x'], $foe['y']] = [$next, $walked + step_cost($rows, $next), $next[0], $next[1]];
             if ($passing) {
                 $reacted = true;
                 $lines[] = "Your {$me['hireling']['name']} strikes as the {$foe['name']} goes past!";
@@ -2578,7 +2614,7 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
         }
     }
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$at[0], $at[1], $foe['id']]);
-    if (feet($at, $mine) > $need || $walked > $speed) {
+    if (!in_reach($room, $at, $mine, $need) || $walked > $speed) {
         $lines[] = "The {$foe['name']} runs at you.";
         return null;
     }
@@ -4251,12 +4287,14 @@ function hireling_turn(array &$me, array &$foe, array &$lines): bool
             => [beside($room, $mine, $there, [$there]), 'falls back beside you'],
         default => [$at, ''],
     };
-    for ($walked = 0; $at !== $to && feet($at, $there) > ($how === 'closes in' ? 5 : 0) && $walked < $h['speed'];
-        $walked += 5) {
-        $next = toward($room, $at, $to, [$there, $mine]);
-        if ($next === $at) {
+    $rows = board($room);
+    $reach = $how === 'closes in' ? 5 : 0;
+    for ($walked = 0; $at !== $to && ($reach === 0 || feet($at, $there) > 5);) {
+        $next = toward($room, $at, $to, [$there, $mine], $reach);
+        if ($next === $at || $walked + step_cost($rows, $next) > $h['speed']) {
             break;
         }
+        $walked += step_cost($rows, $next);
         $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
         $at = $next;
         if ($leaving && !has($me, 'provoked')) {
@@ -4287,9 +4325,11 @@ function hireling_attacks(array &$me, array &$foe, array &$lines, ?int $n = null
     $h = $me['hireling'];
     $d = feet(hire_square($me), [$foe['x'], $foe['y']]);
     $shot = $d > 5 && $n === null;
-    if ($shot && ($h['shot'] === null || $d > $h['shot_long'])) {
+    $cover = $shot ? sight((int) $me['room_id'], hire_square($me), [$foe['x'], $foe['y']]) : 0;
+    if ($shot && ($h['shot'] === null || $d > $h['shot_long'] || $cover === null)) {
         return false;
     }
+    $ac = $foe['ac'] + $cover;
     [$attack, $to_hit, $damage, $type, $extra] = $shot
         ? [$h['shot'], $h['shot_hit'], $h['shot_damage'], $h['shot_type'], null]
         : [$h['attack'], $h['to_hit'], $h['damage'], $h['damage_type'], $h['extra_damage']];
@@ -4298,8 +4338,8 @@ function hireling_attacks(array &$me, array &$foe, array &$lines, ?int $n = null
         $d20 = d20($edge);
         $total = $d20 + $to_hit;
         $its = "Your {$h['name']}'s $attack";
-        if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
-            $lines[] = "$its misses the {$foe['name']} (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}")
+        if ($d20 === 1 || ($d20 < 20 && $total < $ac)) {
+            $lines[] = "$its misses the {$foe['name']} (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$ac}")
                 . with($edge) . ').';
             continue;
         }
@@ -4309,7 +4349,7 @@ function hireling_attacks(array &$me, array &$foe, array &$lines, ?int $n = null
             $dmg += $more;
             $note = implode('', array_unique([$note, $more_note]));
         }
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits the {$foe['name']} ($total vs AC {$foe['ac']}"
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits the {$foe['name']} ($total vs AC {$ac}"
             . with($edge) . ") for $dmg damage$note.";
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
@@ -4555,7 +4595,10 @@ function cmd_score(array $me): array
     ];
 }
 
-/** Room $id's ZONES row: [first, last, name, board width, board depth]. A room in none gets a nameless 8x6 board. */
+/**
+ * Room $id's ZONES row: [first, last, name, board width, board depth, terrain]. A room in none gets a nameless 8x6
+ * board.
+ */
 function zone(int $id): array
 {
     foreach (ZONES as $z) {
@@ -4563,7 +4606,172 @@ function zone(int $id): array
             return $z;
         }
     }
-    return [$id, $id, '', 8, 6];
+    return [$id, $id, '', 8, 6, null];
+}
+
+/** Room $id's hand-drawn board, rows of TERRAIN's glyphs and . with a letter where a monster starts, or null. */
+function layout(int $id): ?array
+{
+    $layout = q('SELECT layout FROM rooms WHERE id = ?', [$id])->fetchColumn();
+    return is_string($layout) && $layout !== '' ? explode("\n", str_replace("\r", '', trim($layout))) : null;
+}
+
+/** The square of room $id's hand-drawn board marked with a letter, where its monster starts; null if none. */
+function mark(int $id): ?array
+{
+    foreach (layout($id) ?? [] as $y => $row) {
+        if (preg_match('/[a-z]/', $row, $m, PREG_OFFSET_CAPTURE)) {
+            return [$m[0][1], $y];
+        }
+    }
+    return null;
+}
+
+/** Room $id's board, [width, depth] in squares: its layout's, else its zone's. */
+function board_size(int $id): array
+{
+    $layout = layout($id);
+    return $layout === null ? array_slice(zone($id), 3, 2) : [strlen($layout[0]), count($layout)];
+}
+
+/**
+ * Room $id's battle board, rows of . and TERRAIN's glyphs: its layout (letters as floor), else generated from its
+ * terrain, the same every time (mt_rand seeded by the room, as the Delve is by the week). A generated board keeps the
+ * squares by its exits clear and every open square reachable.
+ */
+function board(int $id): array
+{
+    $layout = layout($id);
+    if ($layout !== null) {
+        return array_map(fn ($row) => preg_replace('/[a-z]/', '.', $row), $layout);
+    }
+    [$w, $h] = board_size($id);
+    $terrain = zone($id)[5] ?? q('SELECT terrain FROM rooms WHERE id = ?', [$id])->fetchColumn();
+    $rows = array_fill(0, $h, str_repeat('.', $w));
+    $keep = [[intdiv($w, 2), intdiv($h, 2)]];
+    foreach (q('SELECT dir FROM exits WHERE room_id = ?', [$id])->fetchAll(PDO::FETCH_COLUMN) as $dir) {
+        $at = exit_square($id, $dir);
+        $keep = [...$keep, $at, ...array_map(fn ($d) => [$at[0] + $d[0], $at[1] + $d[1]], STEPS)];
+    }
+    mt_srand($id);
+    foreach (TERRAIN[$terrain] ?? TERRAIN['field'] as $glyph => $percent) {
+        for ($n = intdiv($w * $h * $percent, 100); $n > 0; $n--) {
+            [$x, $y] = [mt_rand(0, $w - 1), mt_rand(0, $h - 1)];
+            if ($rows[$y][$x] !== '.' || in_array([$x, $y], $keep, true)) {
+                continue;
+            }
+            $rows[$y][$x] = $glyph;
+            if (in_array($glyph, ['#', '%'], true) && !connected($rows)) {
+                $rows[$y][$x] = '.';
+            }
+        }
+    }
+    mt_srand();
+    return $rows;
+}
+
+/** True if every square of board $rows that can be walked on can be reached from every other. */
+function connected(array $rows): bool
+{
+    $open = [];
+    foreach ($rows as $y => $row) {
+        for ($x = 0; $x < strlen($row); $x++) {
+            if (!in_array($row[$x], ['#', '%'], true)) {
+                $open["$x,$y"] = [$x, $y];
+            }
+        }
+    }
+    $first = array_key_first($open);
+    $seen = [$first => true];
+    for ($todo = [$open[$first]]; $todo;) {
+        [$x, $y] = array_pop($todo);
+        foreach (STEPS as [$dx, $dy]) {
+            $k = ($x + $dx) . ',' . ($y + $dy);
+            if (isset($open[$k]) && !isset($seen[$k])) {
+                [$seen[$k], $todo[]] = [true, $open[$k]];
+            }
+        }
+    }
+    return count($seen) === count($open);
+}
+
+/** True if square $at of $rows can be stood on: on the board, and not rock or a tree. */
+function open_square(array $rows, array $at): bool
+{
+    return isset($rows[$at[1]][$at[0]]) && $at[0] >= 0 && !in_array($rows[$at[1]][$at[0]], ['#', '%'], true);
+}
+
+/**
+ * Line of sight on room $room's board from square $a to $b (Bresenham, the squares between): null if rock blocks it,
+ * else the cover a tree, boulder or table on the way gives (2: half cover).
+ */
+function sight(int $room, array $a, array $b): ?int
+{
+    $rows = board($room);
+    [$x, $y] = $a;
+    [$dx, $dy] = [abs($b[0] - $x), -abs($b[1] - $y)];
+    [$sx, $sy] = [$x < $b[0] ? 1 : -1, $y < $b[1] ? 1 : -1];
+    $err = $dx + $dy;
+    $cover = 0;
+    while (true) {
+        $e2 = 2 * $err;
+        if ($e2 >= $dy) {
+            [$err, $x] = [$err + $dy, $x + $sx];
+        }
+        if ($e2 <= $dx) {
+            [$err, $y] = [$err + $dx, $y + $sy];
+        }
+        if ([$x, $y] === $b || ($dx === 0 && $dy === 0)) {
+            return $cover;
+        }
+        $cover = $rows[$y][$x] === '%' ? 2 : $cover;
+        if ($rows[$y][$x] === '#') {
+            return null;
+        }
+    }
+}
+
+/** True if from square $a a $reach-ft attack reaches $b on room $room's board: near enough, and in sight past 5 ft. */
+function in_reach(int $room, array $a, array $b, int $reach): bool
+{
+    return feet($a, $b) <= $reach && ($reach <= 5 || $reach === PHP_INT_MAX || sight($room, $a, $b) !== null);
+}
+
+/** The feet it costs to step onto square $at of $rows: 10 on difficult terrain, else 5. */
+function step_cost(array $rows, array $at): int
+{
+    return in_array($rows[$at[1]][$at[0]], [',', '~'], true) ? 10 : 5;
+}
+
+/**
+ * The cheapest ways across room $room's board from $from, avoiding the $blocked squares (other creatures): 'x,y' =>
+ * [feet, the square before it]. A diagonal step can't cut the corner of rock or a tree (SRD 5.2.1 p.15).
+ */
+function paths(int $room, array $from, array $blocked): array
+{
+    $rows = board($room);
+    $best = [implode(',', $from) => [0, null]];
+    $queue = new SplPriorityQueue();
+    $queue->insert($from, 0);
+    while (!$queue->isEmpty()) {
+        $at = $queue->extract();
+        $cost = $best[implode(',', $at)][0];
+        foreach (STEPS as [$dx, $dy]) {
+            $next = [$at[0] + $dx, $at[1] + $dy];
+            $k = implode(',', $next);
+            if (!open_square($rows, $next) || in_array($next, $blocked, true)
+                || ($dx && $dy && (!open_square($rows, [$at[0] + $dx, $at[1]])
+                    || !open_square($rows, [$at[0], $at[1] + $dy])))) {
+                continue;
+            }
+            $c = $cost + step_cost($rows, $next);
+            if (!isset($best[$k]) || $c < $best[$k][0]) {
+                $best[$k] = [$c, $at];
+                $queue->insert($next, -$c);
+            }
+        }
+    }
+    return $best;
 }
 
 /** The distance in feet between squares $a and $b ([x, y]): a diagonal step is 5 ft like any other (SRD 5.2.1 p.15). */
@@ -4581,7 +4789,7 @@ function square(array $at): string
 /** The square by exit $dir of room $room's board: mid-wall, or the right-hand corners for stairs (as on the map). */
 function exit_square(int $room, string $dir): array
 {
-    [, , , $w, $h] = zone($room);
+    [$w, $h] = board_size($room);
     return match ($dir) {
         'north' => [intdiv($w, 2), 0],
         'south' => [intdiv($w, 2), $h - 1],
@@ -4595,31 +4803,52 @@ function exit_square(int $room, string $dir): array
 /** My square on my room's board: where I came in or last moved, else the middle. */
 function my_square(array $me): array
 {
-    [, , , $w, $h] = zone((int) $me['room_id']);
+    [$w, $h] = board_size((int) $me['room_id']);
     return [$me['x'] ?? intdiv($w, 2), $me['y'] ?? intdiv($h, 2)];
 }
 
 /**
- * The next square from $from toward $to: of the eight neighbours on room $room's board, not among the $blocked squares,
- * the one nearest $to (on a tie, the one straightest toward it). $from itself if none is nearer.
+ * The next step from $from on the cheapest way (see paths()) to a square where a $reach-ft attack reaches $to (see
+ * in_reach(); 0: to $to itself), or if there's none, to the square nearest $to; on a tie, the straightest, as a
+ * creature walks. $from itself if that's where it is.
  */
-function toward(int $room, array $from, array $to, array $blocked): array
+function toward(int $room, array $from, array $to, array $blocked, int $reach = 0): array
 {
-    $best = $from;
-    $key = fn ($p) => [feet($p, $to), abs($p[0] - $to[0]) + abs($p[1] - $to[1])];
-    foreach (neighbours($room, $from, $blocked) as $p) {
-        $best = $key($p) < $key($best) ? $p : $best;
+    $ways = paths($room, $from, $blocked);
+    $line = fn ($p, $q) => [feet($p, $q), abs($p[0] - $q[0]) + abs($p[1] - $q[1])];
+    $key = function ($k) use ($ways, $room, $to, $reach, $line) {
+        $p = array_map('intval', explode(',', $k));
+        $ok = $reach === 0 ? $p === $to : in_reach($room, $p, $to, $reach);
+        return [!$ok, $ok ? $ways[$k][0] : feet($p, $to), $ways[$k][0], ...$line($p, $to)];
+    };
+    $goal = array_map('intval', explode(',', array_reduce(array_keys($ways),
+        fn ($best, $k) => $best === null || $key($k) < $key($best) ? $k : $best)));
+    if ($goal === $from) {
+        return $from;
     }
-    return $best;
+    // Of the first steps on a cheapest way there (a way back from it costs the same), the straightest toward it.
+    $rows = board($room);
+    $back = paths($room, $goal, $blocked);
+    $total = $ways[implode(',', $goal)][0];
+    $best = null;
+    foreach (STEPS as [$dx, $dy]) {
+        $n = [$from[0] + $dx, $from[1] + $dy];
+        $k = implode(',', $n);
+        if (isset($ways[$k], $back[$k]) && $ways[$k][0] === step_cost($rows, $n) // a step straight there
+            && $back[$k][0] - step_cost($rows, $n) + step_cost($rows, $goal) + $ways[$k][0] === $total
+            && ($best === null || $line($n, $goal) < $line($best, $goal))) {
+            $best = $n;
+        }
+    }
+    return $best ?? $goal;
 }
 
-/** The squares next to $at on room $room's board, other than the $blocked ones. */
+/** The open squares next to $at on room $room's board, other than the $blocked ones. */
 function neighbours(int $room, array $at, array $blocked): array
 {
-    [, , , $w, $h] = zone($room);
+    $rows = board($room);
     $all = array_map(fn ($d) => [$at[0] + $d[0], $at[1] + $d[1]], STEPS);
-    return array_values(array_filter($all, fn ($p) => $p[0] >= 0 && $p[0] < $w && $p[1] >= 0 && $p[1] < $h
-        && !in_array($p, $blocked, true)));
+    return array_values(array_filter($all, fn ($p) => open_square($rows, $p) && !in_array($p, $blocked, true)));
 }
 
 /** The square next to $at nearest $near (straightest on a tie), not a $blocked one; $at if there's none. */
@@ -4629,6 +4858,22 @@ function beside(int $room, array $at, array $near, array $blocked): array
     $best = null;
     foreach (neighbours($room, $at, $blocked) as $p) {
         $best = $best === null || $key($p) < $key($best) ? $p : $best;
+    }
+    return $best ?? $at;
+}
+
+/** The open square of room $room's board nearest $at (itself if it's open), other than the $taken ones. */
+function open_near(int $room, array $at, array $taken): array
+{
+    $rows = board($room);
+    $best = null;
+    foreach ($rows as $y => $row) {
+        for ($x = 0; $x < strlen($row); $x++) {
+            if (open_square($rows, [$x, $y]) && !in_array([$x, $y], $taken, true)
+                && ($best === null || feet([$x, $y], $at) < feet($best, $at))) {
+                $best = [$x, $y];
+            }
+        }
     }
     return $best ?? $at;
 }
@@ -4651,8 +4896,9 @@ function board_map(array $me): array
     $foe = q('SELECT s.x, s.y, s.hp, m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.id = ?',
         [$me['fighting']])->fetch();
     $room = (int) $me['room_id'];
-    [, , , $w, $h] = zone($room);
-    $grid = [str_repeat('#', $w + 2), ...array_fill(0, $h, '#' . str_repeat('.', $w) . '#'), str_repeat('#', $w + 2)];
+    $rows = board($room);
+    [$w, $h] = [strlen($rows[0]), count($rows)];
+    $grid = [str_repeat('#', $w + 2), ...array_map(fn ($row) => "#$row#", $rows), str_repeat('#', $w + 2)];
     foreach (q('SELECT dir FROM exits WHERE room_id = ?', [$room])->fetchAll(PDO::FETCH_COLUMN) as $dir) {
         [$x, $y] = exit_square($room, $dir);
         match ($dir) {

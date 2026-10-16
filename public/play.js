@@ -169,7 +169,10 @@ byId('hero').addEventListener('shown.bs.offcanvas', () => centre(byId('map')));
  * monster's initial, or upper-case a hireling's. A space is solid rock.
  * @type {Record<string, [string, string]>}
  */
-const MAP_CELLS = { ' ': ['rock', '⋰'], '.': ['f', '∙'], ':': ['s', '∙'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'] };
+const MAP_CELLS = {
+    ' ': ['rock', '⋰'], '.': ['f', '∙'], ':': ['s', '∙'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'],
+    '%': ['tree', '♣'], ',': ['brush', '"'], '~': ['water', '≈'], // board_map(): a tree, undergrowth, shallows
+};
 
 /** A wall's glyph by which neighbours are walls too (north 1, east 2, south 4, west 8), so walls join into lines. */
 const MAP_WALLS = '■║═╚║║╔╠═╝═╩╗╣╦╬';
@@ -198,7 +201,7 @@ function drawMap(box, lines, board = false) {
                 : MAP_CELLS[ch] ?? [/[A-Z]/.test(ch) ? 'ally' : 'foe', ch]; // a hireling by its initial, upper-case
             const cell = el('span', cls, show);
             const inside = x > 0 && x < right && y > 0 && y < bottom;
-            const cmd = !board || ch === '#' || ch === '@' || cls === 'ally' ? '' : inside
+            const cmd = !board || ch === '#' || ch === '%' || ch === '@' || cls === 'ally' ? '' : inside
                 ? (cls === 'foe' ? 'kill' : `move ${String.fromCharCode(96 + x)}${y}`)
                 : `flee ${y === 0 ? 'north' : y === bottom ? 'south' : x === 0 ? 'west' : 'east'}`;
             if (cmd) cell.dataset.cmd = cmd;

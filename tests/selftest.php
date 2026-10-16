@@ -68,6 +68,10 @@ check(cookie_path('/heroes-of-greenest/api.php') === '/heroes-of-greenest/' && c
 
 db()->beginTransaction();
 try {
+    // The rooms these checks fight in get open boards (no trees or rocks), so distances are as the checks count them.
+    $open = fn ($w, $h) => implode("\n", array_fill(0, $h, str_repeat('.', $w)));
+    q('UPDATE rooms SET layout = ? WHERE id IN (2, 6, 9)', [$open(8, 6)]);
+    q('UPDATE rooms SET layout = ? WHERE id = 6001', [$open(16, 10)]);
     check(save_account('Testa', 'short') !== '', 'rejects a short password');
     check(save_account('Te5t', 'long enough') !== '', 'rejects a bad name');
     check(save_account('Testa', 'correct horse') === '', 'creates an account');
@@ -2131,6 +2135,7 @@ try {
         WHERE id = 9901");
     $dice_queue = [15, 1, 12, 4, 12, 3, 5]; // Initiative; my arrow hits; the Guard walks 25 ft and hits for 4; Slam 8
     $out = run_command(hero('Board'), 'kill dummy');
+
     check(says($out, 'Your Guard closes in.') && says($out, "Your Guard's Spear hits the Training Dummy (15 vs AC 10)")
         && says($out, "The Training Dummy's Slam misses your Guard (8 vs AC 16).") && $its() === [6, 2]
         && $dice_queue === [], "it closes in and fights; held by it, the dummy can't reach me, so it fights the Guard");
@@ -2202,6 +2207,83 @@ try {
     q('UPDATE users SET ' . END_FIGHT . ', hireling_monster_id = NULL, hireling_hp = NULL, hired_until = NULL
         WHERE id = ?', [$id]);
     check(says(run_command(hero('Board'), 'order attack'), 'You have no hireling.'), 'order needs a hireling');
+
+    // Battle maps (task 6). Rooms without a layout get one from their terrain, the same every time, with every open
+    // square reachable; underground ones are caves whatever Riftshadow said.
+    $connected = function (array $b): bool {
+        $open = [];
+        foreach ($b as $y => $row) {
+            foreach (str_split($row) as $x => $ch) {
+                if (!in_array($ch, ['#', '%'], true)) {
+                    $open["$x,$y"] = true;
+                }
+            }
+        }
+        $seen = [array_key_first($open) => true];
+        for ($todo = [array_key_first($open)]; $todo;) {
+            [$x, $y] = array_map('intval', explode(',', array_pop($todo)));
+            foreach (STEPS as [$dx, $dy]) {
+                $k = ($x + $dx) . ',' . ($y + $dy);
+                if (isset($open[$k]) && !isset($seen[$k])) {
+                    [$seen[$k], $todo[]] = [true, $k];
+                }
+            }
+        }
+        return count($seen) === count($open);
+    };
+    $wood = board(6002);
+    check($wood === board(6002) && $wood !== board(6003) && count($wood) === 10 && strlen($wood[0]) === 16
+        && str_contains(implode('', $wood), '%') && $connected($wood), 'a forest board: trees, the same each time');
+    check(!str_contains(implode('', board(7030)), '%') && str_contains(implode('', board(24600)), '#')
+        && !str_contains(implode('', board(24600)), '%') && $connected(board(24600)),
+        "underground boards are caves': rock and rubble, no trees, even in the Sewers");
+    check(board(1)[0][4] === '.' && board(1)[5][4] === '.' && board(1)[2][0] === '.' && board(1)[2][7] === '.',
+        'squares by the exits stay open');
+
+    // A hand-drawn board: rock (#) across the middle with a gap, a tree (%) and undergrowth (,). A letter marks where
+    // a monster starts.
+    q('UPDATE rooms SET layout = ? WHERE id = 9', [implode("\n", [
+        '..,,,...',
+        '...#....',
+        '...#..%.',
+        '...#....',
+        '.......k',
+        '........',
+    ])]);
+    check(board(9)[4] === '........' && sight(9, [0, 2], [6, 2]) === null && sight(9, [0, 0], [7, 0]) === 0
+        && sight(9, [4, 2], [7, 2]) === 2 && sight(9, [4, 3], [7, 3]) === 0,
+        'line of sight: rock blocks it, a tree gives half cover (+2 AC)');
+    q('UPDATE users SET ' . END_FIGHT . ", room_id = 9, x = 0, y = 2, hp = max_hp, advantage = FALSE,
+        hireling_monster_id = NULL, hired_until = NULL WHERE name = 'Board'");
+    q("UPDATE spawns SET room_id = 9, x = NULL, y = NULL, conditions = '', grappled_by = NULL, hp = 60
+        WHERE id = 9901");
+    run_command(hero('Board'), 'equip longbow');
+    q('UPDATE users SET fighting = 9901 WHERE id = ?', [hero('Testa')['id']]); // Testa holds it, so it can't move
+    q('UPDATE spawns SET grappled_by = ? WHERE id = 9901', [hero('Testa')['id']]);
+    // Initiative; no line to it from a3, so I step out to a2 and shoot: 12 + 4 is 16 against its AC 10 + 2 (half cover)
+    $dice_queue = [15, 1, 12, 4];
+    $out = run_command(hero('Board'), 'shoot dummy');
+    check($at() === [7, 4] && hero('Board')['x'] . ',' . hero('Board')['y'] !== '0,2'
+        && says($out, '(16 vs AC 10)') && $dice_queue === [],
+        "it starts where the board's letter says; with no clear shot I move to get one");
+    q('UPDATE users SET x = 4, y = 2 WHERE id = ?', [hero('Board')['id']]);
+    q('UPDATE spawns SET x = 7, y = 2 WHERE id = 9901');
+    $dice_queue = [7]; // 7 + 4 is 11: it would hit AC 10, but the tree makes it 12
+    $out = run_command(hero('Board'), 'shoot');
+    check(says($out, 'The Training Dummy has half cover (+2 AC).')
+        && says($out, 'You miss the Training Dummy (11 vs AC 12)') && $dice_queue === [],
+        'half cover: +2 AC against a shot past a tree');
+    q('UPDATE users SET fighting = NULL WHERE id = ?', [hero('Testa')['id']]);
+    q('UPDATE spawns SET grappled_by = NULL WHERE id = 9901');
+    // Moving: around the rock (a3 to f3 is 30 ft, by d5 and e5, cutting no corners), and undergrowth costs double.
+    q("UPDATE users SET x = 0, y = 2, moved = NULL, foe_first = FALSE WHERE name = 'Board'");
+    q('UPDATE spawns SET x = 7, y = 5 WHERE id = 9901');
+    $out = run_command(hero('Board'), 'move f3');
+    check(says($out, 'You move to f3') && hero('Board')['moved'] === 30, 'a path around the rock');
+    q("UPDATE users SET x = 0, y = 0, moved = 0 WHERE name = 'Board'");
+    check(says(run_command(hero('Board'), 'move e1'), 'and e1 is 35 ft away')
+        && says(run_command(hero('Board'), 'move d4'), 'blocked'), 'undergrowth costs double; rock is no square');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

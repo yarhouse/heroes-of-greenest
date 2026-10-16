@@ -181,7 +181,10 @@ Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions
 from what you wear, and you can wear only the armor your class is trained in. The map (in the sidebar, and `map`) is the area you're in, as far as you've
 explored it: rooms you've walked into, the outlines of the rooms next to them, and the whole of Greenest; it scrolls
 to keep you in view. A fight puts you and your foe on the
-room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground), drawn in place of the map: you start
+room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground), drawn in place of the map, with
+what its terrain holds: trees (♣, in the way, and half cover, +2 AC, against a shot past them), rock (no way through,
+and no line of sight), undergrowth and shallows (each square costs double). Each room's board is the same every
+time, or drawn by hand (`rooms.layout`). Paths go around what's in the way: you start
 by the exit you came in by, it across the room. `kill` closes in and attacks (a Dash, and no attack, if it's too far),
 `shoot` throws or shoots from where you stand, `move c3` (or a tap on the board) moves you and leaves your action for
 the next command, and `flee` runs for an exit. `kite` attacks and then backs off as far from your foe as your Speed

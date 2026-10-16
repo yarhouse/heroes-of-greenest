@@ -7,10 +7,10 @@ declare(strict_types=1);
 // e.g.   php bin/convert-area.php ../riftshadow/area/koboldmines.are 6 south 24600
 // links Greenest room 6 south to area room 24600, and 24600 back the opposite way.
 //
-// Kept: room text, exits inside the area, the monsters each reset places and the gear resets hand them (weapons, body
-// armor and shields, as the SRD items they're closest to), and which monsters are aggressive. Dropped: doors and keys,
-// traps, extra descriptions, scripts and other flags, floor objects, and gear the SRD items don't cover (helms, rings,
-// potions...).
+// Kept: room text and sector (its terrain, for battle boards), exits inside the area, the monsters each reset places
+// and the gear resets hand them (weapons, body armor and shields, as the SRD items they're closest to), and which
+// monsters are aggressive. Dropped: doors and keys, traps, extra descriptions, scripts and other flags, floor objects,
+// and gear the SRD items don't cover (helms, rings, potions...).
 // Riftshadow ids (vnums) are kept as ids; Greenest's own content stays below 1001 and 24000 isn't used.
 
 if (PHP_SAPI !== 'cli') {
@@ -203,7 +203,8 @@ $exits = [];
 $left_area = 0;
 foreach (records($sec['ROOMS']) as $vnum => $body) {
     $s = explode('~', $body, 3);
-    $rooms[$vnum] = ['name' => rtrim(clean($s[0]), '.'), 'description' => clean($s[1])];
+    $rooms[$vnum] = ['name' => rtrim(clean($s[0]), '.'), 'description' => clean($s[1]),
+        'terrain' => strtok(trim($s[2]), " \n")]; // its sector, for its battle board
     preg_match_all('/^D (\w+) (\d+)\b/m', $body, $d, PREG_SET_ORDER);
     foreach ($d as [, $dir, $to]) {
         $exits[$vnum][strtolower($dir)] = (int) $to;
@@ -328,7 +329,7 @@ function gear(array $gear, array $items): string
 $sql_rooms = [];
 foreach ($rooms as $vnum => $r) {
     ($vnum >= $lo && $vnum <= $hi) || fail("Room $vnum is outside the area's range $lo-$hi.");
-    $sql_rooms[] = "($vnum, " . str($r['name']) . ",\n " . str($r['description']) . ')';
+    $sql_rooms[] = "($vnum, " . str($r['name']) . ",\n " . str($r['description']) . ', ' . str($r['terrain']) . ')';
 }
 $sql_exits = ["($link_room, '$link_dir', $entrance)"];
 foreach ($exits as $vnum => $list) {
@@ -379,8 +380,8 @@ DELETE FROM exits WHERE room_id BETWEEN $lo AND $hi OR (room_id = $link_room AND
 
 
 SQL;
-echo insert('INSERT INTO rooms (id, name, description)', $sql_rooms,
-    "AS new\nON DUPLICATE KEY UPDATE name = new.name, description = new.description");
+echo insert('INSERT INTO rooms (id, name, description, terrain)', $sql_rooms,
+    "AS new\nON DUPLICATE KEY UPDATE name = new.name, description = new.description, terrain = new.terrain");
 echo insert('INSERT INTO exits (room_id, dir, to_room)', $sql_exits, '');
 echo insert('INSERT INTO monsters (' . implode(', ', $columns) . ', gear)', $sql_mobs,
     "AS new\n{$seed[3]}, gear = new.gear");
