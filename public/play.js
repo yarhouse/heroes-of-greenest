@@ -45,8 +45,8 @@ async function send(cmd, quiet = false) {
             body: JSON.stringify({ cmd }),
         });
         /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>,
-         *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], heroes?: string[],
-         *   logout?: boolean }} */
+         *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], board?: boolean,
+         *   heroes?: string[], logout?: boolean }} */
         const data = await res.json();
         if (data.heroes) heroNames = data.heroes.length ? new RegExp(`\\b(${data.heroes.join('|')})\\b`) : null;
         const lines = data.lines ?? [];
@@ -56,7 +56,7 @@ async function send(cmd, quiet = false) {
         const at = map.length ? lines.findIndex((_, i) => lines.slice(i, i + map.length).join('\n') === drawn) : -1;
         for (const line of at < 0 ? lines : lines.slice(0, at)) print(line);
         if (at >= 0) {
-            log.append(drawMap(el('div', 'map'), map));
+            log.append(drawMap(el('div', 'map'), map, data.board));
             log.scrollTop = log.scrollHeight;
             for (const line of lines.slice(at + map.length)) print(line);
         }
@@ -65,7 +65,7 @@ async function send(cmd, quiet = false) {
         choices = data.choices ?? {};
         drawActions();
         sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
-        if (data.hero) drawHero(data.hero, data.map ?? []);
+        if (data.hero) drawHero(data.hero, data.map ?? [], data.board);
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
         if (!quiet) print('The connection falters. Try again.', 'error');
@@ -118,8 +118,8 @@ function bar(id, now, max, color = '') {
     fill.className = 'progress-bar ' + color;
 }
 
-/** @param {Hero} h @param {string[]} map */
-function drawHero(h, map) {
+/** @param {Hero} h @param {string[]} map @param {boolean} [board] */
+function drawHero(h, map, board = false) {
     byId('hero-name').textContent = h.name;
     byId('hero-class').textContent = `Level ${h.level} ${h.class}`;
     byId('hp-text').textContent = `${h.hp}/${h.max_hp}` + (h.temp_hp ? ` +${h.temp_hp} temp` : '');
@@ -148,7 +148,7 @@ function drawHero(h, map) {
     if (h.rest_secs > 0) restTimer = setTimeout(() => (queue = queue.then(() => send(''))), h.rest_secs * 1000 + 1000);
     byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
     bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
-    drawMap(byId('map'), map);
+    drawMap(byId('map'), map, board);
 }
 
 /**
@@ -162,28 +162,52 @@ const MAP_CELLS = { ' ': ['rock', '⋰'], '.': ['f', '∙'], ':': ['s', '∙'], 
 const MAP_WALLS = '■║═╚║║╔╠═╝═╩╗╣╦╬';
 
 /**
- * One span per cell, in the Dungeon Mode font (style.css). The last two lines (who's here, the legend) stay text.
- * @param {HTMLElement} box @param {string[]} lines
+ * One span per cell, in the Dungeon Mode font (style.css). The last two lines (who's here, the legend) stay text. A
+ * fight's board (board_map() in game.php) gets lettered columns and numbered rows, and its cells are tappable: a
+ * square moves you there, your foe attacks it, an exit flees by it.
+ * @param {HTMLElement} box @param {string[]} lines @param {boolean} [board]
  */
-function drawMap(box, lines) {
+function drawMap(box, lines, board = false) {
     // Empty rows at the top and bottom are directions with no rooms; skip them to save height.
     const first = lines.findIndex((line) => line !== '');
     const grid = lines.slice(first, lines.length - 2).join('\n').trimEnd().split('\n');
     const width = Math.max(...grid.map((line) => line.length));
     const wall = (/** @type {number} */ y, /** @type {number} */ x) => (grid[y]?.[x] === '#' ? 1 : 0);
-    box.replaceChildren(...grid.map((line, y) => {
+    const [right, bottom] = [width - 1, grid.length - 1];
+    const label = (/** @type {string} */ text) => [...text.padStart(2)].map((c) => el('span', 'lbl', c)); // 2 cells
+    const rows = grid.map((line, y) => {
         const row = el('div', 'map-row');
+        if (board) row.append(...label(y > 0 && y < bottom ? String(y) : ''));
         for (let x = 0; x < width; x++) {
             const ch = line[x] ?? ' ';
             const [cls, show] = ch === '#'
                 ? ['w', MAP_WALLS[wall(y - 1, x) | wall(y, x + 1) << 1 | wall(y + 1, x) << 2 | wall(y, x - 1) << 3]]
                 : MAP_CELLS[ch] ?? ['foe', ch];
-            row.append(el('span', cls, show));
+            const cell = el('span', cls, show);
+            const inside = x > 0 && x < right && y > 0 && y < bottom;
+            const cmd = !board || ch === '#' || ch === '@' ? '' : inside
+                ? (cls === 'foe' ? 'kill' : `move ${String.fromCharCode(96 + x)}${y}`)
+                : `flee ${y === 0 ? 'north' : y === bottom ? 'south' : x === 0 ? 'west' : 'east'}`;
+            if (cmd) cell.dataset.cmd = cmd;
+            row.append(cell);
         }
         return row;
-    }), ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
+    });
+    if (board) {
+        const head = el('div', 'map-row');
+        head.append(...label(''), ...[...Array(width)].map((_, x) => el('span', 'lbl',
+            x > 0 && x < right ? String.fromCharCode(96 + x) : '')));
+        rows.unshift(head);
+    }
+    box.replaceChildren(...rows, ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
     return box;
 }
+
+// Tapping a square of a fight's board sends its command (see drawMap()), from the sidebar or the log.
+document.addEventListener('click', (e) => {
+    const cmd = /** @type {HTMLElement} */ (e.target).closest('.map-row [data-cmd]')?.getAttribute('data-cmd');
+    if (cmd) run(cmd);
+});
 
 /** Echoes a command and queues it, whether typed or a button. @param {string} cmd */
 function run(cmd) {

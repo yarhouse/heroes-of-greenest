@@ -141,6 +141,8 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 .map-row .me { color: var(--accent); }
 .map-row .st { color: #7fb2e0; }
 .map-row .foe { color: var(--error); }
+.map-row .lbl { color: var(--dim); font-family: var(--bs-body-font-family); }
+.map-row [data-cmd] { cursor: pointer; }
 
 @media (min-width: 62rem) {
     .play {

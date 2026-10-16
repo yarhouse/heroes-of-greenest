@@ -789,22 +789,22 @@ INSERT INTO exits (room_id, dir, to_room) VALUES
 (24773, 'east', 24758)
 ;
 
-INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, perception, aggressive, gear) VALUES
-(24601, 'Goblin Child', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1, 'piercing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '') /* SRD Goblin Minion, Rift goblin level 14 */,
-(24610, 'Sturdy Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '') /* SRD Goblin Warrior, Rift goblin level 25 */,
-(24620, 'Old Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '2,7') /* SRD Goblin Warrior, Rift goblin level 24 */,
-(24622, 'Massive Miner', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1, 'piercing', NULL, NULL, '', '', '', 'small', 'dragon', 8, FALSE, '27') /* SRD Kobold Warrior, Rift kobold level 30 */,
-(24630, 'Strong Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '') /* SRD Goblin Warrior, Rift goblin level 27 */,
-(24660, 'Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE, '') /* SRD Giant Rat, Rift rat level 10 */,
-(24661, 'Large Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE, '') /* SRD Giant Rat, Rift rat level 14 */,
-(24700, 'Hobgoblin Guard', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1, 'slashing', NULL, NULL, '', '', '', 'medium', 'fey', 10, TRUE, '16,32') /* SRD Hobgoblin Warrior, Rift hobgoblin level 23 */,
-(24701, 'Scrawny Soldier', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '2,5,23') /* SRD Goblin Warrior, Rift goblin level 23 */,
-(24702, 'Bulky Soldier', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '8,11,50') /* SRD Goblin Warrior, Rift goblin level 26 */,
-(24703, 'Goblin Commander', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '23,50') /* SRD Goblin Boss, Rift goblin level 30 */,
-(24704, 'Goblin Warlord', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1, 'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey', 10, FALSE, '1,11') /* SRD Hobgoblin Captain, Rift hobgoblin level 33 */,
-(24705, 'Goblin Shaman', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '7,50') /* SRD Goblin Boss, Rift goblin level 33 */,
-(24706, 'Goblin Chieftain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1, 'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey', 10, TRUE, '7,50') /* SRD Hobgoblin Captain, Rift hobgoblin level 35 */,
-(24707, 'Turret Guard', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, '10,23,50') /* SRD Goblin Warrior, Rift goblin level 28 */
+INSERT INTO monsters (id, name, ac, hp, initiative, attack, attacks, to_hit, damage, cr, xp, str_save, dex_save, con_save, int_save, wis_save, cha_save, damage_type, extra_damage, extra_type, resistances, immunities, vulnerabilities, size, type, perception, aggressive, speed, reach, shot, shot_hit, shot_damage, shot_type, shot_range, shot_long, gear) VALUES
+(24601, 'Goblin Child', 12, '2d6', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -1, 2, 0, 0, -1, -1, 'piercing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Dagger', 4, '1d4+2', 'piercing', 20, 60, '') /* SRD Goblin Minion, Rift goblin level 14 */,
+(24610, 'Sturdy Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '') /* SRD Goblin Warrior, Rift goblin level 25 */,
+(24620, 'Old Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '2,7') /* SRD Goblin Warrior, Rift goblin level 24 */,
+(24622, 'Massive Miner', 14, '3d6-3', 2, 'Dagger', 1, 4, '1d4+2', 0.125, 25, -2, 2, -1, -1, -2, -1, 'piercing', NULL, NULL, '', '', '', 'small', 'dragon', 8, FALSE, 30, 5, 'Dagger', 4, '1d4+2', 'piercing', 20, 60, '27') /* SRD Kobold Warrior, Rift kobold level 30 */,
+(24630, 'Strong Miner', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '') /* SRD Goblin Warrior, Rift goblin level 27 */,
+(24660, 'Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE, 30, 5, NULL, NULL, NULL, NULL, NULL, NULL, '') /* SRD Giant Rat, Rift rat level 10 */,
+(24661, 'Large Rat', 13, '2d6', 3, 'Bite', 1, 5, '1d4+3', 0.125, 25, -2, 5, 0, -4, 0, -3, 'piercing', NULL, NULL, '', '', '', 'small', 'beast', 12, FALSE, 30, 5, NULL, NULL, NULL, NULL, NULL, NULL, '') /* SRD Giant Rat, Rift rat level 14 */,
+(24700, 'Hobgoblin Guard', 18, '2d8+2', 3, 'Longsword', 1, 3, '2d10+1', 0.5, 100, 1, 1, 1, 0, 0, -1, 'slashing', NULL, NULL, '', '', '', 'medium', 'fey', 10, TRUE, 30, 5, 'Longbow', 3, '1d8+1', 'piercing', 150, 600, '16,32') /* SRD Hobgoblin Warrior, Rift hobgoblin level 23 */,
+(24701, 'Scrawny Soldier', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '2,5,23') /* SRD Goblin Warrior, Rift goblin level 23 */,
+(24702, 'Bulky Soldier', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '8,11,50') /* SRD Goblin Warrior, Rift goblin level 26 */,
+(24703, 'Goblin Commander', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '23,50') /* SRD Goblin Boss, Rift goblin level 30 */,
+(24704, 'Goblin Warlord', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1, 'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey', 10, FALSE, 30, 5, 'Longbow', 4, '1d8+2', 'piercing', 150, 600, '1,11') /* SRD Hobgoblin Captain, Rift hobgoblin level 33 */,
+(24705, 'Goblin Shaman', 17, '6d6', 2, 'Scimitar', 2, 4, '1d6+2', 1, 200, 0, 2, 0, 0, -1, 0, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '7,50') /* SRD Goblin Boss, Rift goblin level 33 */,
+(24706, 'Goblin Chieftain', 17, '9d8+18', 4, 'Greatsword', 2, 4, '2d6+2', 3, 700, 2, 2, 2, 1, 0, 1, 'slashing', '1d6', 'poison', '', '', '', 'medium', 'fey', 10, TRUE, 30, 5, 'Longbow', 4, '1d8+2', 'piercing', 150, 600, '7,50') /* SRD Hobgoblin Captain, Rift hobgoblin level 35 */,
+(24707, 'Turret Guard', 15, '3d6', 2, 'Scimitar', 1, 4, '1d6+2', 0.25, 50, -1, 2, 0, 0, -1, -1, 'slashing', NULL, NULL, '', '', '', 'small', 'fey', 9, FALSE, 30, 5, 'Shortbow', 4, '1d6+2', 'piercing', 80, 320, '10,23,50') /* SRD Goblin Warrior, Rift goblin level 28 */
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = new.initiative, attack = new.attack,
     attacks = new.attacks, to_hit = new.to_hit, damage = new.damage, cr = new.cr, xp = new.xp,
@@ -812,7 +812,8 @@ ON DUPLICATE KEY UPDATE name = new.name, ac = new.ac, hp = new.hp, initiative = 
     wis_save = new.wis_save, cha_save = new.cha_save, damage_type = new.damage_type, extra_damage = new.extra_damage,
     extra_type = new.extra_type, resistances = new.resistances, immunities = new.immunities,
     vulnerabilities = new.vulnerabilities, size = new.size, type = new.type, perception = new.perception,
-    aggressive = new.aggressive, gear = new.gear;
+    aggressive = new.aggressive, speed = new.speed, reach = new.reach, shot = new.shot, shot_hit = new.shot_hit,
+    shot_damage = new.shot_damage, shot_type = new.shot_type, shot_range = new.shot_range, shot_long = new.shot_long, gear = new.gear;
 
 -- Spawns start long dead so each one appears, with rolled HP, the first time its room is read.
 INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES

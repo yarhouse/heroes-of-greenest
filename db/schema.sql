@@ -57,6 +57,17 @@ CREATE TABLE monsters (
         'giant', 'humanoid', 'monstrosity', 'ooze', 'plant', 'undead') NOT NULL,
     perception TINYINT UNSIGNED NOT NULL DEFAULT 10, -- passive Perception: spots a sneaking hero's Stealth up to this
     aggressive BOOLEAN NOT NULL DEFAULT FALSE, -- attacks a hero it sees come in (Riftshadow's ACT AGGRESSIVE)
+    speed TINYINT UNSIGNED NOT NULL DEFAULT 30, -- in feet, the fastest of walk, fly and climb
+    reach TINYINT UNSIGNED NOT NULL DEFAULT 5, -- its main attack's, in feet
+    -- Its ranged attack, if it has one (a Recharge one doesn't count), made `attacks` times: to hit, damage, its
+    -- type, and normal and long range in feet.
+    shot VARCHAR(30) NULL,
+    shot_hit TINYINT NULL,
+    shot_damage VARCHAR(30) NULL,
+    shot_type ENUM('acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning', 'necrotic',
+        'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder') NULL,
+    shot_range SMALLINT UNSIGNED NULL,
+    shot_long SMALLINT UNSIGNED NULL,
     gear VARCHAR(100) NOT NULL DEFAULT '' -- items ids it carries, e.g. '23,50'; a kill's loot comes from these
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -74,6 +85,11 @@ CREATE TABLE spawns (
     -- at the start of my next turn, and reeling (a Stunning Strike saved against) then or at the next attack on it.
     conditions SET('prone', 'sapped', 'stunned', 'reeling') NOT NULL DEFAULT '',
     grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
+    -- Its square on the room's board (cmd_map()), set when a fight starts, and when it last moved: 10 minutes after,
+    -- with nobody fighting it, it's back at a fresh spot.
+    x TINYINT UNSIGNED NULL,
+    y TINYINT UNSIGNED NULL,
+    placed_at DATETIME NULL,
     KEY (room_id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
@@ -94,7 +110,7 @@ CREATE TABLE levels (
     pact_slots VARCHAR(30) NOT NULL -- a Warlock's Pact Magic slots, all of one level: '0,2' is two of level 2
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Item templates: the SRD 5.2.1 weapons, armor, Shield and Potion of Healing. Ammunition, weapon ranges, Strength
+-- Item templates: the SRD 5.2.1 weapons, armor, Shield and Potion of Healing. Ammunition, Strength
 -- requirements and Stealth are left out. Which classes are trained with what is CLASSES in game.php.
 CREATE TABLE items (
     id INT UNSIGNED PRIMARY KEY,
@@ -116,6 +132,8 @@ CREATE TABLE items (
     ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a Ranged weapon: Dex to hit, Disadvantage once a foe is next to you
     thrown BOOLEAN NOT NULL DEFAULT FALSE, -- can be thrown, so it can open a fight from afar
     loading BOOLEAN NOT NULL DEFAULT FALSE, -- one shot a turn, however many attacks you have
+    normal_range SMALLINT UNSIGNED NULL, -- a ranged or thrown weapon's, in feet: Disadvantage beyond it
+    long_range SMALLINT UNSIGNED NULL, -- and no attack beyond this
     bonus TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a magic weapon's bonus to attack and damage rolls (+1 Weapon)
     shop INT UNSIGNED NULL, -- the room that sells it; NULL if none does
     FOREIGN KEY (shop) REFERENCES rooms (id)
@@ -171,8 +189,14 @@ CREATE TABLE users (
     innate BOOLEAN NOT NULL DEFAULT FALSE, -- a Sorcerer's Innate Sorcery, until the fight ends
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
-    conditions SET('reckless', 'dodging') NOT NULL DEFAULT '',
+    -- provoked: my foe has spent its Reaction on me (an opportunity attack) this round.
+    conditions SET('reckless', 'dodging', 'provoked') NOT NULL DEFAULT '',
     bonus_used BOOLEAN NOT NULL DEFAULT FALSE, -- my Bonus Action this round of a fight; my turn's end clears it
+    -- My square on this room's board: where I came in (the middle of that wall), then where I move in a fight. NULL is
+    -- the middle of the board.
+    x TINYINT UNSIGNED NULL,
+    y TINYINT UNSIGNED NULL,
+    moved SMALLINT UNSIGNED NULL, -- feet of my Speed used this turn; NULL between my turns
     prepared VARCHAR(255) NOT NULL DEFAULT '', -- spell ids, e.g. '5,2'; empty means the class's defaults
     may_prepare BOOLEAN NOT NULL DEFAULT TRUE, -- a long rest lets me change them
     gold INT UNSIGNED NOT NULL DEFAULT 0,

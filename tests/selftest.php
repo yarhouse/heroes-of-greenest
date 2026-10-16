@@ -43,6 +43,15 @@ function create(string $name, string $class, string $scores = 'ok', string $spec
     }
     return run_command(hero($name), 'begin');
 }
+/**
+ * Ends $name's fight with a sure escape out the room's first exit (by name), spending no dice: what a flee did before
+ * fights had distances, for checks that only need the fight over.
+ */
+function leave(string $name): void
+{
+    $to = q('SELECT to_room FROM exits WHERE room_id = ? ORDER BY dir LIMIT 1', [hero($name)['room_id']])->fetchColumn();
+    q('UPDATE users SET ' . END_FIGHT . ', room_id = ?, x = NULL, y = NULL WHERE name = ?', [$to, $name]);
+}
 /** The first line containing $text, or ''. */
 function line(array $lines, string $text): string
 {
@@ -470,19 +479,24 @@ try {
     $dice_queue = [4];
     $out = run_command(hero('Testa'), 'second');
     check(says($out, 'regain 5 HP') && !says($out, 'Slam'), 'Second Wind in a fight costs no turn');
-    $dice_queue = [2, 15, 19, 4]; // flee 4 vs 15 fails; the opportunity attack hits for 4
+    $dice_queue = [19, 4]; // stepping out of its reach: its opportunity attack hits for 4
     $out = run_command(hero('Testa'), 'flee');
-    check(says($out, 'cuts you off (4 vs 15)') && says($out, 'hits you (22 vs AC 17) for 4')
-        && hero('Testa')['hp'] === 7, 'a failed flee draws one attack');
-    check(!says($out, "You're hurt"), 'no heal hint while still fighting');
+    check(says($out, 'strikes as you pull away') && says($out, 'hits you (22 vs AC 17) for 4')
+        && says($out, 'You flee south') && hero('Testa')['hp'] === 7 && hero('Testa')['fighting'] === null,
+        'flee runs out an exit, and leaving its reach draws one attack');
+    check(!says($out, "You're hurt"), 'no heal hint above half HP');
 
     q("UPDATE users SET hp = 1, gold = 100 WHERE name = 'Testa'");
     q('UPDATE spawns SET hp = 30 WHERE id = 9999'); // so the Greatsword's Graze doesn't finish it
-    $dice_queue = [2, 15, 1];
+    run_command(hero('Testa'), 'n');
+    $dice_queue = [10, 1, 1, 1]; // Initiative, and both miss
+    run_command(hero('Testa'), 'kill dummy');
+    $dice_queue = [2, 15, 1]; // I miss (Graze 2); its Slam hits for 1
     $out = run_command(hero('Testa'), 'kill');
     $t = hero('Testa');
     check(says($out, 'You have died!') && $t['room_id'] === START_ROOM && $t['hp'] === 3 && $t['gold'] === 50
         && $t['fighting'] === null, 'death: back to town with 1/4 HP and half the gold');
+    check($t['x'] === null, 'and in the middle of the board there');
     check(says($out, "You're hurt (HP 3/11). You can rest here."), 'and told to rest there');
 
     run_command(hero('Testa'), 'n');
@@ -492,9 +506,10 @@ try {
     $swing = array_search(true, array_map(fn ($l) => str_contains($l, 'You miss'), $out), true);
     check(hero('Testa')['foe_first'] === 1 && $slam !== false && $swing !== false && $slam < $swing,
         'the initiative winner acts first each round');
-    $dice_queue = [20, 1];
+    $dice_queue = [1]; // it goes first (Slam, a natural 1), having closed in on me where I came in, by the exit
     $out = run_command(hero('Testa'), 'flee');
-    check(says($out, 'You flee south') && hero('Testa')['fighting'] === null, 'flee escapes by a random exit');
+    check(says($out, 'You flee south') && !says($out, 'pull away') && hero('Testa')['fighting'] === null
+        && $dice_queue === [], 'flee from the exit square: straight out');
 
     run_command(hero('Testb'), 'n');
     $dice_queue = [10, 1, 1, 1];
@@ -545,8 +560,7 @@ try {
         && hero('Testc')['hp'] === 12,
         'Rage: +2 damage on Strength attacks, Resistance to Bludgeoning');
     check(says(run_command(hero('Testc'), 'score'), 'Rage 1/2   raging'), 'score shows the Rage');
-    $dice_queue = [20, 1];
-    run_command(hero('Testc'), 'flee');
+    leave('Testc');
     check(hero('Testc')['raging'] === 0 && hero('Testc')['fighting'] === null, 'the Rage ends with the fight');
 
     // Reckless Attack, the first condition: Advantage both ways until the start of the Barbarian's next turn.
@@ -569,13 +583,10 @@ try {
     $out = run_command(hero('Testc'), 'kill');
     check(says($out, 'hits you (15 vs AC 13, with Advantage)') && says($out, '(19 vs AC 10) for 8')
         && $dice_queue === [], 'a foe that acts first in the round still has Advantage');
-    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
-    $dice_queue = [1, 20, 12, 3]; // the flee fails; one d20 for the attack it draws
+    q("UPDATE users SET foe_first = FALSE, conditions = 'reckless' WHERE name = 'Testc'");
+    $dice_queue = [12, 3]; // its opportunity attack as I go: no Advantage, as Reckless ended when my turn began
     $out = run_command(hero('Testc'), 'flee');
-    check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [], 'fleeing is my turn, so it ends first');
-    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
-    $dice_queue = [20, 1];
-    run_command(hero('Testc'), 'flee');
+    check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [], 'fleeing is my turn, so Reckless ends first');
     check(hero('Testc')['conditions'] === '' && hero('Testc')['fighting'] === null, 'conditions end with the fight');
 
     // Damage types (SRD 5.2.1 p.17): Vulnerability doubles, Resistance halves, Immunity takes it all.
@@ -595,8 +606,7 @@ try {
     $dice_queue = [15, 6, 1];
     check(says(run_command(hero('Testc'), 'kill'), 'for 0 damage (immune).'), 'Immunity takes all of it');
     q("UPDATE monsters SET immunities = '', extra_damage = NULL, extra_type = NULL WHERE id = 9999");
-    $dice_queue = [20, 1];
-    run_command(hero('Testc'), 'flee');
+    leave('Testc');
 
     save_account('Testd', 'correct horse');
     create('Testd', 'rogue');
@@ -629,18 +639,18 @@ try {
         'Cunning Action: from level 2 a Rogue always gets away');
     $dice_queue = [];
 
-    // Ranged weapons: an opening volley, then Disadvantage with the foe next to you (no distances yet).
-    q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
-    q("UPDATE users SET room_id = 2, level = 1, advantage = FALSE WHERE name = 'Testd'");
+    // Ranged weapons: from 25 ft away no Disadvantage, then Disadvantage with the foe next to you.
+    q('UPDATE spawns SET hp = 30, dead_since = NULL, x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
+    q("UPDATE users SET room_id = 2, x = 4, y = 5, level = 1, advantage = FALSE WHERE name = 'Testd'");
     run_command(hero('Testd'), 'equip shortbow');
     $score = run_command(hero('Testd'), 'score');
     check(says($score, 'Shortbow +4 to hit, 1d6+2 damage'), 'a ranged weapon uses Dex');
     check(says($score, 'Saves  Str +1  Dex +4  Con +1  Int +4  Wis +0  Cha -1'),
         'a Rogue is proficient in Dex and Int');
-    $dice_queue = [10, 1, 12, 3]; // initiative 12 vs 1, then one shot: 16 vs AC 10 for 3 + 2
+    $dice_queue = [10, 1, 12, 3, 1]; // initiative 12 vs 1, one shot: 16 vs AC 10 for 3 + 2; it closes in, Slam a 1
     $out = run_command(hero('Testd'), 'kill dummy');
-    check(says($out, '(16 vs AC 10) for 5 damage.') && says($out, 'The Training Dummy closes in!')
-        && !says($out, 'Slam') && $dice_queue === [], 'an opening volley goes unanswered, with no Disadvantage');
+    check(says($out, '(16 vs AC 10) for 5 damage.') && says($out, 'The Training Dummy closes in.')
+        && $dice_queue === [], 'a shot from 25 ft has no Disadvantage; the dummy closes in to answer');
     $dice_queue = [4, 1]; // Vex's Advantage and the close foe's Disadvantage cancel: one d20
     check(says(run_command(hero('Testd'), 'kill'), 'You miss the Training Dummy (8 vs AC 10).') && $dice_queue === [],
         'Advantage and Disadvantage cancel out');
@@ -655,12 +665,13 @@ try {
     check(says($score, 'Light Crossbow +5 to hit, 1d8+2 damage') && !says($score, 'attacks a round'),
         'Loading: one shot a turn, even with Extra Attack');
     run_command(hero('Testa'), 'equip javelin');
-    q("UPDATE users SET room_id = 2, fighting = NULL WHERE name = 'Testa'");
-    $dice_queue = [10, 1, 1, 1, 1]; // initiative, then a thrown Javelin (Extra Attack: two) misses twice
-    $out = run_command(hero('Testa'), 'kill dummy');
-    check(says($out, 'closes in!') && !says($out, 'Slam') && $dice_queue === [1], 'a thrown weapon can open a volley');
-    $dice_queue = [20, 1];
-    run_command(hero('Testa'), 'flee');
+    q("UPDATE users SET room_id = 2, fighting = NULL, x = 4, y = 5 WHERE name = 'Testa'");
+    q('UPDATE spawns SET x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 1, 1, 1]; // initiative, a thrown Javelin (Extra Attack: two) misses twice; Slam a 1
+    $out = run_command(hero('Testa'), 'shoot dummy');
+    check(says($out, 'You miss the Training Dummy (natural 1)') && !says($out, 'You close in')
+        && says($out, 'The Training Dummy closes in.') && $dice_queue === [], 'shoot throws a thrown weapon from afar');
+    leave('Testa');
     run_command(hero('Testa'), 'equip greatsword');
     // Two-weapon fighting (Light, p.89): an extra attack with a second Light weapon, no ability modifier to damage.
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
@@ -680,15 +691,17 @@ try {
     $dice_queue = [12, 3, 12, 2, 2, 4, 1];
     check(says(run_command(hero('Testd'), 'kill'), 'Your off-hand Dagger hits') && $dice_queue === [],
         "Nick: the extra attack doesn't need the Bonus Action");
-    $dice_queue = [20, 1];
-    run_command(hero('Testd'), 'flee');
+    leave('Testd');
     check(says(run_command(hero('Testc'), 'equip greataxe offhand'), 'Only a Light weapon')
         && says(run_command(hero('Testc'), 'equip handaxe offhand'), 'Light weapon in your main hand first'),
         'the off hand needs Light weapons in both hands');
     run_command(hero('Testc'), 'equip handaxe');
     run_command(hero('Testc'), 'equip handaxe offhand');
-    $dice_queue = [10, 1, 15, 3, 2, 14, 3]; // thrown Handaxes open a volley: one hits (Vex), the off-hand one too
-    $out = run_command(hero('Testc'), 'kill dummy');
+    q("UPDATE users SET x = 4, y = 5 WHERE name = 'Testc'");
+    q('UPDATE spawns SET x = 3, y = 2, placed_at = NOW() WHERE id = 9999');
+    // Handaxes thrown from 15 ft: one hits (Vex), the off-hand one too; the dummy closes in, Slam a 1
+    $dice_queue = [10, 1, 15, 3, 2, 14, 3, 1];
+    $out = run_command(hero('Testc'), 'shoot dummy');
     check(says($out, 'Your off-hand Handaxe hits the Training Dummy (18 vs AC 10, with Advantage) for 3 damage.')
         && $dice_queue === [] && hero('Testc')['bonus_used'] === 0,
         'without Nick it takes the Bonus Action, which is back for the next round');
@@ -700,8 +713,7 @@ try {
     $out = run_command(hero('Testc'), 'kill');
     check(says($out, 'for 7 damage') && !says($out, 'off-hand') && $dice_queue === [],
         'so after Rage there is no off-hand attack that round');
-    $dice_queue = [20, 1];
-    run_command(hero('Testc'), 'flee');
+    leave('Testc');
     check(count(array_filter(run_command(hero('Testc'), 'equip greataxe'), fn ($l) => str_contains($l, 'put away')))
         === 2, 'a two-handed weapon puts away both hands');
     $dice_queue = [3, 15, 4, 12];
@@ -727,13 +739,11 @@ try {
     $dice_queue = [10, 1, 1, 15, 2];
     check(says(run_command(hero('Testb'), 'kill dummy'), 'misses you (5 vs AC 17, with Disadvantage)')
         && $dice_queue === [], 'held, it has Disadvantage against other heroes');
-    $dice_queue = [20, 1];
-    run_command(hero('Testa'), 'flee');
+    leave('Testa');
     $dice_queue = [1, 15, 2];
     check(says(run_command(hero('Testb'), 'kill'), 'hits you (18 vs AC 17) for 2') && $dice_queue === [],
         'the hold ends when the grappler leaves the fight');
-    $dice_queue = [20, 1];
-    run_command(hero('Testb'), 'flee');
+    leave('Testb');
     q('INSERT INTO objects (item_id, user_id) VALUES (19, ?)', [hero('Testa')['id']]);
     run_command(hero('Testa'), 'equip maul');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
@@ -742,8 +752,7 @@ try {
     check(says($out, 'topples over, Prone (Con save 5 vs DC 13).') && says($out, '(19 vs AC 10, with Advantage)')
         && $dice_queue === [] && str_contains(line(run_command(hero('Testa'), 'i'), 'Maul'), 'two-handed, topple'),
         'Topple: a hit can knock the foe Prone');
-    $dice_queue = [20, 1];
-    run_command(hero('Testa'), 'flee');
+    leave('Testa');
     q('INSERT INTO objects (item_id, user_id) VALUES (7, ?)', [hero('Testa')['id']]);
     run_command(hero('Testa'), 'equip mace');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
@@ -753,8 +762,7 @@ try {
     $dice_queue = [1, 1, 12];
     check(says(run_command(hero('Testa'), 'kill'), 'misses you (15 vs AC 17).') && $dice_queue === [],
         'and it wears off by the start of my next turn');
-    $dice_queue = [20, 1];
-    run_command(hero('Testa'), 'flee');
+    leave('Testa');
     q('INSERT INTO objects (item_id, user_id) VALUES (14, ?)', [hero('Testa')['id']]);
     run_command(hero('Testa'), 'equip greataxe');
     $dummy = q('SELECT hp, dead_since FROM spawns WHERE id = 9999')->fetch();
@@ -888,19 +896,16 @@ try {
     q('UPDATE effects SET until = NOW() - INTERVAL 1 SECOND'); // its 10 minutes are up, but the fight goes on
     check(says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'an effect lasts at least the fight it was '
         . 'cast in');
-    $dice_queue = [20, 1];
-    run_command(hero('Teste'), 'flee');
+    leave('Teste');
     check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith'), 'then only its own time');
     q("UPDATE users SET room_id = 2 WHERE name = 'Teste'");
     $dice_queue = [10, 1, 1, 1];
     run_command(hero('Teste'), 'kill dummy');
     check(!says(run_command(hero('Teste'), 'score'), 'Shield of Faith') && $dice_queue === [],
         "and doesn't come back in a new fight against the same monster");
-    $dice_queue = [20, 1];
-    run_command(hero('Teste'), 'flee');
+    leave('Teste');
     q("UPDATE monsters SET type = 'aberration' WHERE id = 9999");
-    $dice_queue = [20, 1];
-    run_command(hero('Testb'), 'flee');
+    leave('Testb');
 
     // Step 3 spells (Teste at level 5: Wis +2, PB +3, DC 13; nine prepared).
     q("UPDATE users SET room_id = 2, fighting = NULL, level = 5, slots_spent = '', may_prepare = TRUE, hp = 5
@@ -942,8 +947,7 @@ try {
     $dice_queue = [1, 5, 1, 2, 3]; // the Slam misses; then the spirits: Wis save 5 fails, 3d8
     check(says(run_command(hero('Teste'), 'cast spirit'), 'Your Spirit Guardians sear the Training Dummy (Wis save 5 '
         . 'vs DC 13) for 6 damage.') && $dice_queue === [], 'Spirit Guardians hurt the foe after each of its turns');
-    $dice_queue = [20, 1];
-    run_command(hero('Teste'), 'flee');
+    leave('Teste');
     check($dice_queue === [], 'every queued die was used by the classes');
 
     // Monk (Testf: Str 12, Dex 15, Con 13, Wis 14; Focus save DC 8 + Wis + PB). The dummy: AC 10, saves +0.
@@ -971,10 +975,12 @@ try {
         && says(run_command(hero('Testf'), 'score'), 'Shortsword +4 to hit, 1d6+2'),
         'Monk weapons: Simple or Light; anything else turns off Martial Arts');
     run_command(hero('Testf'), 'equip spear');
-    $dice_queue = [10, 1, 12, 5]; // the Spear is thrown in an opening volley: no Unarmed Strike from afar
-    $out = run_command(hero('Testf'), 'kill dummy');
-    check(says($out, '(16 vs AC 10) for 7 damage.') && says($out, 'closes in!') && !says($out, 'Unarmed')
-        && $dice_queue === [], 'a thrown Spear opens a volley');
+    q("UPDATE users SET x = 4, y = 5 WHERE name = 'Testf'");
+    q('UPDATE spawns SET x = 3, y = 2, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 12, 5, 1]; // the Spear thrown from 15 ft: no Unarmed Strike from afar; Slam a 1
+    $out = run_command(hero('Testf'), 'shoot dummy');
+    check(says($out, '(16 vs AC 10) for 7 damage.') && says($out, 'The Training Dummy closes in.')
+        && !says($out, 'Unarmed') && $dice_queue === [], 'a thrown Spear, from afar');
     $dice_queue = [12, 5, 11, 3, 1]; // Spear hits for 5 + 2; the Bonus Action strike for 3 + 2
     $out = run_command(hero('Testf'), 'kill');
     check(says($out, '(16 vs AC 10) for 7 damage.')
@@ -991,10 +997,11 @@ try {
     $dice_queue = [1];
     check(says(run_command(hero('Testf'), 'flee'), 'You flee') && $dice_queue === [1],
         'Step of the Wind: from level 2 a Monk always gets away');
-    q("UPDATE users SET room_id = 2, hp = 3, uses_spent = 2 WHERE name = 'Testf'");
+    q("UPDATE users SET room_id = 2, hp = 3, uses_spent = 2, x = 4, y = 5 WHERE name = 'Testf'");
+    q('UPDATE spawns SET x = 3, y = 2, placed_at = NOW() WHERE id = 9999');
     check(says(run_command(hero('Testf'), 'patient dummy'), 'no Focus Points left'), 'techniques cost Focus');
-    $dice_queue = [10, 1, 4, 1]; // Uncanny Metabolism heals 4 + 2; the thrown Spear misses
-    $out = run_command(hero('Testf'), 'kill dummy');
+    $dice_queue = [10, 1, 4, 1, 1]; // Uncanny Metabolism heals 4 + 2; the thrown Spear misses; it closes, Slam a 1
+    $out = run_command(hero('Testf'), 'shoot dummy');
     check(says($out, 'Uncanny Metabolism: your Focus Points return, and HP 9/9.') && $dice_queue === []
         && hero('Testf')['uses_spent'] === 0 && hero('Testf')['once_used'] === 1,
         'Uncanny Metabolism: rolling Initiative brings back Focus and some HP');
@@ -1120,8 +1127,7 @@ try {
     $out = run_command(hero('Testg'), 'kill');
     check(says($out, '(18 vs AC 10) for 11 damage (+4 Radiant Strikes).')
         && $dice_queue === [], 'Radiant Strikes: 1d8 Radiant on melee hits from level 11');
-    $dice_queue = [20, 1];
-    run_command(hero('Testg'), 'flee');
+    leave('Testg');
     q("UPDATE users SET uses_spent = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testg'");
     run_command(hero('Testg'), 'score');
     check(hero('Testg')['uses_spent'] === 5, "a short rest doesn't refill Lay On Hands");
@@ -1168,8 +1174,7 @@ try {
     $dice_queue = [2, 12, 3, 5, 1, 1];
     check(says(run_command(hero('Testh'), 'kill'), 'for 10 damage (+5 Colossus Slayer).') && $dice_queue === [],
         'Colossus Slayer: 1d8 more on a foe missing HP');
-    $dice_queue = [20, 1];
-    run_command(hero('Testh'), 'flee');
+    leave('Testh');
     run_command(hero('Testh'), 'equip longbow');
     check(says(run_command(hero('Testh'), 'score'), 'Longbow +6 to hit, 1d8+2 damage'),
         'Archery: +2 to ranged attacks');
@@ -1184,8 +1189,7 @@ try {
         && $dice_queue === [], 'Multiattack Defense: after a hit, its other attacks this turn have Disadvantage');
     q('UPDATE monsters SET attacks = 1 WHERE id = 9999');
     check(says(run_command(hero('Testh'), 'score'), 'Favored Enemy 2/3'), 'level 5 and up: 3 free Hunter\'s Marks');
-    $dice_queue = [20, 1];
-    run_command(hero('Testh'), 'flee');
+    leave('Testh');
 
     // Wizard (Testi: Int 15: spell save DC 12, spell attack +4). The dummy: AC 10, saves +0.
     q('DELETE FROM effects');
@@ -1231,8 +1235,7 @@ try {
     $dice_queue = [5, 1, 1, 1, 1, 1, 1, 1, 1, 1];
     check(says(run_command(hero('Testi'), 'cast fireball'), 'fails its Dex save (5 vs DC 13) against your Fireball '
         . 'and takes 8 damage.') && $dice_queue === [], 'Fireball: 8d6, Dex save for half');
-    $dice_queue = [20, 1];
-    run_command(hero('Testi'), 'flee');
+    leave('Testi');
     q("UPDATE users SET slots_spent = '1,1,1', resting = 'short', rest_until = NOW() WHERE name = 'Testi'");
     check(says(run_command(hero('Testi'), 'score'), 'with Arcane Recovery bringing back slots of level 3.')
         && hero('Testi')['slots_spent'] === '1,1,0', 'Arcane Recovery: slots worth half your level, highest first');
@@ -1245,7 +1248,8 @@ try {
     q('UPDATE users SET fighting = NULL WHERE fighting = 9999');
     save_account('Testj', 'correct horse');
     create('Testj', 'sorcerer');
-    q("UPDATE users SET room_id = 2 WHERE name = 'Testj'");
+    q("UPDATE users SET room_id = 2, x = 4, y = 5 WHERE name = 'Testj'");
+    q('UPDATE spawns SET x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
     $score = run_command(hero('Testj'), 'score');
     check(says($score, 'level 1 Sorcerer') && says($score, 'HP 8/8   AC 11') && says($score, 'Spear +2 to hit')
         && says($score, 'Hit Dice 1/1 d6   Innate Sorcery 2/2   Spell slots 2/2')
@@ -1253,9 +1257,9 @@ try {
         && count(objects_here('user_id', (int) hero('Testj')['id'])) === 3 && hero('Testj')['gold'] === 28,
         'Sorcerer: d6, a Spear and 2 Daggers, Con and Cha saves');
     check(says(run_command(hero('Testj'), 'innate'), 'needs a fight'), 'Innate Sorcery needs a fight');
-    $dice_queue = [10, 1, 12, 5];
-    check(says(run_command(hero('Testj'), 'cast fire bolt dummy'), 'closes in!') && $dice_queue === [],
-        'a Fire Bolt opens a volley');
+    $dice_queue = [10, 1, 12, 5, 1]; // the Fire Bolt hits from 25 ft; the dummy closes in, Slam a 1
+    check(says(run_command(hero('Testj'), 'cast fire bolt dummy'), 'The Training Dummy closes in.')
+        && $dice_queue === [], 'a Fire Bolt from 25 ft away');
     $out = run_command(hero('Testj'), 'innate');
     $dice_queue = [12, 5, 1];
     check(says($out, 'Magic surges up') && !says($out, 'Slam') && says(run_command(hero('Testj'), 'cast fire'),
@@ -1289,8 +1293,7 @@ try {
         && says(run_command(hero('Testj'), 'score'), 'AC 13') && $dice_queue === []
         && str_contains(with_stats(hero('Testj'))['resistances'], 'fire'),
         'Draconic Sorcery: AC 10 + Dex + Cha, Command always prepared, and Elemental Affinity with Fire');
-    $dice_queue = [20, 1];
-    run_command(hero('Testj'), 'flee');
+    leave('Testj');
     q("UPDATE users SET uses_spent = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testj'");
     check(says(run_command(hero('Testj'), 'score'), 'Sorcerous Restoration bringing back 3 Sorcery Points')
         && hero('Testj')['uses_spent'] === 2, 'Sorcerous Restoration: half your level in points on a short rest');
@@ -1316,12 +1319,13 @@ try {
             . 'left.') && says(run_command(hero('Testk'), 'inspire testj'), 'already holds')
         && says(run_command(hero('Testj'), 'score'), 'Bardic Inspiration'),
         'Bardic Inspiration: a die for another hero');
-    $dice_queue = [10, 1, 4, 3, 1, 1]; // an opening volley: 9 vs AC 10, so the die is rolled
+    q("UPDATE users SET x = 4, y = 5 WHERE name = 'Testj'");
+    q('UPDATE spawns SET x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 4, 3, 1, 1, 1]; // from 25 ft: 9 vs AC 10, so the die is rolled; the dummy closes, Slam a 1
     check(says(run_command(hero('Testj'), 'cast fire dummy'), 'hits the Training Dummy (12 vs AC 10, +3 Bardic '
         . 'Inspiration) for 4 damage.') && $dice_queue === [] && !effects_on('user_id', (int) hero('Testj')['id']),
         'an inspired hero adds the die to a missed attack roll, and it is spent');
-    $dice_queue = [20, 1];
-    run_command(hero('Testj'), 'flee');
+    leave('Testj');
     $dice_queue = [10, 1, 5, 4, 15, 2];
     $out = run_command(hero('Testk'), 'cast vicious dummy');
     check(says($out, 'fails its Wis save (5 vs DC 12) against your Vicious Mockery and takes 4 damage.')
@@ -1332,8 +1336,7 @@ try {
     $out = run_command(hero('Testk'), 'kill');
     check(says($out, 'misses you (10 vs AC 13, -5 Cutting Words).') && $dice_queue === []
         && hero('Testk')['uses_spent'] === 2, 'Cutting Words: a Bardic Inspiration die off a hit that it could turn');
-    $dice_queue = [20, 1];
-    run_command(hero('Testk'), 'flee');
+    leave('Testk');
     q("UPDATE users SET level = 5, resting = 'short', rest_until = NOW() WHERE name = 'Testk'");
     check(says(run_command(hero('Testk'), 'score'), 'regaining your Bardic Inspiration')
         && says(run_command(hero('Testk'), 'score'), 'Bardic Inspiration 2/2 d8'),
@@ -1345,12 +1348,12 @@ try {
     check(says(run_command(hero('Testk'), 'prepare bane, fireball, spirit, inflict'), 'only two')
         && says(run_command(hero('Testk'), 'prepare bane, command, cure, dissonant, faerie, healing, thunderwave, aid, '
         . 'shatter, mass, hold'), 'not 11'), 'and no more until Magical Secrets');
-    q("UPDATE users SET level = 14, room_id = 2 WHERE name = 'Testk'");
-    $dice_queue = [10, 1, 2, 4, 1]; // a thrown Dagger's opening volley
-    check(says(run_command(hero('Testk'), 'kill dummy'), 'You hit the Training Dummy (13 vs AC 10, +4 Peerless Skill)')
+    q("UPDATE users SET level = 14, room_id = 2, x = 4, y = 5 WHERE name = 'Testk'");
+    q('UPDATE spawns SET x = 3, y = 2, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 2, 4, 1, 1]; // a Dagger thrown from 15 ft; the dummy closes in, Slam a 1
+    check(says(run_command(hero('Testk'), 'shoot dummy'), 'You hit the Training Dummy (13 vs AC 10, +4 Peerless Skill)')
         && $dice_queue === [] && hero('Testk')['uses_spent'] === 1, 'Peerless Skill: your own die on a missed attack');
-    $dice_queue = [20, 1];
-    run_command(hero('Testk'), 'flee');
+    leave('Testk');
 
     // Druid (Testl: Wis 15: spell save DC 12; Sickle +1). The dummy: AC 10, saves +0, Slam +3.
     q('DELETE FROM effects');
@@ -1391,8 +1394,7 @@ try {
         "Land's Aid: a Wild Shape for 2d6 Necrotic and 2d6 HP");
     check(says(run_command(hero('Testl'), 'cast'), 'fire bolt <monster>') && says(run_command(hero('Testl'), 'cast'),
         'burning hands'), 'Circle of the Land (Arid): Fire Bolt and Burning Hands always prepared');
-    $dice_queue = [20, 1];
-    run_command(hero('Testl'), 'flee');
+    leave('Testl');
     q("UPDATE users SET level = 6, slots_spent = '1,1,1', resting = 'short', rest_until = NOW() WHERE name = 'Testl'");
     check(says(run_command(hero('Testl'), 'score'), 'with Natural Recovery bringing back slots of level 3 and '
         . 'regaining a Wild Shape.') && hero('Testl')['uses_spent'] === 1 && hero('Testl')['slots_spent'] === '1,1,0',
@@ -1403,8 +1405,7 @@ try {
         'Primal Strike: 1d8 more of a type it takes in full');
     q("UPDATE users SET level = 10 WHERE name = 'Testl'");
     check(str_contains(with_stats(hero('Testl'))['resistances'], 'fire'), "Nature's Ward: Fire Resistance (Arid)");
-    $dice_queue = [20, 1];
-    run_command(hero('Testl'), 'flee');
+    leave('Testl');
     run_command(hero('Testl'), 'wild dire');
     q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Testl'");
     run_command(hero('Testl'), 'score');
@@ -1439,7 +1440,9 @@ try {
         && says(run_command(hero('Testm'), 'score'), 'AC 15') && hero('Testm')['slots_spent'] === '',
         'Armor of Shadows: Mage Armor on yourself without a slot');
     check(says(run_command(hero('Testm'), 'cast hex'), 'You cast Hex on you. Slots 0/1.'), 'Hex, with a Pact slot');
-    $dice_queue = [10, 1, 10, 5, 3];
+    q("UPDATE users SET room_id = 2, x = 4, y = 5 WHERE name = 'Testm'");
+    q('UPDATE spawns SET x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 10, 5, 3, 1]; // from 25 ft; the dummy closes in, Slam a 1
     check(says(run_command(hero('Testm'), 'cast eldritch dummy'), 'Your Eldritch Blast hits the Training Dummy (14 vs '
         . 'AC 10) for 8 damage (+3 Hex).') && $dice_queue === [],
         'Eldritch Blast: 1d10 Force; Hex adds to spell attacks');
@@ -1448,8 +1451,7 @@ try {
     check(says(run_command(hero('Testm'), 'cast eldritch'), '(16 vs AC 10, with Disadvantage) for 10 damage (+3 Hex).')
         && $dice_queue === [], 'Agonizing Blast: + Cha to Eldritch Blast damage');
     check(says(run_command(hero('Testm'), 'cunning'), "can't perform it in a fight"), 'no Magical Cunning in a fight');
-    $dice_queue = [20, 1];
-    run_command(hero('Testm'), 'flee');
+    leave('Testm');
     q("UPDATE users SET slots_spent = '2' WHERE name = 'Testm'");
     check(says(run_command(hero('Testm'), 'cunning'), '1 Pact Magic slot returns. Slots 1/2.')
         && says(run_command(hero('Testm'), 'cunning'), 'since your last long rest'),
@@ -1457,8 +1459,8 @@ try {
     q("UPDATE users SET resting = 'short', rest_until = NOW() WHERE name = 'Testm'");
     check(says(run_command(hero('Testm'), 'score'), 'with your Pact Magic slots back')
         && hero('Testm')['slots_spent'] === '', 'Pact Magic: every slot back on a short rest');
-    q("UPDATE users SET level = 3, room_id = 2 WHERE name = 'Testm'");
-    q('UPDATE spawns SET hp = 6 WHERE id = 9999');
+    q("UPDATE users SET level = 3, room_id = 2, x = 4, y = 5 WHERE name = 'Testm'");
+    q('UPDATE spawns SET hp = 6, x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
     $dice_queue = [10, 1, 10, 1, 3, 3, 2];
     $out = run_command(hero('Testm'), 'cast eldritch dummy');
     check(says($out, "Dark One's Blessing: you have 5 temporary HP.") && hero('Testm')['temp_hp'] === 5
@@ -1479,8 +1481,7 @@ try {
     $dice_queue = [1, 1, 1, 1, 15, 2, 2, 3, 7];
     check(says(run_command(hero('Testm'), 'cast eldritch'), 'You keep your Concentration on Hex (Con save 11 vs DC 10)')
         && $dice_queue === [] && hero('Testm')['uses_spent'] === 1, "Dark One's Own Luck: 1d10 on a failed save");
-    $dice_queue = [20, 1];
-    run_command(hero('Testm'), 'flee');
+    leave('Testm');
 
     // Species and backgrounds, against the dummy in room 2 (AC 10, saves +0, Slam +3 for 1d4 Bludgeoning).
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL, conditions = \'\' WHERE id = 9999');
@@ -1515,8 +1516,7 @@ try {
     $dice_queue = [15, 1, 1, 6, 6, 1]; // a hit; 2d6 rolls 2, rerolled 12 for 12 + 3; Slam a natural 1
     check(says(run_command(hero('Drag'), 'kill'), '(20 vs AC 10) for 15 damage') && $dice_queue === [],
         'Savage Attacker: a weapon hit rolls its damage dice twice and keeps the higher');
-    $dice_queue = [20, 1];
-    run_command(hero('Drag'), 'flee');
+    leave('Drag');
     q("UPDATE users SET resting = 'long', rest_until = NOW() WHERE name = 'Drag'");
     run_command(hero('Drag'), 'score');
     check(hero('Drag')['species_spent'] === 0, 'a long rest restores Breath Weapon');
@@ -1528,16 +1528,14 @@ try {
     check(says($out, 'Initiative: you 8, it 10') && says($out, 'Relentless Endurance: you stay on your feet at 1 HP!')
         && hero('Orca')['hp'] === 1 && hero('Orca')['room_id'] === 2,
         'Alert adds PB to Initiative; an Orc at 0 HP drops to 1');
-    $dice_queue = [20, 1];
-    run_command(hero('Orca'), 'flee');
+    leave('Orca');
 
     $hero('Half', 'rogue', 'halfling', 'criminal'); // Dex 17
     $dice_queue = [1, 12, 5, 1, 15, 3, 1]; // initiative 1 rerolled; attack 1 rerolled; 1d6 3; Slam a natural 1
     $out = run_command(hero('Half'), 'kill dummy');
     check(says($out, 'Initiative: you 17, it 5') && says($out, '(20 vs AC 10) for 6 damage') && $dice_queue === [],
         'Halfling Luck: a 1 on a d20 Test is rerolled');
-    $dice_queue = [20, 1];
-    run_command(hero('Half'), 'flee');
+    leave('Half');
 
     $hero('Gnom', 'wizard', 'gnome rock', 'sage');
     $dice_queue = [2, 15];
@@ -1558,8 +1556,7 @@ try {
     check(says($out, 'Your Magic Missile (free) strikes the Training Dummy for 6 damage')
         && hero('Huma')['origin_spent'] !== '', 'Magic Initiate: its level 1 spell free once a long rest');
     check(says(run_command(hero('Huma'), 'cast magic missile'), 'no spell slots left'), 'then only with slots');
-    $dice_queue = [20, 1];
-    run_command(hero('Huma'), 'flee');
+    leave('Huma');
 
     $hero('Tief', 'fighter', 'tiefling abyssal', 'soldier');
     q("UPDATE users SET level = 5 WHERE name = 'Tief'");
@@ -1575,27 +1572,23 @@ try {
     $dice_queue = [10, 5, 15, 3, 4, 1, 1, 5, 1]; // a hit, Savage keeps 7 + 3; Fire's Burn 5; Slam a natural 1
     check(says(run_command(hero('Goli'), 'kill dummy'), 'for 15 damage (+5 Fire\'s Burn)'),
         "Fire's Burn: a Goliath's hit adds 1d10 Fire");
-    $dice_queue = [20, 1];
-    run_command(hero('Goli'), 'flee');
+    leave('Goli');
     $hero('Ston', 'fighter', 'goliath stone', 'criminal'); // Con 14
     $dice_queue = [1, 20, 15, 4, 12, 1]; // it goes first and hits for 4; 1d12 12 + 2 takes it all; a natural 1
     $out = run_command(hero('Ston'), 'kill dummy');
     check(says($out, "for 0 damage, 4 shrugged off (Stone's Endurance).") && hero('Ston')['hp'] === 12,
         "Stone's Endurance: a Reaction takes 1d12 + Con off a hit");
-    $dice_queue = [20, 1];
-    run_command(hero('Ston'), 'flee');
+    leave('Ston');
     $hero('Stor', 'fighter', 'goliath storm', 'criminal');
     $dice_queue = [1, 20, 15, 4, 8, 1]; // it goes first and hits for 4; 1d8 8 Thunder back; a natural 1
     check(says(run_command(hero('Stor'), 'kill dummy'), "Storm's Thunder: thunder cracks back at the Training Dummy"),
         "Storm's Thunder: a Reaction deals 1d8 Thunder back");
-    $dice_queue = [20, 1];
-    run_command(hero('Stor'), 'flee');
+    leave('Stor');
     $hero('Hill', 'fighter', 'goliath hill', 'criminal');
     $dice_queue = [10, 5, 15, 3, 4, 1];
     check(says(run_command(hero('Hill'), 'kill dummy'), "Hill's Tumble: the Training Dummy goes down, Prone."),
         "Hill's Tumble: a hit knocks it Prone");
-    $dice_queue = [20, 1];
-    run_command(hero('Hill'), 'flee');
+    leave('Hill');
     $hero('Clou', 'fighter', 'goliath cloud', 'criminal');
     q("UPDATE users SET fighting = 9999 WHERE name = 'Clou'");
     $dice_queue = [];
@@ -1870,6 +1863,113 @@ try {
         'reading the board shows the newest posts and marks them read');
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'ask about wood'), 'no one here to talk to'), 'nobody to ask in the fields');
+
+    // The battle board (task 4a). Board, a Fighter (Greatsword +4, 2d6+2; Shortbow +4, 1d6+2; AC 17, initiative +2,
+    // Speed 30), against a Training Dummy (AC 10, Slam +3 for 1d4, Speed 30) of its own in the Armorer, room 9: an 8x6
+    // board with one exit, north. Squares are named as `move` takes them, a1 the top left; [x, y] counts from 0.
+    save_account('Board', 'correct horse');
+    create('Board', 'fighter');
+    q('INSERT INTO spawns (id, room_id, monster_id, dead_since) VALUES (9901, 9, 9999, NOW() - INTERVAL 1 DAY)');
+    q("UPDATE users SET room_id = 4 WHERE name = 'Board'");
+    $dice_queue = [6, 6]; // its HP as it respawns
+    run_command(hero('Board'), 's');
+    $b = hero('Board');
+    check([$b['x'], $b['y']] === [4, 0], 'coming in by the north exit puts me mid north wall, at e1');
+    $dice_queue = [10, 5, 12, 3, 4, 10]; // Initiative 12 vs 5; I close 20 ft and hit 16 for 3+4+2; its Slam 13 misses
+    $out = run_command(hero('Board'), 'kill dummy');
+    $b = hero('Board');
+    $at = fn () => array_values(q('SELECT x, y FROM spawns WHERE id = 9901')->fetch());
+    check($at() === [3, 5] && [$b['x'], $b['y']] === [3, 4] && says($out, 'You close in on the Training Dummy')
+        && says($out, 'You hit the Training Dummy (16 vs AC 10) for 9')
+        && says($out, 'Slam misses you (13 vs AC 17)') && $dice_queue === [] && $b['moved'] === null,
+        'it stands across the room, at d6; I close 20 ft to d5 and attack, all in one turn');
+    $map = cmd_map($b);
+    check($map[5][4] === '@' && $map[6][4] === 't' && $map[0][5] === '.'
+        && $map[count($map) - 2] === 'Training Dummy: 5 ft away, 3 HP.',
+        'in a fight the map is the board: me, my foe, the exit, how far it is and its HP');
+    $dice_queue = [15, 2]; // leaving its reach: its opportunity attack, 18, hits for 2
+    $out = run_command(hero('Board'), 'move d1');
+    $b = hero('Board');
+    check(says($out, 'The Training Dummy strikes as you pull away!') && says($out, 'hits you (18 vs AC 17) for 2')
+        && says($out, 'You move to d1') && [$b['x'], $b['y']] === [3, 0] && $b['moved'] === 20 && $dice_queue === [],
+        'moving away draws an opportunity attack, and leaves the rest of my turn');
+    check(says(run_command(hero('Board'), 'move d6'), 'The Training Dummy is there.')
+        && says(run_command(hero('Board'), 'move z9'), 'Move where?'), 'move needs an empty square on the board');
+    $out = run_command(hero('Board'), 'move d3');
+    check(says($out, 'You move to d3') && !says($out, 'pull away') && hero('Board')['moved'] === 30,
+        'a second move in the same turn, toward it: no attack');
+    check(says(run_command(hero('Board'), 'move d1'), 'You have 0 ft of movement left'), 'my Speed is 30 ft a turn');
+    $dice_queue = [1]; // out of movement I Dash in, so no attack; its Slam rolls a natural 1
+    $out = run_command(hero('Board'), 'kill');
+    check(says($out, 'You run at the Training Dummy') && !says($out, 'You hit') && !says($out, 'You miss')
+        && says($out, 'Slam misses you (natural 1)') && $dice_queue === [],
+        'closing in that takes a Dash takes my action');
+
+    // A Shortbow (80/320 ft) from across the room: no Disadvantage, and the dummy closes in to answer.
+    q('INSERT INTO objects (item_id, user_id) VALUES (72, ?)', [hero('Board')['id']]);
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+    run_command(hero('Board'), 'equip shortbow');
+    q("UPDATE users SET x = 0, y = 0 WHERE name = 'Board'");
+    q('UPDATE spawns SET x = 7, y = 5, placed_at = NOW(), hp = 30 WHERE id = 9901');
+    $dice_queue = [15, 1, 12, 4, 5]; // Initiative 17 vs 1; my arrow 16 hits for 4+2; it closes 30 ft; Slam 8 misses
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'You hit the Training Dummy (16 vs AC 10) for 6 damage.') && !says($out, 'You close in')
+        && says($out, 'The Training Dummy closes in.') && says($out, 'Slam misses you (8 vs AC 17)')
+        && $at() === [1, 0] && $dice_queue === [], 'shooting from 35 ft away; it walks 30 ft to me and attacks');
+    q("UPDATE users SET advantage = FALSE WHERE name = 'Board'"); // Vex's, from that hit, would cancel it out
+    $dice_queue = [15, 3, 2]; // next to it: Disadvantage, so the 3 (7) misses; Slam 5 misses
+    check(says(run_command(hero('Board'), 'kill'), 'You miss the Training Dummy (7 vs AC 10, with Disadvantage)')
+        && $dice_queue === [], 'a ranged attack within 5 ft of an enemy has Disadvantage');
+
+    // The Wood's boards are 16x10. From 75 ft the dummy can't reach me, so it Dashes; with a bow of its own it shoots.
+    q('UPDATE users SET ' . END_FIGHT . ", room_id = 6001, x = 0, y = 5 WHERE name = 'Board'");
+    q('UPDATE spawns SET room_id = 6001, x = 15, y = 5, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [15, 1, 1]; // Initiative 17 vs 1; my natural 1; it runs 60 ft and can't attack
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'The Training Dummy runs at you.') && !says($out, 'Slam') && $at() === [3, 5]
+        && $dice_queue === [], "a monster that can't reach me this turn Dashes");
+    q("UPDATE monsters SET shot = 'Shortbow', shot_hit = 4, shot_damage = '1d6+2', shot_type = 'piercing',
+        shot_range = 80, shot_long = 320 WHERE id = 9999");
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+    q('UPDATE spawns SET x = 15, y = 5 WHERE id = 9901');
+    $dice_queue = [15, 1, 1, 10]; // Initiative; my natural 1; its Shortbow, 14, misses
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, "The Training Dummy's Shortbow misses you (14 vs AC 17)") && $at() === [15, 5]
+        && $dice_queue === [], 'a monster with a ranged attack shoots from where it stands');
+    q('UPDATE spawns SET x = 1 WHERE id = 9901');
+    $dice_queue = [1, 1, 10]; // next to it: my two d20s (Disadvantage) are 1s; its Slam, 13, misses
+    check(says(run_command(hero('Board'), 'kill'), "The Training Dummy's Slam misses you (13 vs AC 17)")
+        && $dice_queue === [], 'and its melee attack once I am next to it');
+    q('UPDATE monsters SET shot = NULL, shot_hit = NULL, shot_damage = NULL, shot_type = NULL, shot_range = NULL,
+        shot_long = NULL WHERE id = 9999');
+
+    // Fleeing: a Dash for an exit. A step that stays within its reach draws no attack. It waits where it was, so
+    // coming straight back in finds it there; 10 minutes later it's back at a fresh spot across the room.
+    q('UPDATE users SET ' . END_FIGHT . ", room_id = 9, x = 4, y = 1, fighting = 9901, foe_first = FALSE
+        WHERE name = 'Board'");
+    q('UPDATE spawns SET room_id = 9, x = 3, y = 1, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [];
+    $out = run_command(hero('Board'), 'flee');
+    check(says($out, 'You flee north from the Training Dummy!') && !says($out, 'pull away')
+        && hero('Board')['room_id'] === 4 && hero('Board')['fighting'] === null && $at() === [3, 1],
+        'flee runs out the nearest exit; it stays where it was');
+    run_command(hero('Board'), 's');
+    $dice_queue = [10, 5, 12, 12, 4, 1]; // Initiative; next to it at once: Disadvantage (16) hits for 6; Slam a 1
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(!says($out, 'closes in') && says($out, 'with Disadvantage') && $dice_queue === [],
+        'coming back in, it is still by the door');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+    q('UPDATE spawns SET placed_at = NOW() - INTERVAL 11 MINUTE WHERE id = 9901');
+    $dice_queue = [10, 5, 12, 4, 1]; // Initiative; from 25 ft my arrow 16 hits for 6; it closes in, Slam a 1
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'The Training Dummy closes in.') && !says($out, 'Disadvantage') && $dice_queue === [],
+        'ten minutes on, it starts across the room again');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+    q('UPDATE spawns SET dead_since = NOW() - INTERVAL 1 DAY WHERE id = 9901');
+    $dice_queue = [6, 6];
+    room_monsters(9);
+    check($at() === [null, null], 'a monster that respawns has no square until its next fight');
+    check(says(run_command(hero('Board'), 'move a1'), "You're not in a fight"), 'move is for fights');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

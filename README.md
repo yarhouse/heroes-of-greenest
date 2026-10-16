@@ -139,10 +139,10 @@ that class's equipment A (no ammunition, packs or tools). Combat is d20 attack r
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
 the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
 Advantage on Str saves), Unarmored Defense and from level 2 Reckless Attack and Danger Sense (Advantage on Dex saves);
-Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 always get away with `flee`;
+Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 `flee` with no opportunity attack;
 Monks fight unarmored with Martial Arts (Dex attacks, the Martial Arts die, an Unarmed Strike as a Bonus Action) and
-from level 2 spend Focus Points (back on a short rest) on `flurry`, `patient` and from 5 `stun`, always get away with
-`flee`, get Focus back with Uncanny Metabolism, Deflect Attacks (3), topple with Open Hand Technique and heal with
+from level 2 spend Focus Points (back on a short rest) on `flurry`, `patient` and from 5 `stun`, `flee` with no
+opportunity attack, get Focus back with Uncanny Metabolism, Deflect Attacks (3), topple with Open Hand Technique and heal with
 `wholeness` (6); Paladins `lay` on hands from a pool of 5 HP a level, smite on a melee hit (`cast divine smite`, free
 once a long rest, and Shining Smite), cast Divine Favor, Cure Wounds and the Cleric's Bless, Command, Shield of Faith
 and Aid, and gain Defense (2), Extra Attack (5), Aura of Protection on their own saves (6) and Radiant Strikes (11);
@@ -175,11 +175,15 @@ hand (`equip dagger offhand`) you get an extra attack each round, using your Bon
 has Nick; in a fight you get one Bonus Action a round (Rage, Second Wind, a potion, Healing Word or that attack).
 Weapon masteries: Cleave carries a hit on to a second monster in the room, Graze deals your modifier on a miss, Nick
 frees the off-hand attack, Sap gives the foe Disadvantage on its next attack, Topple can knock it Prone and Vex gives
-Advantage on your next attack (Push and Slow need distances). Damage has SRD types, and Resistance, Immunity and
+Advantage on your next attack (Push and Slow aren't modeled yet). Damage has SRD types, and Resistance, Immunity and
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions of Healing and Uncommon +1 Weapons and Shield; AC and attacks come
-from what you wear, and you can wear only the armor your class is trained in. There are no distances: a fight started
-with a ranged or thrown weapon opens with a free volley while the foe closes in, and after that ranged attacks have
-Disadvantage. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
+from what you wear, and you can wear only the armor your class is trained in. A fight puts you and your foe on the
+room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground), drawn in place of the map: you start
+by the exit you came in by, it across the room. `kill` closes in and attacks (a Dash, and no attack, if it's too far),
+`shoot` throws or shoots from where you stand, `move c3` (or a tap on the board) moves you and leaves your action for
+the next command, and `flee` runs for an exit. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
+range, and stepping out of a foe's reach draws its opportunity attack. Monsters walk to you, or with a ranged attack
+in their stat block shoot until you're next to them; one you flee waits where it stood for 10 minutes. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
 their CR). `sneak` makes a Stealth check each time you enter a room with monsters: 15 or more hides you from each one
 whose passive Perception is lower (heavy armor and some medium give Disadvantage), and attacking from hiding gives
 Advantage on Initiative and your first attack and surprises the monster (Disadvantage on its Initiative). A fight,

@@ -32,28 +32,14 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-4. **Distance on a grid** (step 1). Every room in a fight is an open board of 5-ft squares sized by zone (`ZONES`:
-   Greenest 8x6, the Woods 16x10, the Sewers, Mines and Delve 6x5; at most 26 wide, columns a-z), no walls or cover
-   inside until step 2. You stand at the middle of the wall you came in by (a stair corner for up and down, the
-   middle otherwise). A monster stands at the middle of the far wall when its fight starts, not rolled, so fights
-   spend no dice on it: about 1 free Longbow shot in town, 2 in the Woods, 0 to 1 underground, against Speed 30. It
-   keeps its square 10 minutes after the fight (`spawns.placed_at`). Distance is the larger of the two gaps times
-   5 ft (SRD 5.2.1 p.15: a diagonal costs one square). Ships in three parts, each alone:
-   - **a. Board and movement.** `users.x`, `users.y` and `moved` (feet of Speed used this turn), `spawns.x` and `y`;
-     from the SRD, monsters' `speed` (the fastest), `reach` and ranged attack (`shot`, `shot_hit`, `shot_damage`,
-     `shot_type`, `shot_range`, `shot_long`), items' `reach`, `range` and `long_range`. One command is a whole turn,
-     except `move c3`, which leaves your action for the next. `kill` closes in and attacks (Dashing if it can't
-     reach), `shoot` stays put, `flee <dir>` runs to that exit. Ranged attacks have Disadvantage within 5 ft of an
-     enemy or past normal range. Monsters close and attack (Dashing if they can't reach), or with a ranged attack
-     shoot until you're next to them. Opportunity attacks both ways, once a round; yours are automatic (an Unarmed
-     Strike with a bow). The opening volley goes. During a fight `cmd_map()` returns the board for the sidebar and
-     `map`: lettered columns, numbered rows, exits as gaps, `@` you, the foe by initial, allies upper-case; tapping a
-     square sends `move`; the footer gives the foe's distance and HP.
+4. **Distance on a grid** (step 1), the rest: the board and movement shipped (task 4a, see Decided). Two parts, each
+   alone:
    - **b. Kiting.** `kite` (attack, then back off to the square farthest from the nearest foe, so you slide along a
      wall; next to a foe with a ranged weapon, back off first), `dash`, `disengage`, `dodge`. Slow, Push, standing
-     from Prone costs half Speed, a grappled creature can't move. Reach weapons and monsters' 10-ft reach. Spell
-     ranges and touch spells (`spells.range`); other attack commands close in first like `kill`. Starting from hiding
-     you move before Initiative. Hero Speed from species, Unarmored Movement and Fast Movement.
+     from Prone costs a hero half their Speed (monsters already pay it), a grappled creature can't move. Reach
+     weapons. Spell ranges and touch spells (`spells.range`); `breathe` and the like use their range rather than
+     closing in. Starting from hiding you move before Initiative. Unarmored Movement and Fast Movement (species Speed
+     is in).
    - **c. Hirelings on the board.** Its own square, starting next to you. `order attack|guard|hold`
      (`users.hireling_order`): the guard and mastiff default to attack, the acolyte to guard (stays beside you). One
      with a ranged attack uses it when no enemy is next to it (the acolyte's Radiant Flame, the guard's thrown spear).
@@ -217,3 +203,20 @@ Any time: **approve account requests** (friends ask on the login page):
   `cmd_map()` doesn't follow an exit into another zone (it's a gap in the wall onto rock), so zones never compete for
   map cells and a road can be any length, and the map's footer names the zone (`Greenest. Here: ...`). Movement and
   shouts are unchanged.
+- 2026-10-15 **The battle board** (task 4a): every room in a fight is an open board of 5-ft squares sized by zone
+  (`ZONES`: Greenest 8x6, the Woods 16x10, the Sewers, Mines and Delve 6x5). You stand where you came in (the middle
+  of that wall, a stair corner for up and down, the middle if you didn't walk in: `users.x`, `y`); a monster stands
+  where it last stood, or after 10 minutes untouched (`spawns.placed_at`) at the far side, mirrored from you (not
+  rolled, so a fight spends no dice placing it). Distance is the larger gap times 5 ft (SRD p.15). One command is a
+  whole turn except `move c3` (`users.moved` holds the feet used; a turn under way skips the foe's first move):
+  `kill` closes in and attacks, or Dashes and can't; `shoot` throws a thrown weapon or shoots (`kill` with a bow
+  does), Disadvantage within 5 ft or past normal range (`items.normal_range`, `long_range`); `flee [dir]` Dashes for
+  an exit and leaves if it gets there (no Dex contest; Rogues and Monks from level 2 and Cloud's Jaunt Disengage).
+  Leaving a foe's reach draws its opportunity attack, once a round (`provoked`). Monsters (`speed`, `reach`, and from
+  the stat block `shot` ... `shot_long` for 29 of them) walk into reach and attack, Dash when they can't, or shoot
+  from where they stand until you're next to them; standing from Prone costs half their Speed. The opening volley is
+  gone. `cmd_map()` returns the board during a fight and `api.php` says so (`board`); `play.js` letters the columns,
+  numbers the rows, and a tap on a square sends `move`, on the foe `kill`, on an exit `flee`. The migration ends
+  fights under way. Shortcuts until 4b and 4c: a hireling fights only when its hero is next to the foe, spells other
+  than melee spell attacks work from anywhere, and no monster ever steps out of a hero's reach, so heroes take no
+  opportunity attacks yet.
