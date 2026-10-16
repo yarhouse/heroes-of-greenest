@@ -102,3 +102,5 @@ Any time: **approve account requests** (friends ask on the login page):
   `play.js` turns each `#` into a double-line wall glyph by which neighbours are walls (`MAP_WALLS`), fills empty
   cells with rock hatching and pads rows to the map's width; `cmd_map()` is unchanged. Cells are square at 12px (phones)
   or 13.5px (wide screens) so the pixels stay crisp. The sidebar grew to 25rem and the page to 2000px.
+- 2026-10-15 **Rests are shorter:** a short rest takes 1 minute and a long rest 10 (were 10 min / 1 h), so a session
+  isn't spent waiting. `SHORT_REST_SECS` / `LONG_REST_SECS` in `game.php`.

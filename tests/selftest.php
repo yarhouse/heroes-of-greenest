@@ -382,10 +382,10 @@ try {
     // Rests and Second Wind. Testa is in the town square, a safe room.
     q("UPDATE users SET hp = 3 WHERE name = 'Testa'");
     check(says(run_command(hero('Testa'), 'rest'), 'settle in for a short rest'), 'rest starts a short rest');
-    check(says(run_command(hero('Testa'), 'sleep'), 'already taking a short rest (10 min to go)'),
+    check(says(run_command(hero('Testa'), 'sleep'), 'already taking a short rest (1 min to go)'),
         'one rest at a time');
     $sheet = hero_sheet(with_stats(hero('Testa')));
-    check(in_array('short rest, 10 min left', $sheet['status'], true) && $sheet['rest_secs'] > 590,
+    check(in_array('short rest, 1 min left', $sheet['status'], true) && $sheet['rest_secs'] > 50,
         'the hero sheet shows the time left, for play.js to finish the rest');
     check(!says(run_command(hero('Testa'), 'score'), 'You finish'), 'a rest takes time');
     q("UPDATE users SET rest_until = NOW() WHERE name = 'Testa'");

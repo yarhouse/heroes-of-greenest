@@ -184,7 +184,7 @@ their CR). `sneak` makes a Stealth check each time you enter a room with monster
 whose passive Perception is lower (heavy armor and some medium give Disadvantage), and attacking from hiding gives
 Advantage on Initiative and your first attack and surprises the monster (Disadvantage on its Initiative). A fight,
 speaking or dying ends sneaking. Rest with
-`rest` (short, 10 minutes: Hit Dice heal you) or `sleep` (long, an hour: full HP) in a safe
+`rest` (short, 1 minute: Hit Dice heal you) or `sleep` (long, 10 minutes: full HP) in a safe
 room: the town square, the Swaying Lantern or the temple. The hero sheet counts down the time left, an open page finishes the rest
 by itself, and a fight that leaves you at half HP or less ends with where to rest. At
 the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a

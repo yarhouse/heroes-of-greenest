@@ -27,8 +27,8 @@ const PRAYERS = [
     'aid' => [11, 200, '+5 HP and max HP for 8 hours'],
 ];
 const PRIEST_WIS = 3; // the SRD Priest's (p.316), the temple's healer
-const SHORT_REST_SECS = 600;
-const LONG_REST_SECS = 3600;
+const SHORT_REST_SECS = 60;
+const LONG_REST_SECS = 600;
 const LOOT_CHANCE = 30; // a kill drops an item 1 time in this many, as in Dragon Knight
 const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR: Potions of Healing from CR 1
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
@@ -355,8 +355,8 @@ const COMMANDS = [
     'cast <spell>' => "cast a spell, at a monster or a hero if it needs one (cast alone lists them); a Sorcerer may "
         . "put 'heightened' or 'seeking' first",
     'prepare <spells>' => 'after a long rest, choose your spells, with commas (prepare alone lists them)',
-    'rest' => 'short rest in a safe place (10 min): spend Hit Dice to heal',
-    'sleep' => 'long rest in a safe place (1 h): recover everything',
+    'rest' => 'short rest in a safe place (1 min): spend Hit Dice to heal',
+    'sleep' => 'long rest in a safe place (10 min): recover everything',
     'score' => 'your abilities, HP, AC and XP',
     'map' => 'rooms near you (also under score on wide screens)',
     'inventory' => 'what you carry and wear (or i)',
@@ -671,8 +671,8 @@ function heal_hint(array $me): array
     }
     $where = $u['safe'] ? 'You can rest here'
         : 'Rest in a safe room, green on the map: the town square, the Lantern or the temple';
-    return ["You're hurt (HP {$u['hp']}/{$u['max_hp']}). $where. 'rest' (10 min) spends Hit Dice ({$u['dice']} left); "
-        . "'sleep' (1 h) heals you fully."];
+    return ["You're hurt (HP {$u['hp']}/{$u['max_hp']}). $where. 'rest' (1 min) spends Hit Dice ({$u['dice']} left); "
+        . "'sleep' (10 min) heals you fully."];
 }
 
 /** What others said in my room since my last command. Advances my read pointer either way. */
@@ -3110,7 +3110,7 @@ function cmd_rest(array $me, string $kind): array
     }
     $secs = $kind === 'long' ? LONG_REST_SECS : SHORT_REST_SECS;
     q('UPDATE users SET resting = ?, rest_until = NOW() + INTERVAL ? SECOND WHERE id = ?', [$kind, $secs, $me['id']]);
-    return ["You settle in for a $kind rest. It takes " . intdiv($secs, 60) . ' minutes; leaving cancels it.'];
+    return ["You settle in for a $kind rest. It takes " . intdiv($secs, 60) . ' min; leaving cancels it.'];
 }
 
 /** If my rest's time is up, applies it and returns what it did. */
