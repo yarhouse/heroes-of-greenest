@@ -108,3 +108,9 @@ Any time: **approve account requests** (friends ask on the login page):
   hour-old chat greeted everyone at the keep. Now it lingers 10 minutes (`ECHO_MINUTES`). `shout <text>` is heard live
   (on their next command) by every hero in town, rooms 1-99 (`TOWN_LAST_ROOM`); elsewhere a shout reaches only the room.
   Shouts leave no echo. Like `say`, a shout ends sneaking.
+- 2026-10-15 **Speech shows up live:** an open, visible play page sends an empty command every 5 seconds
+  (`LISTEN_MS` in `play.js`), which returns only what others said or shouted since my last command, so it appears
+  without typing. Not during character creation (an empty command repeats the step there), and a failed listen prints
+  nothing. It also keeps a hero with the page open "online" in `who`. Fights by other heroes still aren't pushed.
+- 2026-10-15 **Other heroes' names stand out in the log:** `api.php` sends every other hero's name (`heroes`), and
+  `play.js` sets them in bold Bootstrap `text-info` wherever they appear, still as text nodes, never HTML.

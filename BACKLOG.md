@@ -25,7 +25,6 @@ This repo copy is the source; the claude.ai Project holds a copy.
 - [ ] **Adventuring gear in the shops.** Acid, Alchemist's Fire and Holy Water thrown in place of an attack (a
   `throw` like `breathe`), and the tools harvesting and crafting will need (Herbalism Kit, Smith's Tools).
 - [ ] **Rare magic items for sale**, if gold piles up: +1 Armor, +2 Weapons and Shield, Potion of Healing (superior).
-- [ ] **Live updates**, only if people play together: polling so `say` and fights show up without a command. Party combat is tactical step 3 below.
 
 ## Tactical combat: distance and room grids
 

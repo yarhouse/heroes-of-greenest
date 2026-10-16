@@ -20,19 +20,24 @@ const history = [];
 let historyPos = 0;
 let queue = Promise.resolve(); // keeps replies in the order commands were typed
 let restTimer = 0;
+/** @type {RegExp | null} the other heroes' names (letters only, from api.php), to pick them out of the log */
+let heroNames = null;
+const LISTEN_MS = 5000; // how often an open, visible page asks what others said or shouted
 
 /** @param {string} text @param {string} [cls] @returns {HTMLDivElement} */
 function print(text, cls) {
     const line = document.createElement('div');
     if (cls) line.className = cls;
-    line.textContent = text; // never innerHTML: player text comes back in these lines
+    // Never innerHTML: player text comes back in these lines. A split on a capture group puts the names at odd indexes.
+    const parts = heroNames ? text.split(heroNames) : [text];
+    line.append(...parts.map((part, i) => (i % 2 ? el('span', 'fw-bold text-info', part) : part)));
     log.append(line);
     log.scrollTop = log.scrollHeight;
     return line;
 }
 
-/** @param {string} cmd */
-async function send(cmd) {
+/** @param {string} cmd @param {boolean} [quiet] no error line (a listen that fails just waits for the next) */
+async function send(cmd, quiet = false) {
     try {
         const res = await fetch('api.php', {
             method: 'POST',
@@ -40,8 +45,10 @@ async function send(cmd) {
             body: JSON.stringify({ cmd }),
         });
         /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>,
-         *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], logout?: boolean }} */
+         *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], heroes?: string[],
+         *   logout?: boolean }} */
         const data = await res.json();
+        if (data.heroes) heroNames = data.heroes.length ? new RegExp(`\\b(${data.heroes.join('|')})\\b`) : null;
         const lines = data.lines ?? [];
         const map = data.map ?? [];
         // The map command's reply holds the map itself: draw it in colour like the sheet's, the rest as text.
@@ -61,7 +68,7 @@ async function send(cmd) {
         if (data.hero) drawHero(data.hero, data.map ?? []);
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
-        print('The connection falters. Try again.', 'error');
+        if (!quiet) print('The connection falters. Try again.', 'error');
     }
 }
 
@@ -296,3 +303,8 @@ input.addEventListener('keydown', (e) => {
 });
 
 queue = queue.then(() => send('look'));
+// An empty command returns only what others said or shouted since my last command, so this makes speech show up live.
+// Not while creating a hero (no sheet then): there an empty command shows the step again.
+setInterval(() => {
+    if (!document.hidden && !sheet.hidden) queue = queue.then(() => send('', true));
+}, LISTEN_MS);

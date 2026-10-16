@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-// api.php :: runs one player command; replies { lines, actions, commands, choices?, hero?, map?, logout? }
+// api.php :: runs one player command; replies { lines, actions, commands, heroes, choices?, hero?, map?, logout? }
 // as JSON.
 
 require __DIR__ . '/../src/boot.php';
@@ -38,7 +38,8 @@ if (strtolower(trim($cmd)) === 'quit') {
 }
 $lines = run_command($me, $cmd);
 $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
-$more = ['actions' => actions($me), 'commands' => my_commands($me)];
+$heroes = q('SELECT name FROM users WHERE name IS NOT NULL AND id <> ?', [$me['id']])->fetchAll(PDO::FETCH_COLUMN);
+$more = ['actions' => actions($me), 'commands' => my_commands($me), 'heroes' => $heroes]; // play.js picks them out
 if ($me['setup'] !== null) {
     reply(['lines' => $lines, 'choices' => choices($me)] + $more); // no sheet while creating
 }
