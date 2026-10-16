@@ -104,3 +104,7 @@ Any time: **approve account requests** (friends ask on the login page):
   or 13.5px (wide screens) so the pixels stay crisp. The sidebar grew to 25rem and the page to 2000px.
 - 2026-10-15 **Rests are shorter:** a short rest takes 1 minute and a long rest 10 (were 10 min / 1 h), so a session
   isn't spent waiting. `SHORT_REST_SECS` / `LONG_REST_SECS` in `game.php`.
+- 2026-10-15 **Speech fades, and shouts carry across town:** `say` used to echo to later visitors for 7 days, so an
+  hour-old chat greeted everyone at the keep. Now it lingers 10 minutes (`ECHO_MINUTES`). `shout <text>` is heard live
+  (on their next command) by every hero in town, rooms 1-99 (`TOWN_LAST_ROOM`); elsewhere a shout reaches only the room.
+  Shouts leave no echo. Like `say`, a shout ends sneaking.

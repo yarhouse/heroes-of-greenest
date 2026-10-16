@@ -191,12 +191,14 @@ CREATE TABLE users (
     FOREIGN KEY (fighting) REFERENCES spawns (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Things said in a room. Shown live to others there, and as echoes to later visitors.
+-- Things said in a room. Shown live to others there, and for a few minutes to later visitors. A shout in town is heard
+-- live all over town (TOWN_LAST_ROOM in game.php) and isn't echoed.
 CREATE TABLE events (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     room_id INT UNSIGNED NOT NULL,
     user_id INT UNSIGNED NOT NULL,
     text VARCHAR(500) NOT NULL,
+    shout BOOLEAN NOT NULL DEFAULT FALSE,
     created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY room_recent (room_id, id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),

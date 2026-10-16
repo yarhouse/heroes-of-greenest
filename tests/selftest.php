@@ -179,6 +179,13 @@ try {
     check(!says(run_command(hero('Testb'), 'who'), 'Testa says:'), 'live speech is shown once');
     $look = run_command(hero('Testb'), 'look');
     check(says($look, 'Testa said here just now: meet at the inn'), 'look shows recent speech');
+    q("UPDATE events SET created = NOW() - INTERVAL 11 MINUTE WHERE text = 'meet at the inn'");
+    check(!says(run_command(hero('Testb'), 'look'), 'meet at the inn'), 'speech fades from the room after 10 minutes');
+    run_command(hero('Testb'), 'n');
+    check(says(run_command(hero('Testa'), 'shout to the keep'), 'You shout: to the keep'), 'shout');
+    $heard = run_command(hero('Testb'), 'who');
+    check(says($heard, 'Testa shouts: to the keep'), 'a shout is heard all over town');
+    check(!says(run_command(hero('Testb'), 's'), 'said here'), 'and leaves no echo');
     check(says($look, 'Testa is here.'), 'look shows heroes online here');
     check(!says(run_command(hero('Testb'), "say <b>x</b>\nfake line"), "\n"), 'control characters are stripped');
 

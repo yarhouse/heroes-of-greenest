@@ -10,7 +10,8 @@ const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' 
 const MAP_STEPS = ['north' => [0, -1], 'south' => [0, 1], 'east' => [1, 0], 'west' => [-1, 0]]; // up/down: marks only
 const MAP_REACH = 2; // the map shows rooms up to this many grid steps each way
 const ONLINE_MINUTES = 10;
-const ECHO_DAYS = 7;
+const ECHO_MINUTES = 10; // how long speech lingers in a room for those who come in after
+const TOWN_LAST_ROOM = 99; // the town is seed.sql's rooms 1-99 (areas and the Delve are numbered higher): shouts carry
 const START_ROOM = 1;
 const LANTERN = 3; // the Swaying Lantern, where hirelings wait for work
 /** Skilled hirelings (SRD 5.2.1 p.102: 2 GP a day), as `hire` word => their monsters row. */
@@ -372,6 +373,7 @@ const COMMANDS = [
     'sell <item>' => 'in a shop: sell something for half its price',
     'pray <cure|heal|aid>' => "at Chauntea's temple, east of the Mill Bridge: a priest's spell, for a donation",
     'say <text>' => "speak to the room ('<text> works too)",
+    'shout <text>' => 'in town, everyone in town hears it; elsewhere only the room',
     'who' => 'every hero, and when last seen',
     'help' => 'this list',
     'quit' => 'log out',
@@ -652,6 +654,7 @@ function run_command(array $me, string $input): array
         $verb === 'sell' => cmd_sell($me, trim($arg)),
         $verb === 'pray' => cmd_pray($me, trim($arg)),
         $verb === 'say' => cmd_say($me, trim($arg)),
+        $verb === 'shout' => cmd_say($me, trim($arg), true),
         $verb === 'who' => cmd_who(),
         $verb === 'help' => cmd_help($me),
         default => ["Huh? Type 'help' for commands."],
@@ -675,17 +678,19 @@ function heal_hint(array $me): array
         . "'sleep' (10 min) heals you fully."];
 }
 
-/** What others said in my room since my last command. Advances my read pointer either way. */
+/** What others said in my room, or shouted anywhere in town while I'm in town, since my last command. Advances my read
+ * pointer either way. */
 function heard_since_last_command(array $me): array
 {
     $max = (int) q('SELECT COALESCE(MAX(id), 0) FROM events')->fetchColumn();
     $rows = q(
-        'SELECT u.name, e.text FROM events e JOIN users u ON u.id = e.user_id
-         WHERE e.room_id = ? AND e.id > ? AND e.id <= ? AND e.user_id <> ? ORDER BY e.id',
-        [$me['room_id'], $me['last_event_id'], $max, $me['id']]
+        'SELECT u.name, e.text, e.shout FROM events e JOIN users u ON u.id = e.user_id
+         WHERE (e.room_id = ? OR e.shout AND e.room_id <= ? AND ? <= ?)
+         AND e.id > ? AND e.id <= ? AND e.user_id <> ? ORDER BY e.id',
+        [$me['room_id'], TOWN_LAST_ROOM, $me['room_id'], TOWN_LAST_ROOM, $me['last_event_id'], $max, $me['id']]
     )->fetchAll();
     q('UPDATE users SET last_event_id = ? WHERE id = ?', [$max, $me['id']]);
-    return array_map(fn ($r) => "{$r['name']} says: {$r['text']}", $rows);
+    return array_map(fn ($r) => $r['name'] . ($r['shout'] ? ' shouts: ' : ' says: ') . $r['text'], $rows);
 }
 
 /**
@@ -947,8 +952,8 @@ function cmd_look(array $me): array
     $said = q(
         'SELECT u.name, e.text, TIMESTAMPDIFF(MINUTE, e.created, NOW()) AS mins FROM events e
          JOIN users u ON u.id = e.user_id
-         WHERE e.room_id = ? AND e.created > NOW() - INTERVAL ? DAY ORDER BY e.id DESC LIMIT 5',
-        [$me['room_id'], ECHO_DAYS]
+         WHERE e.room_id = ? AND NOT e.shout AND e.created > NOW() - INTERVAL ? MINUTE ORDER BY e.id DESC LIMIT 5',
+        [$me['room_id'], ECHO_MINUTES]
     )->fetchAll();
     foreach (array_reverse($said) as $s) {
         $lines[] = "{$s['name']} said here " . ago((int) $s['mins']) . ": {$s['text']}";
@@ -4002,18 +4007,21 @@ function cmd_map(array $me): array
     return $lines;
 }
 
-function cmd_say(array $me, string $text): array
+/** Says something to the room, or shouts it: in town everyone in town hears a shout, elsewhere only the room. */
+function cmd_say(array $me, string $text, bool $shout = false): array
 {
     if ($text === '') {
-        return ['Say what?'];
+        return [$shout ? 'Shout what?' : 'Say what?'];
     }
-    q('INSERT INTO events (room_id, user_id, text) VALUES (?, ?, ?)', [$me['room_id'], $me['id'], $text]);
-    if (!$me['sneaking']) {
-        return ["You say: $text"];
+    q('INSERT INTO events (room_id, user_id, text, shout) VALUES (?, ?, ?, ?)',
+        [$me['room_id'], $me['id'], $text, (int) $shout]);
+    $lines = [($shout ? 'You shout: ' : 'You say: ') . $text];
+    if ($me['sneaking']) {
+        // Louder than a whisper ends hiding (the Hide action, SRD 5.2.1 p.183), so speaking ends sneaking too.
+        q('UPDATE users SET sneaking = FALSE, stealth = NULL WHERE id = ?', [$me['id']]);
+        $lines[] = 'You stop sneaking.';
     }
-    // Louder than a whisper ends hiding (the Hide action, SRD 5.2.1 p.183), so speaking ends sneaking too.
-    q('UPDATE users SET sneaking = FALSE, stealth = NULL WHERE id = ?', [$me['id']]);
-    return ["You say: $text", 'You stop sneaking.'];
+    return $lines;
 }
 
 function cmd_who(): array

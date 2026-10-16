@@ -24,7 +24,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 - Rules are SRD 5.2.1 (5e), from `ref/SRD_CC_v5.2.1.pdf`; monster stats always come from an SRD stat block, never invented. Keep the SRD attribution (README, `seed.sql`, generated areas, login page).
 - Every random number goes through `roll()` in `game.php`; tests queue exact die faces in `$dice_queue`. The one exception is the Delve's layout, which uses `mt_rand` seeded with the week so the same seed always builds the same dungeon.
 - Combat and other multi-step actions resolve one round per command.
-- Group play is asynchronous: shared world, `say` echoes persist in rooms, `who` shows last seen.
+- Group play is asynchronous: shared world, `say` lingers in its room for 10 minutes, `shout` carries across town, `who` shows last seen.
 - Borrow freely from `../riftshadow/area/*.are` (rooms, mobs, objects; ROM/Diku license: keep credits, non-commercial) and ideas from `../dragon-knight`. Their code is reference only.
 
 ## Security

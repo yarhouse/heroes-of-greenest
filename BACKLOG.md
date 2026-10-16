@@ -16,6 +16,10 @@ This repo copy is the source; the claude.ai Project holds a copy.
   other waits until you come back in); sleeping monsters that a noisy hero wakes (Rift's start-asleep aggressive ones
   are simply peaceful today); a `hide` in the room you're in; monsters that ambush heroes (their Stealth against a
   hero's passive Perception); Naturally Stealthy and Pass without Trace; skill proficiency from class choices.
+- [ ] **Noise carries.** Sound as distance: a `say`, a `shout` or a fight is heard some rooms away (say 0, fight 1,
+  shout 2 exits), and an aggressive monster there whose passive Perception beats a DC that grows with each room (10 +
+  5 a room, Perception's own scale) comes to the noise and attacks on the noisy hero's next command. Needs a spawn's
+  home room so it wanders back. Shouts outside town could then carry through an area the same way.
 - [ ] **Monster traits.** Pack Tactics, Undead Fortitude and the other stat-block traits are ignored; monsters use their main attack × Multiattack.
 - [ ] **Deeper Delve.** Stairs to deeper floors with higher CR, more themes, rerolling when the boss dies.
 - [ ] **Adventuring gear in the shops.** Acid, Alchemist's Fire and Holy Water thrown in place of an attack (a
