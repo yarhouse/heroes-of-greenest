@@ -194,7 +194,11 @@ actions. Reach weapons attack from 10 ft, spells need their range (Touch means n
 up before the first turn. A Monk's Unarmored Movement and a Barbarian's Fast Movement add to your Speed. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
 range, and stepping out of a foe's reach draws its opportunity attack. Every aggressive monster in the room joins a fight, each
 with its own Initiative, acting before or after you in that order; `kill kobold 2` (or a tap on it) picks which one
-you fight, and when it dies you turn to the nearest other. Monsters walk to you, or with a ranged attack
+you fight, and when it dies you turn to the nearest other. A fight belongs to its room: a hero who walks in joins it,
+everyone takes turns in one Initiative order, and each line is retold to the others ("Bram hits the Kobold"). If it's
+someone else's turn you're told whose and how long they have left; a hero who's away (page closed or hidden) or out of
+time (2 minutes) takes the Dodge action. A kill's XP and gold are split among the heroes in the fight, and each
+monster goes for the nearest hero. Monsters walk to you, or with a ranged attack
 in their stat block step up to its normal range and shoot until you're next to them; one held in a grapple can't move,
 and one you flee waits where it stood for 10 minutes. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
 their CR). `sneak` makes a Stealth check each time you enter a room with monsters: 15 or more hides you from each one

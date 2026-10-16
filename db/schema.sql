@@ -10,7 +10,9 @@ CREATE TABLE rooms (
     description TEXT NOT NULL,
     safe BOOLEAN NOT NULL DEFAULT FALSE, -- heroes can rest here
     terrain VARCHAR(20) NULL, -- Riftshadow's sector (forest, field, inside...): what a generated battle board holds
-    layout TEXT NULL -- a hand-drawn battle board, rows of . # % , ~ (see board() in game.php); NULL: generated
+    layout TEXT NULL, -- a hand-drawn battle board, rows of . # % , ~ (see board() in game.php); NULL: generated
+    turn INT UNSIGNED NULL, -- in a fight here, the hero whose turn it is (see my_turn() in game.php)
+    turn_at DATETIME NULL -- and since when
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE exits (
@@ -232,6 +234,8 @@ CREATE TABLE events (
     user_id INT UNSIGNED NOT NULL,
     text VARCHAR(500) NOT NULL,
     shout BOOLEAN NOT NULL DEFAULT FALSE,
+    -- A line of a fight, not speech: the hero its 'you' is (see third_person() in game.php); user_id is who acted.
+    about INT UNSIGNED NULL,
     created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY room_recent (room_id, id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),

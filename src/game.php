@@ -35,6 +35,7 @@ const TERRAIN = [
 ];
 const STEPS = [[0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1]]; // a square's eight neighbours
 const ONLINE_MINUTES = 10;
+const TURN_SECS = 120; // how long a hero whose page is open has for a turn in a fight with others, before it passes
 const ECHO_MINUTES = 10; // how long speech lingers in a room for those who come in after
 const TOWN_LAST_ROOM = 99; // the town is seed.sql's rooms 1-99 (areas and the Delve are numbered higher): shouts carry
 const START_ROOM = 1;
@@ -665,6 +666,11 @@ function run_command(array $me, string $input): array
     $verb = DIRS[$verb] ?? $verb;
 
     $heard = heard_since_last_command($me);
+    $clock = [];
+    if ($me['fighting'] !== null) { // the clock: turns of heroes who are away or out of time pass
+        my_turn($me, $clock);
+    }
+    $was = $me['fighting'];
     $out = match (true) {
         $verb === '' => [],
         in_array($verb, DIRS, true) => cmd_move($me, $verb),
@@ -716,9 +722,49 @@ function run_command(array $me, string $input): array
         $verb === 'help' => cmd_help($me),
         default => ["Huh? Type 'help' for commands."],
     };
+    // What I do in a fight outside my turn's action (a Bonus Action, a potion, an order), everyone here sees too.
+    // shortcut: these don't wait for my turn.
+    if (($was ?? $me['fighting']) !== null && in_array($verb, ['second', 'rage', 'wholeness', 'innate', 'font', 'lay',
+        'inspire', 'wild', 'drink', 'order', 'cunning'], true)) {
+        $mine = $out;
+        $out = [];
+        told($me, $mine, $out);
+    }
     // look already lists what was said in the room, so don't repeat it.
     $shows_room = (in_array($verb, ['l', 'look', 'inspect'], true) && trim($arg) === '') || in_array($verb, DIRS, true);
-    return array_merge($rested, $shows_room ? [] : $heard, $out, $me['fighting'] !== null ? heal_hint($me) : []);
+    return array_merge($rested, $shows_room ? [] : $heard, tell($me, [...$clock, ...$out]),
+        $me['fighting'] !== null ? heal_hint($me) : []);
+}
+
+/**
+ * My output $lines with the fight lines told about a hero (see told()) logged as events, for the others in their
+ * room, and made plain: as they are if they're about me, else in the third person (and not at all if just for them).
+ */
+function tell(array $me, array $lines): array
+{
+    $shown = [];
+    $names = [];
+    $heard = []; // room => whether anyone else is there to hear
+    foreach ($lines as $line) {
+        if (!preg_match('/^\x01(\d+),(\d+)\x01(.*)$/s', $line, $m)) {
+            $shown[] = ltrim($line, "\x02");
+            continue;
+        }
+        [$id, $room, $text] = [(int) $m[1], (int) $m[2], $m[3]];
+        $heard[$room] ??= (bool) q('SELECT 1 FROM users WHERE room_id = ? AND id <> ? LIMIT 1', [$room, $me['id']])
+            ->fetch();
+        if ($id !== $me['id'] || $heard[$room]) {
+            q('INSERT INTO events (room_id, user_id, text, about) VALUES (?, ?, ?, ?)',
+                [$room, $me['id'], mb_substr($text, 0, 500), $id]);
+        }
+        if ($id === $me['id']) {
+            $shown[] = ltrim($text, "\x02");
+        } elseif (!str_starts_with($text, "\x02")) {
+            $names[$id] ??= q('SELECT name FROM users WHERE id = ?', [$id])->fetchColumn();
+            $shown[] = third_person($text, $names[$id], $me['name']);
+        }
+    }
+    return $shown;
 }
 
 /** Once a fight is over (won, fled or died), says how to heal if it left me at half HP or less. */
@@ -735,19 +781,83 @@ function heal_hint(array $me): array
         . "'sleep' (10 min) heals you fully."];
 }
 
-/** What others said in my room, or shouted anywhere in town while I'm in town, since my last command. Advances my read
- * pointer either way. */
+/**
+ * What others said in my room, or shouted anywhere in town while I'm in town, since my last command, and the fight
+ * lines told in my room or about me (see told()): about me as they were, about another hero in the third person.
+ * Advances my read pointer either way.
+ */
 function heard_since_last_command(array $me): array
 {
     $max = (int) q('SELECT COALESCE(MAX(id), 0) FROM events')->fetchColumn();
     $rows = q(
-        'SELECT u.name, e.text, e.shout FROM events e JOIN users u ON u.id = e.user_id
-         WHERE (e.room_id = ? OR e.shout AND e.room_id <= ? AND ? <= ?)
+        'SELECT u.name, e.text, e.shout, e.about, a.name AS about_name FROM events e JOIN users u ON u.id = e.user_id
+         LEFT JOIN users a ON a.id = e.about
+         WHERE (e.room_id = ? OR e.about = ? OR e.shout AND e.room_id <= ? AND ? <= ?)
          AND e.id > ? AND e.id <= ? AND e.user_id <> ? ORDER BY e.id',
-        [$me['room_id'], TOWN_LAST_ROOM, $me['room_id'], TOWN_LAST_ROOM, $me['last_event_id'], $max, $me['id']]
+        [$me['room_id'], $me['id'], TOWN_LAST_ROOM, $me['room_id'], TOWN_LAST_ROOM, $me['last_event_id'], $max,
+            $me['id']]
     )->fetchAll();
     q('UPDATE users SET last_event_id = ? WHERE id = ?', [$max, $me['id']]);
-    return array_map(fn ($r) => $r['name'] . ($r['shout'] ? ' shouts: ' : ' says: ') . $r['text'], $rows);
+    $heard = [];
+    foreach ($rows as $r) {
+        $heard[] = match (true) {
+            $r['about'] === null => $r['name'] . ($r['shout'] ? ' shouts: ' : ' says: ') . $r['text'],
+            $r['about'] === $me['id'] => ltrim($r['text'], "\x02"),
+            str_starts_with($r['text'], "\x02") => null, // just for that hero, like the room they woke in
+            default => third_person($r['text'], $r['about_name'], $me['name']),
+        };
+    }
+    return array_values(array_filter($heard, fn ($l) => $l !== null));
+}
+
+/**
+ * Fight lines $lines, told about hero $who (whose 'you' they are, in $who's room), added to $out: run_command() shows
+ * them to $who as they are, logs them as events, and shows them to me in the third person if they're about another
+ * hero. A line starting \x02 is for $who alone. Lines already told about someone stay theirs.
+ */
+function told(array $who, array $lines, array &$out): void
+{
+    foreach ($lines as $l) {
+        $out[] = str_starts_with($l, "\x01") ? $l : "\x01{$who['id']},{$who['room_id']}\x01$l";
+    }
+}
+
+/**
+ * A line told about $name, said of them: "You hit the Kobold." becomes "Ana hits the Kobold." With $mine, my name: what
+ * of mine it names is mine again ("Bo's Hold Person" is "your Hold Person").
+ */
+function third_person(string $text, string $name, string $mine = ''): string
+{
+    $text = preg_replace(["/\b[Yy]ou're\b/", "/\b[Yy]ou've\b/", "/\b[Yy]ou'll\b/"],
+        ["$name is", "$name has", "$name will"], $text);
+    // "You" as a subject (starting a sentence, or after a conjunction): its verb takes an s.
+    $text = preg_replace_callback(
+        "/(^|[.!?:]\s+|\b(?:so|and|as|while|until|if|when|then|but|or|because|before)\s+)[Yy]ou\s+([A-Za-z']+)/",
+        function (array $m) use ($name): string {
+            $v = $m[2];
+            $s = match (true) {
+                in_array(strtolower($v), ['can', 'could', 'will', 'would', 'may', 'might', 'must', 'should', "can't",
+                    'cannot', "won't", "couldn't", "wouldn't", 'and', 'or', 'also', 'still', 'just', 'only', 'now',
+                    'never', 'already', 'both', 'too'], true) => $v,
+                $v === 'are' => 'is',
+                $v === 'have' => 'has',
+                $v === 'were' => 'was',
+                $v === 'do' => 'does',
+                $v === "don't" => "doesn't",
+                $v === "aren't" => "isn't",
+                $v === "haven't" => "hasn't",
+                (bool) preg_match('/(s|sh|ch|x|z|o)$/', $v) => $v . 'es',
+                (bool) preg_match('/[^aeiou]y$/', $v) => substr($v, 0, -1) . 'ies',
+                default => $v . 's',
+            };
+            return "{$m[1]}$name $s";
+        },
+        $text
+    );
+    $text = preg_replace(['/\b[Yy]ourself\b/', '/\b[Yy]ours\b/', '/\b[Yy]our\b/', '/\b[Yy]ou\b/'],
+        [$name, "$name's", "$name's", $name], $text);
+    return $mine === '' ? $text : preg_replace_callback('/(^|.)\b' . preg_quote($mine, '/') . "'s\b/",
+        fn ($m) => $m[1] . ($m[1] === '' ? 'Your' : 'your'), $text);
 }
 
 /**
@@ -1010,7 +1120,8 @@ function cmd_look(array $me): array
     $said = q(
         'SELECT u.name, e.text, TIMESTAMPDIFF(MINUTE, e.created, NOW()) AS mins FROM events e
          JOIN users u ON u.id = e.user_id
-         WHERE e.room_id = ? AND NOT e.shout AND e.created > NOW() - INTERVAL ? MINUTE ORDER BY e.id DESC LIMIT 5',
+         WHERE e.room_id = ? AND NOT e.shout AND e.about IS NULL AND e.created > NOW() - INTERVAL ? MINUTE
+         ORDER BY e.id DESC LIMIT 5',
         [$me['room_id'], ECHO_MINUTES]
     )->fetchAll();
     foreach (array_reverse($said) as $s) {
@@ -1230,6 +1341,16 @@ function cmd_move(array $me, string $dir): array
 function arrive(array &$me, array &$lines): void
 {
     $monsters = room_monsters((int) $me['room_id']);
+    $fight = fight_monsters($me);
+    if ($fight !== [] && fight_heroes((int) $me['room_id']) !== []) { // a fight under way here: I join it
+        $mine = my_square($me);
+        usort($fight, fn ($a, $b) => feet($mine, [$a['x'], $a['y']]) <=> feet($mine, [$b['x'], $b['y']]));
+        [$me['stealth'], $joined] = [null, []];
+        start_fight($me, $fight[0], $joined, '');
+        $joined[] = fight_status($me, $fight[0]);
+        told($me, $joined, $lines);
+        return;
+    }
     $me['stealth'] = null;
     if ($me['sneaking'] && $monsters) {
         $total = d20($me['noisy'] ? -1 : 0, lucky($me)) + skill_bonus($me, 'stealth');
@@ -1245,12 +1366,14 @@ function arrive(array &$me, array &$lines): void
     q('UPDATE users SET stealth = ? WHERE id = ?', [$me['stealth'], $me['id']]);
     foreach ($monsters as $foe) {
         if ($foe['aggressive'] && !hidden_from($me, $foe) && $me['level'] <= (float) $foe['cr'] + 5) {
-            start_fight($me, $foe, $lines, "The {$foe['name']} attacks you!");
+            [$fought, $here] = [[], $me['room_id']];
+            start_fight($me, $foe, $fought, "The {$foe['name']} attacks you!");
             // The monsters that won Initiative act; my next command is my turn in this round.
             $foe = named($me, $foe);
-            if (!begin_turn($me, $foe, $lines)) {
-                $lines[] = fight_status($me, $foe);
+            if (!begin_turn($me, $foe, $fought)) {
+                $fought[] = fight_status($me, $foe);
             }
+            told(['room_id' => $here] + $me, $fought, $lines); // where it happened, if I died
             return;
         }
     }
@@ -1451,7 +1574,7 @@ function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free 
 {
     [$mine, $there] = [my_square($me), [$foe['x'], $foe['y']]];
     $foes = [$there, ...monster_squares($me, $foe['id'])];
-    $ways = paths((int) $me['room_id'], $mine, [...$foes, ...array_filter([hire_square($me)])]);
+    $ways = paths((int) $me['room_id'], $mine, [...$foes, ...crowd($me), ...array_filter([hire_square($me)])]);
     $near = fn ($p) => min(array_map(fn ($f) => feet($p, $f), $foes)); // from the nearest monster
     $key = fn ($p, $c) => [-$near($p), $c, abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
     $best = $mine;
@@ -1499,12 +1622,14 @@ function fight(
     int $reach = 5,
     bool $hostile = true
 ): array {
-    $foe = find_foe($me, $target);
-    if (!$foe) {
-        return [$target === '' && $me['fighting'] === null ? $what
-            : ($target === '' ? $what : "You don't see a $target here.")];
-    }
     $lines = [];
+    $wait = $me['fighting'] === null ? null : my_turn($me, $lines);
+    $room = $me['room_id'];
+    $foe = $wait === null ? find_foe($me, $target) : null;
+    if (!$foe) {
+        return tell_lines($me, $room, $lines, $wait ?? ($target === '' && $me['fighting'] === null ? $what
+            : ($target === '' ? $what : "You don't see a $target here.")));
+    }
     if ($me['fighting'] !== null && $foe['id'] !== $me['fighting']) {
         retarget($me, $foe, $lines);
     }
@@ -1517,6 +1642,9 @@ function fight(
             $me['moved'] = null;
             q('UPDATE users SET moved = NULL WHERE id = ?', [$me['id']]);
             $lines[] = "You creep up on the {$foe['name']}, unseen.";
+        }
+        if (($wait = my_turn($me, $lines)) !== null) { // I joined others' fight, and it's someone else's turn
+            return tell_lines($me, $room, $lines, $wait);
         }
     }
     $foe = named($me, $foe);
@@ -1545,7 +1673,15 @@ function fight(
     if (!$over) {
         $lines[] = fight_status($me, $foe);
     }
-    return $lines;
+    return tell_lines($me, $room, $lines);
+}
+
+/** Fight lines $lines told about me in room $room (where they happened, if I've since died), then $after for me. */
+function tell_lines(array $me, int $room, array $lines, ?string $after = null): array
+{
+    $out = [];
+    told(['room_id' => $room] + $me, $lines, $out);
+    return $after === null ? $out : [...$out, $after];
 }
 
 /**
@@ -1577,42 +1713,149 @@ function begin_turn(array &$me, array &$foe, array &$lines): bool
 }
 
 /**
- * My turn ends: a Bonus Action before my next one counts for that one, and a foe I beat on Initiative acts. Returns
- * true if its turn ended the fight.
+ * My turn ends: a Bonus Action before my next one counts for that one, the monsters between me and the next hero in
+ * Initiative act, and the turn is that hero's (mine again if I'm alone). Returns true if the fight is over for me.
  */
 function end_turn(array &$me, array &$foe, array &$lines): bool
 {
     [$me['moved'], $me['bonus_used']] = [null, false];
     q('UPDATE users SET moved = NULL, bonus_used = FALSE WHERE id = ?', [$me['id']]);
-    return monsters_act($me, $foe, $lines, false);
+    $room = (int) $me['room_id'];
+    $heroes = fight_heroes($room);
+    $i = array_search($me['id'], array_column($heroes, 'id'), true);
+    $next = $heroes[$i === false ? 0 : ($i + 1) % count($heroes)]['id'] ?? $me['id'];
+    $over = monsters_act($me, $foe, $lines, false);
+    q('UPDATE rooms SET turn = ?, turn_at = NOW() WHERE id = ?', [$next, $room]);
+    return $over;
 }
 
 /**
- * The monsters in my fight act in Initiative order: with $before, those that go before me each round (my target if it
- * won Initiative, any other whose Initiative beats mine; ties go to me), else the rest. $foe follows my target as it
- * changes. Returns true if the fight is over for me: I dropped, or none is left.
+ * The monsters of the fight in my room act in Initiative order. With $before, if I'm the first hero in the order,
+ * those that beat me (ties go to heroes); else those after me and before the next hero, or all the rest if I'm the
+ * last. Each goes for the nearest hero, me on a tie (see monster_turn()); what it does to another is told about them.
+ * $foe follows my target as it changes. Returns true if the fight is over for me: I dropped, or none is left.
  */
 function monsters_act(array &$me, array &$foe, array &$lines, bool $before): bool
 {
+    $room = (int) $me['room_id'];
+    $heroes = fight_heroes($room);
+    $i = array_search($me['id'], array_column($heroes, 'id'), true);
+    if ($before && $i > 0) {
+        return false;
+    }
+    $mine = $me['init'] ?? 0;
+    $next = $before || $i === false || !isset($heroes[$i + 1]) ? null : (int) $heroes[$i + 1]['init'];
     foreach (fight_monsters($me) as $m) {
-        $mine = $m['id'] === $foe['id'];
-        if ($mine ? (bool) $me['foe_first'] !== $before : ($m['init'] > ($me['init'] ?? 0)) !== $before) {
+        if ($before ? $m['init'] <= $mine : $m['init'] > $mine || ($next !== null && $m['init'] <= $next)) {
             continue;
         }
-        if ($mine ? $foe['hp'] <= 0 : !q('SELECT 1 FROM spawns WHERE id = ? AND dead_since IS NULL', [$m['id']])
-            ->fetch()) {
+        if (!q('SELECT 1 FROM spawns WHERE id = ? AND dead_since IS NULL', [$m['id']])->fetch()) {
             continue; // it died this round
         }
-        if ($mine) {
-            monster_turn($me, $foe, $lines);
+        $at = [$m['x'], $m['y']];
+        $near = fight_heroes($room);
+        // the nearest; of those, me (whose command this is), then by id
+        $key = fn ($h) => [feet($at, [$h['x'], $h['y']]), $h['id'] !== $me['id'], $h['id']];
+        usort($near, fn ($a, $b) => $key($a) <=> $key($b));
+        $who = $near[0]['id'] ?? $me['id'];
+        $it = $m['id'] === $foe['id'] ? $foe : $m;
+        if ($who === $me['id']) {
+            monster_turn($me, $it, $lines);
         } else {
-            monster_turn($me, $m, $lines);
+            $them = with_stats(q('SELECT * FROM users WHERE id = ?', [$who])->fetch());
+            $theirs = [];
+            monster_turn($them, $it, $theirs);
+            told(['room_id' => $room] + $them, $theirs, $lines);
+        }
+        if ($m['id'] === $foe['id']) {
+            $foe = $it;
         }
         if (refocus($me, $foe)) {
             return true;
         }
     }
     return false;
+}
+
+/**
+ * The heroes fighting in room $room in Initiative order (highest first, ties by id), each with 'here': their page has
+ * asked for news in the last 15 seconds (play.js does every few seconds while it's open).
+ */
+function fight_heroes(int $room): array
+{
+    return q(
+        'SELECT id, name, COALESCE(init, 0) AS init, x, y,
+         COALESCE(last_seen > NOW() - INTERVAL 15 SECOND, FALSE) AS here
+         FROM users WHERE room_id = ? AND fighting IS NOT NULL ORDER BY init DESC, id',
+        [$room]
+    )->fetchAll();
+}
+
+/** The squares of the other heroes fighting in my room, and their hirelings', where I can't step. */
+function crowd(array $me): array
+{
+    $at = [];
+    foreach (q('SELECT x, y, hireling_x, hireling_y, hireling_monster_id FROM users WHERE room_id = ?
+        AND fighting IS NOT NULL AND id <> ? AND x IS NOT NULL', [$me['room_id'], $me['id']]) as $u) {
+        $at[] = [$u['x'], $u['y']];
+        if ($u['hireling_monster_id'] !== null && $u['hireling_x'] !== null) {
+            $at[] = [$u['hireling_x'], $u['hireling_y']];
+        }
+    }
+    return $at;
+}
+
+/**
+ * Whether I can act in the fight now: null if it's my turn (it becomes mine if nobody's it is, or theirs has left the
+ * fight), else why not. The turn of a hero who's away (their page closed), or who's taken 2 minutes, passes first:
+ * they take the Dodge action (see pass_turn()), and what happens is told in $lines. $me is reloaded if it may have
+ * changed.
+ */
+function my_turn(array &$me, array &$lines): ?string
+{
+    $room = (int) $me['room_id'];
+    for ($tries = 0; $tries < 20; $tries++) { // each pass moves the turn on; 20 is past any party
+        $r = q('SELECT turn, TIMESTAMPDIFF(SECOND, turn_at, NOW()) AS secs FROM rooms WHERE id = ?', [$room])->fetch();
+        $them = array_values(array_filter(fight_heroes($room), fn ($h) => $h['id'] === $r['turn']))[0] ?? null;
+        if ($them === null || $them['id'] === $me['id']) {
+            if ($r['turn'] !== $me['id']) {
+                q('UPDATE rooms SET turn = ?, turn_at = NOW() WHERE id = ?', [$me['id'], $room]);
+            }
+            return null;
+        }
+        if ($them['here'] && $r['secs'] < TURN_SECS) {
+            $left = TURN_SECS - (int) $r['secs'];
+            return "It's {$them['name']}'s turn (" . intdiv($left, 60) . ':' . sprintf('%02d', $left % 60)
+                . ' left).';
+        }
+        pass_turn($them['id'], $lines, !$them['here']);
+        $me = with_stats(q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch());
+        if ($me['fighting'] === null) {
+            return null;
+        }
+    }
+    return null;
+}
+
+/** Hero $id is $away, or out of time: their turn passes as the Dodge action, told about them in $lines. */
+function pass_turn(int $id, array &$lines, bool $away): void
+{
+    $them = with_stats(q('SELECT * FROM users WHERE id = ?', [$id])->fetch());
+    $foe = array_values(array_filter(fight_monsters($them), fn ($m) => $m['id'] === $them['fighting']))[0]
+        ?? fight_monsters($them)[0] ?? null;
+    $theirs = [];
+    if ($foe === null) { // never expected: a fight with no monsters left
+        q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$id]);
+        return;
+    }
+    if (!begin_turn($them, $foe, $theirs)) {
+        $them['conditions'] = implode(',', array_filter([$them['conditions'], 'dodging']));
+        q('UPDATE users SET conditions = ? WHERE id = ?', [$them['conditions'], $id]);
+        $theirs[] = ($away ? 'You are away' : 'Your ' . intdiv(TURN_SECS, 60) . ' minutes are up')
+            . ', so you take the Dodge action.';
+        end_turn($them, $foe, $theirs);
+    }
+    told(['room_id' => $foe['room_id']] + $them, $theirs, $lines);
 }
 
 /**
@@ -1659,8 +1902,10 @@ function monster_squares(array $me, ?int $except = null): array
  * After something that may have killed my target: true if my fight is over, else $foe is my target, a new one if
  * win() turned me to it.
  */
-function refocus(array $me, array &$foe): bool
+function refocus(array &$me, array &$foe): bool
 {
+    // Another hero's kill may have turned me (see win()), so ask the database.
+    $me['fighting'] = q('SELECT fighting FROM users WHERE id = ?', [$me['id']])->fetchColumn();
     if ($me['fighting'] === null) {
         return true;
     }
@@ -1682,7 +1927,7 @@ function retarget(array &$me, array &$foe, array &$lines): void
     if ($foe['init'] === null) {
         $foe['init'] = d20(0) + $foe['initiative'];
         $at = $foe['x'] === null || $foe['stale'] ? open_near((int) $me['room_id'], my_square($me),
-            [my_square($me), ...monster_squares($me)]) : [$foe['x'], $foe['y']];
+            [my_square($me), ...monster_squares($me), ...crowd($me)]) : [$foe['x'], $foe['y']];
         [$foe['x'], $foe['y']] = $at;
         q('UPDATE spawns SET init = ?, x = ?, y = ?, placed_at = NOW() WHERE id = ?',
             [$foe['init'], ...$at, $foe['id']]);
@@ -1739,7 +1984,8 @@ function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int 
     $at = my_square($me);
     $there = [$foe['x'], $foe['y']];
     $others = array_values(array_filter(fight_monsters($me), fn ($m) => $m['id'] !== $foe['id'] && $m['x'] !== null));
-    $blocked = [$there, ...array_map(fn ($m) => [$m['x'], $m['y']], $others), ...array_filter([hire_square($me)])];
+    $blocked = [$there, ...array_map(fn ($m) => [$m['x'], $m['y']], $others), ...array_filter([hire_square($me)]),
+        ...crowd($me)];
     for ($left = $feet; $at !== $to && ($stop === 0 || !in_reach($room, $at, $there, $stop));) {
         $next = toward($room, $at, $to, $blocked, $stop);
         if ($next === $at || step_cost($rows, $next) > $left) {
@@ -1795,27 +2041,31 @@ function cmd_step(array $me, string $to): array
             return ["The {$m['name']} is there."];
         }
     }
-    if ($sq === hire_square($me)) {
-        return ["Your {$me['hireling']['name']} is there."];
+    if ($sq === hire_square($me) || in_array($sq, crowd($me), true)) {
+        return ['Someone is there.'];
     }
     $lines = [];
-    if (begin_turn($me, $foe, $lines)) {
-        return $lines;
+    $room = (int) $me['room_id'];
+    if (($wait = my_turn($me, $lines)) !== null || $me['fighting'] === null) {
+        return tell_lines($me, $room, $lines, $wait);
+    }
+    $foe = find_foe($me, '');
+    if (!$foe || begin_turn($me, $foe, $lines)) {
+        return tell_lines($me, $room, $lines);
     }
     $left = $me['speed'] - $me['moved'];
-    $cost = paths((int) $me['room_id'], my_square($me), [...monster_squares($me),
+    $cost = paths($room, my_square($me), [...monster_squares($me), ...crowd($me),
         ...array_filter([hire_square($me)])])[implode(',', $sq)][0] ?? null;
     if ($cost === null || $cost > $left) {
-        return [...$lines, $cost === null ? "You can't get to " . square($sq) . ' from here.'
-            : "You have $left ft of movement left this turn, and " . square($sq) . " is $cost ft away."];
+        return tell_lines($me, $room, $lines, $cost === null ? "You can't get to " . square($sq) . ' from here.'
+            : "You have $left ft of movement left this turn, and " . square($sq) . " is $cost ft away.");
     }
-    if (walk($me, $foe, $sq, $left, $lines)) {
-        return $lines;
+    if (!walk($me, $foe, $sq, $left, $lines)) {
+        $lines[] = 'You move to ' . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
+            . " ft from the {$foe['name']}.";
+        $lines[] = fight_status($me, $foe);
     }
-    $lines[] = 'You move to ' . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
-        . " ft from the {$foe['name']}.";
-    $lines[] = fight_status($me, $foe);
-    return $lines;
+    return tell_lines($me, $room, $lines);
 }
 
 /** The line closing a round: everyone's HP. */
@@ -1837,39 +2087,48 @@ function fight_status(array $me, array $foe): string
 function start_fight(array &$me, array &$foe, array &$lines, string $opening): void
 {
     $others = (bool) q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
+    $room = (int) $me['room_id'];
+    // With another hero fighting here, I join their fight, in its order: its monsters keep their Initiative.
+    $crowd = (bool) q('SELECT 1 FROM users WHERE room_id = ? AND fighting IS NOT NULL AND id <> ?',
+        [$room, $me['id']])->fetch();
+    $joining = $crowd && $foe['init'] !== null;
     $unseen = hidden_from($me, $foe);
-    $surprised = $unseen && !$others;
+    $surprised = $unseen && !$others && !$joining;
     $mine = d20((int) $unseen, lucky($me)) + mod($me['dexterity']) + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
-    $theirs = d20($surprised ? -1 : 0) + $foe['initiative'];
+    $theirs = $joining ? $foe['init'] : d20($surprised ? -1 : 0) + $foe['initiative'];
     $me['foe_first'] = $theirs > $mine; // ties go to the hero
     $me['fighting'] = $foe['id'];
     $me['advantage'] = $me['advantage'] || $unseen;
     // Where we stand: I'm where I came in or last moved, and it where it last stood, or if that's stale (or it never
     // fought) at its board's letter, if the board was drawn by hand, else across the board from me (at the far end of
-    // my row if I'm mid-board), or the open square nearest that.
-    $room = (int) $me['room_id'];
+    // my row if I'm mid-board), or the open square nearest that. I stand clear of the other heroes and monsters.
     [$w, $h] = board_size($room);
     $spot = my_square($me);
+    $busy = [...crowd($me), ...array_values(array_map(fn ($m) => [$m['x'], $m['y']], array_filter(fight_monsters($me),
+        fn ($m) => $m['id'] !== $foe['id'] && $m['x'] !== null)))];
+    if ($joining && (in_array($spot, $busy, true) || $spot === [$foe['x'], $foe['y']])) {
+        $spot = open_near($room, $spot, [...$busy, [$foe['x'], $foe['y']]]);
+    }
     if ($foe['x'] === null || ($foe['stale'] && !$others)) {
         $across = [$w - 1 - $spot[0], $h - 1 - $spot[1]];
         [$foe['x'], $foe['y']] = mark($room) ?? (feet($across, $spot) >= 10 ? $across
             : [$spot[0] < $w / 2 ? $w - 1 : 0, $spot[1]]);
     }
-    if ([$foe['x'], $foe['y']] === $spot || !open_square(board($room), [$foe['x'], $foe['y']])) {
-        [$foe['x'], $foe['y']] = open_near($room, [$foe['x'], $foe['y']], [$spot]);
+    if (!$joining && ([$foe['x'], $foe['y']] === $spot || !open_square(board($room), [$foe['x'], $foe['y']]))) {
+        [$foe['x'], $foe['y']] = open_near($room, [$foe['x'], $foe['y']], [$spot, ...$busy]);
     }
     [$me['x'], $me['y'], $me['init'], $foe['init'], $me['moved']] = [...$spot, $mine, $theirs, null];
-    // With no other hero fighting here, the room's last fight is over: its monsters are out of it.
-    $crowd = (bool) q('SELECT 1 FROM users WHERE room_id = ? AND fighting IS NOT NULL AND id <> ?',
-        [$room, $me['id']])->fetch();
+    // With no other hero fighting here, the room's last fight is over: its monsters are out of it, and the first
+    // turn is mine.
     if (!$crowd) {
         q('UPDATE spawns SET init = NULL WHERE room_id = ?', [$room]);
+        q('UPDATE rooms SET turn = ?, turn_at = NOW() WHERE id = ?', [$me['id'], $room]);
     }
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW(), init = ? WHERE id = ?',
         [$foe['x'], $foe['y'], $theirs, $foe['id']]);
     // Every other aggressive monster here that sees me joins in (not one more than 5 levels below me, as arrive()),
     // where it stood, or by the first.
-    $taken = [$spot, [$foe['x'], $foe['y']]];
+    $taken = [$spot, [$foe['x'], $foe['y']], ...$busy];
     $joined = [];
     foreach (room_monsters($room) as $m) {
         if ($m['id'] === $foe['id'] || ($m['init'] !== null && $crowd) || !$m['aggressive'] || hidden_from($me, $m)
@@ -1894,7 +2153,9 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
          rest_until = NULL, x = ?, y = ?, init = ?, moved = NULL WHERE id = ?',
         [$foe['id'], (int) $me['foe_first'], (int) $me['advantage'], $spot[0], $spot[1], $mine, $me['id']]
     );
-    $lines[] = $opening . ($surprised ? " It's surprised." : '') . ' Initiative: you ' . $mine . with($unseen ? 1 : 0)
+    $lines[] = $joining ? "You join the fight (Initiative $mine" . with($unseen ? 1 : 0) . ').'
+        . ($me['sneaking'] ? ' You stop sneaking.' : '')
+        : $opening . ($surprised ? " It's surprised." : '') . ' Initiative: you ' . $mine . with($unseen ? 1 : 0)
         . ", it $theirs" . with($surprised ? -1 : 0) . '.' . ($me['sneaking'] ? ' You stop sneaking.' : '');
     foreach (fight_monsters($me) as $m) {
         if (isset($joined[$m['id']])) {
@@ -1914,7 +2175,7 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
     q('UPDATE effects SET during = NULL WHERE caster_id = ? AND during IS NOT NULL', [$me['id']]);
     $foe['effects'] = effects_on('spawn_id', $foe['id']);
     // What's left on it from fights nobody is still in has worn off, and my own old hold is gone.
-    if (!$others) {
+    if (!$others && !$joining) {
         [$foe['conditions'], $foe['grappled_by']] = ['', null];
     } elseif ($foe['grappled_by'] === $me['id']) {
         $foe['grappled_by'] = null;
@@ -1952,8 +2213,12 @@ function cmd_flee(array $me, string $dir = ''): array
         return [$exits === [] ? "There's no way out of here." : "You can't go $dir."];
     }
     $lines = [];
-    if (begin_turn($me, $foe, $lines)) {
-        return $lines;
+    if (($wait = my_turn($me, $lines)) !== null || $me['fighting'] === null) {
+        return tell_lines($me, $room, $lines, $wait);
+    }
+    $foe = find_foe($me, '');
+    if (!$foe || begin_turn($me, $foe, $lines)) {
+        return tell_lines($me, $room, $lines);
     }
     $away = fn ($d) => feet(my_square($me), exit_square($room, $d));
     if ($dir === '') {
@@ -1969,17 +2234,22 @@ function cmd_flee(array $me, string $dir = ''): array
     }
     $to = exit_square($room, $dir);
     if (walk($me, $foe, $to, 2 * $me['speed'] - $me['moved'] + ($jaunt ? 30 : 0), $lines, 0, $free || $jaunt)) {
-        return $lines;
+        return tell_lines($me, $room, $lines);
     }
     if (my_square($me) === $to) {
+        // My turn ends with me gone: it's the next hero's. shortcut: monsters between us skip this round.
+        $heroes = array_column(fight_heroes($room), 'id');
+        $next = $heroes[(array_search($me['id'], $heroes, true) + 1) % count($heroes)];
+        q('UPDATE rooms SET turn = ?, turn_at = NOW() WHERE id = ?', [$next === $me['id'] ? null : $next, $room]);
         q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
-        return [...$lines, "You flee $dir from the {$foe['name']}!", ...cmd_move(['fighting' => null] + $me, $dir)];
+        $lines[] = "You flee $dir from the {$foe['name']}!";
+        return [...tell_lines($me, $room, $lines), ...cmd_move(['fighting' => null] + $me, $dir)];
     }
     $lines[] = "You run for the $dir exit, " . feet(my_square($me), $to) . ' ft short.';
     if (!end_turn($me, $foe, $lines)) {
         $lines[] = fight_status($me, $foe);
     }
-    return $lines;
+    return tell_lines($me, $room, $lines);
 }
 
 /**
@@ -2147,7 +2417,7 @@ function push(array $me, array &$foe, array &$lines): void
     $at = $from;
     for ($n = 0; $n < 2; $n++) {
         $next = [$at[0] + ($at[0] <=> $mine[0]), $at[1] + ($at[1] <=> $mine[1])];
-        $crowd = [hire_square($me), ...monster_squares($me, $foe['id'])];
+        $crowd = [hire_square($me), ...monster_squares($me, $foe['id']), ...crowd($me)];
         if (!open_square($rows, $next) || in_array($next, $crowd, true)) {
             break;
         }
@@ -2373,7 +2643,8 @@ function effects_on(string $col, int $id): array
 {
     $col = match ($col) { 'user_id' => 'user_id', 'spawn_id' => 'spawn_id' }; // the only two allowed in SQL
     return q(
-        "SELECT e.*, s.name AS spell, s.damage_type, s.half FROM effects e JOIN users c ON c.id = e.caster_id
+        "SELECT e.*, s.name AS spell, s.damage_type, s.half, c.name AS caster FROM effects e
+         JOIN users c ON c.id = e.caster_id
          JOIN spells s ON s.id = e.spell_id WHERE e.$col = ? AND " . LIVE_EFFECT . ' ORDER BY e.id',
         [$id]
     )->fetchAll();
@@ -2532,53 +2803,82 @@ function hurt_foe(array &$me, array &$foe, int $dmg, array &$lines): bool
     return true;
 }
 
-/** The killer's reward: the stat block's full XP, a little gold by CR, levels, and maybe loot. */
+/**
+ * A kill: the stat block's XP and a little gold by CR, split evenly among the heroes fighting in the room (the gold
+ * left over to the killer), levels, and maybe loot. Each hero whose target it was turns to the nearest monster left;
+ * with none left, the fight is over.
+ */
 function win(array &$me, array $foe, array &$lines): void
 {
-    q('UPDATE users SET ' . END_FIGHT . ' WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']]);
+    $room = (int) $me['room_id'];
+    $party = q('SELECT id FROM users WHERE room_id = ? AND fighting IS NOT NULL AND id <> ?', [$room, $me['id']])
+        ->fetchAll(PDO::FETCH_COLUMN);
     $cr = max(1, (int) ceil((float) $foe['cr']));
     $gold = roll($cr . 'd6');
-    $xp = $me['xp'] + $foe['xp'];
-    // Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
-    $level = max($me['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$xp])->fetchColumn());
-    $gain = ($level - $me['level']) * (CLASSES[$me['class']]['per_level'] + mod($me['constitution'])); // fixed HP
-    $tough = $me['species'] === 'dwarf' ? $level - $me['level'] : 0; // Dwarven Toughness: with_stats() adds the max
-    q(
-        'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
-        [$xp, $gold, $level, $gain, $gain + $tough, $me['id']]
-    );
-    $gain += $tough;
-    $lines[] = "The {$foe['name']} dies! You gain {$foe['xp']} XP and $gold gold.";
+    [$xp, $share] = [intdiv($foe['xp'], count($party) + 1), intdiv($gold, count($party) + 1)];
+    award($me, $xp, $gold - $share * count($party), $lines, "The {$foe['name']} dies! ");
+    foreach ($party as $id) {
+        $them = with_stats(q('SELECT * FROM users WHERE id = ?', [$id])->fetch());
+        $theirs = [];
+        award($them, $xp, $share, $theirs);
+        told($them, $theirs, $lines);
+    }
     if ($me['class'] === 'warlock' && $me['level'] >= 3) { // Dark One's Blessing
         $me['temp_hp'] = max($me['temp_hp'], max(1, mod($me['charisma']) + $me['level']));
         q('UPDATE users SET temp_hp = ? WHERE id = ?', [$me['temp_hp'], $me['id']]);
         $lines[] = "Dark One's Blessing: you have {$me['temp_hp']} temporary HP.";
     }
-    if ($level > $me['level']) {
-        $lines[] = "You reach level $level! +$gain max HP.";
-    }
-    // A Cleave can kill a second foe in the same turn, so later writes must start from these.
-    [$me['xp'], $me['level'], $me['max_hp'], $me['hp']] = [$xp, $level, $me['max_hp'] + $gain, $me['hp'] + $gain];
-    $item = roll('1d' . LOOT_CHANCE) === 1 ? loot((float) $foe['cr'], (int) $me['room_id'], $foe['gear']) : null;
+    $item = roll('1d' . LOOT_CHANCE) === 1 ? loot((float) $foe['cr'], $room, $foe['gear']) : null;
     if ($item !== null) {
         $lines[] = "The {$foe['name']} drops " . lcfirst(a_an($item)) . '.';
     }
-    if ($foe['id'] !== $me['fighting']) { // a Cleave's second foe
-        return;
-    }
-    // My target is dead: on to the nearest other in the fight, else the fight is over.
-    $mine = my_square($me);
     $left = fight_monsters($me);
-    usort($left, fn ($a, $b) => feet($mine, [$a['x'], $a['y']]) <=> feet($mine, [$b['x'], $b['y']]));
     if ($left === []) {
-        q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
+        q('UPDATE users SET ' . END_FIGHT . ' WHERE room_id = ? AND fighting IS NOT NULL', [$room]);
+        q('UPDATE rooms SET turn = NULL WHERE id = ?', [$room]);
         $me['fighting'] = null;
         return;
     }
-    [$me['fighting'], $me['foe_first']] = [$left[0]['id'], $left[0]['init'] > ($me['init'] ?? 0)];
-    q('UPDATE users SET fighting = ?, foe_first = ? WHERE id = ?',
-        [$me['fighting'], (int) $me['foe_first'], $me['id']]);
-    $lines[] = "You turn to the {$left[0]['name']}.";
+    foreach (q('SELECT id, room_id, x, y, init FROM users WHERE room_id = ? AND fighting = ?', [$room, $foe['id']])
+        ->fetchAll() as $u) {
+        $at = [$u['x'], $u['y']];
+        usort($left, fn ($a, $b) => feet($at, [$a['x'], $a['y']]) <=> feet($at, [$b['x'], $b['y']]));
+        $first = $left[0]['init'] > ($u['init'] ?? 0);
+        q('UPDATE users SET fighting = ?, foe_first = ? WHERE id = ?', [$left[0]['id'], (int) $first, $u['id']]);
+        $turn = ["You turn to the {$left[0]['name']}."];
+        if ($u['id'] === $me['id']) {
+            [$me['fighting'], $me['foe_first']] = [$left[0]['id'], $first];
+            $lines[] = $turn[0];
+        } else {
+            told($u, $turn, $lines);
+        }
+    }
+}
+
+/**
+ * $who gains $xp XP and $gold gold, and maybe a level (fixed HP). $who's XP and level are read fresh, as another
+ * hero's kill may have just added to them.
+ */
+function award(array &$who, int $xp, int $gold, array &$lines, string $before = ''): void
+{
+    $was = q('SELECT xp, level FROM users WHERE id = ?', [$who['id']])->fetch();
+    $total = $was['xp'] + $xp;
+    // Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
+    $level = max($was['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$total])->fetchColumn());
+    $gain = ($level - $was['level']) * (CLASSES[$who['class']]['per_level'] + mod($who['constitution'])); // fixed HP
+    $tough = $who['species'] === 'dwarf' ? $level - $was['level'] : 0; // Dwarven Toughness: with_stats() adds the max
+    q(
+        'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
+        [$total, $gold, $level, $gain, $gain + $tough, $who['id']]
+    );
+    $gain += $tough;
+    $lines[] = "{$before}You gain $xp XP and $gold gold.";
+    if ($level > $was['level']) {
+        $lines[] = "You reach level $level! +$gain max HP.";
+    }
+    // A Cleave can kill a second foe in the same turn, so later writes must start from these.
+    [$who['xp'], $who['level'], $who['max_hp'], $who['hp']] = [$total, $level, $who['max_hp'] + $gain,
+        $who['hp'] + $gain];
 }
 
 /**
@@ -2732,7 +3032,8 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             end_concentration($me);
             [$me['fighting'], $me['room_id'], $me['x'], $me['y']] = [null, START_ROOM, null, null];
             array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
-            array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
+            array_push($lines, ...array_map(fn ($l) => "\x02$l", // for me alone (see told())
+                cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me)));
             return true;
         }
         if ($giant && $dmg > 0 && $me['lineage'] === 'storm' && spend_species($me)) { // Storm's Thunder
@@ -2774,7 +3075,7 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
     $room = (int) $me['room_id'];
     [$mine, $hire] = [my_square($me), hire_square($me)];
     $at = [$foe['x'], $foe['y']];
-    $crowd = [$mine, ...array_filter([$hire]), ...monster_squares($me, $foe['id'])]; // squares it can't step on
+    $crowd = [$mine, ...array_filter([$hire]), ...monster_squares($me, $foe['id']), ...crowd($me)]; // can't step on
     $held = $hire !== null && feet($at, $hire) <= 5;
     $shoot = $foe['shot'] !== null && feet($at, $mine) > 5 && !$held;
     [$want, $need] = $shoot ? [$foe['shot_range'], $foe['shot_long']] : [$foe['reach'], $foe['reach']];
@@ -2852,12 +3153,12 @@ function end_of_turn(array &$me, array &$foe, array &$lines): bool
             return true;
         }
     }
-    repeat_saves($foe, $lines);
+    repeat_saves($me, $foe, $lines);
     return false;
 }
 
-/** $foe repeats each save its effects allow, and one it makes ends that effect. */
-function repeat_saves(array &$foe, array &$lines): void
+/** $foe repeats each save its effects allow, and one it makes ends that effect. Lines are told to $me. */
+function repeat_saves(array $me, array &$foe, array &$lines): void
 {
     foreach ($foe['effects'] as $i => $e) {
         if ($e['save'] === null || $e['effect'] === 'aura') {
@@ -2865,12 +3166,13 @@ function repeat_saves(array &$foe, array &$lines): void
         }
         [$save, $saved] = save($foe, $e['save'], $e['dc']);
         $roll = ucfirst($e['save']) . ' save ' . vs($save, $e['dc']);
+        $whose = $e['caster_id'] === $me['id'] ? 'your' : "{$e['caster']}'s";
         if ($saved) {
             q('DELETE FROM effects WHERE id = ?', [$e['id']]);
             unset($foe['effects'][$i]);
-            $lines[] = "The {$foe['name']} shakes off your {$e['spell']} ($roll).";
+            $lines[] = "The {$foe['name']} shakes off $whose {$e['spell']} ($roll).";
         } else {
-            $lines[] = "The {$foe['name']} is still held by your {$e['spell']} ($roll).";
+            $lines[] = "The {$foe['name']} is still held by $whose {$e['spell']} ($roll).";
         }
     }
 }
@@ -4492,13 +4794,14 @@ function hireling_turn(array &$me, array &$foe, array &$lines): bool
     [$to, $how] = match (true) {
         $h['stance'] === 'attack' && feet($at, $there) > 5 => [$there, 'closes in'],
         $h['stance'] === 'guard' && feet($at, $mine) > 5
-            => [beside($room, $mine, $there, [$there, ...monster_squares($me)]), 'falls back beside you'],
+            => [beside($room, $mine, $there, [$there, ...monster_squares($me), ...crowd($me)]),
+                'falls back beside you'],
         default => [$at, ''],
     };
     $rows = board($room);
     $reach = $how === 'closes in' ? 5 : 0;
     for ($walked = 0; $at !== $to && ($reach === 0 || feet($at, $there) > 5);) {
-        $next = toward($room, $at, $to, [$there, $mine, ...monster_squares($me, $foe['id'])], $reach);
+        $next = toward($room, $at, $to, [$there, $mine, ...monster_squares($me, $foe['id']), ...crowd($me)], $reach);
         if ($next === $at || $walked + step_cost($rows, $next) > $h['speed']) {
             break;
         }
@@ -5124,6 +5427,14 @@ function board_map(array $me): array
     }
     if (($hire = hire_square($me)) !== null) {
         $grid[$hire[1] + 1][$hire[0] + 1] = strtoupper($me['hireling']['name'][0]);
+    }
+    foreach (q('SELECT u.name, u.x, u.y, u.hireling_x, u.hireling_y, m.name AS hireling FROM users u
+        LEFT JOIN monsters m ON m.id = u.hireling_monster_id WHERE u.room_id = ? AND u.fighting IS NOT NULL
+        AND u.id <> ? AND u.x IS NOT NULL', [$room, $me['id']]) as $u) { // the other heroes, and their hirelings
+        $grid[$u['y'] + 1][$u['x'] + 1] = strtoupper($u['name'][0]);
+        if ($u['hireling'] !== null && $u['hireling_x'] !== null) {
+            $grid[$u['hireling_y'] + 1][$u['hireling_x'] + 1] = strtoupper($u['hireling'][0]);
+        }
     }
     $grid[$mine[1] + 1][$mine[0] + 1] = '@';
     return [...$grid, implode('  ', array_map(fn ($m) => "{$m['name']}: " . feet($mine, [$m['x'], $m['y']])

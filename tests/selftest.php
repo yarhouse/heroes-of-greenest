@@ -53,6 +53,11 @@ function leave(string $name): void
         ->fetchColumn();
     q('UPDATE users SET ' . END_FIGHT . ', room_id = ?, x = NULL, y = NULL WHERE name = ?', [$to, $name]);
 }
+/** Hands the turn in $name's room to $name, as if the heroes before them in the round had taken theirs. */
+function turn(string $name): void
+{
+    q('UPDATE rooms r JOIN users u ON u.room_id = r.id SET r.turn = u.id, r.turn_at = NOW() WHERE u.name = ?', [$name]);
+}
 /** The first line containing $text, or ''. */
 function line(array $lines, string $text): string
 {
@@ -538,17 +543,22 @@ try {
     run_command(hero('Testb'), 'n');
     $dice_queue = [10, 1, 1, 1];
     run_command(hero('Testb'), 'kill dummy');
-    run_command(hero('Testa'), 'n');
+    q("UPDATE users SET last_seen = NULL WHERE name = 'Testb'"); // Testb's page is closed: Testb's turns pass
     q('UPDATE spawns SET hp = 1 WHERE id = 9999');
     q("UPDATE users SET xp = 290 WHERE name = 'Testa'");
-    $dice_queue = [10, 1, 15, 1, 1, 4, 2]; // hit; gold 1d6 = 4; loot 1d30 = 2 (none)
+    $gold = hero('Testb')['gold'];
+    // Testa joins (Initiative 10); Testb Dodges, and the dummy's Slam at Testb misses (1 and 1, with Disadvantage);
+    // Testa hits; gold 1d6 = 4; loot 1d30 = 2 (none)
+    $dice_queue = [10, 1, 1, 15, 1, 1, 4, 2];
+    run_command(hero('Testa'), 'n');
     $out = run_command(hero('Testa'), 'kill dummy');
     $t = hero('Testa');
-    check(says($out, 'The Training Dummy dies! You gain 25 XP and 4 gold.') && $t['xp'] === 315
-        && $t['gold'] === 54, "a kill pays the stat block's XP and gold by CR");
+    check(says($out, 'The Training Dummy dies! You gain 12 XP and 2 gold.') && $t['xp'] === 302
+        && $t['gold'] === 52 && hero('Testb')['gold'] === $gold + 2,
+        "a kill pays the stat block's XP and gold by CR, split among the heroes in the fight");
     check(says($out, 'You reach level 2! +7 max HP.') && $t['level'] === 2 && $t['max_hp'] === 18 && $t['hp'] === 10,
         'enough XP levels up: 6 + Con modifier HP');
-    check(hero('Testb')['fighting'] === null, 'a kill ends the fight for everyone on that monster');
+    check(hero('Testb')['fighting'] === null, 'a kill ends the fight for everyone in it');
     check($dice_queue === [], 'every queued die was used');
     check(!says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'dead monsters are gone');
     check(says(run_command(hero('Testa'), 'kill'), 'Kill what?'), 'kill with no target');
@@ -602,12 +612,14 @@ try {
     $out = run_command(hero('Testc'), 'kill');
     check(says($out, '(19 vs AC 10) for 8') && says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === []
         && hero('Testc')['conditions'] === '', 'it ends at the start of my next turn');
-    q("UPDATE users SET foe_first = TRUE, conditions = 'reckless' WHERE name = 'Testc'");
+    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
+    q('UPDATE spawns SET init = 20 WHERE id = ?', [hero('Testc')['fighting']]); // it acts first each round now
     $dice_queue = [2, 12, 3, 15, 6];
     $out = run_command(hero('Testc'), 'kill');
     check(says($out, 'hits you (15 vs AC 13, with Advantage)') && says($out, '(19 vs AC 10) for 8')
         && $dice_queue === [], 'a foe that acts first in the round still has Advantage');
-    q("UPDATE users SET foe_first = FALSE, conditions = 'reckless' WHERE name = 'Testc'");
+    q("UPDATE users SET conditions = 'reckless' WHERE name = 'Testc'");
+    q('UPDATE spawns SET init = 1 WHERE id = ?', [hero('Testc')['fighting']]);
     $dice_queue = [12, 3]; // its opportunity attack as I go: no Advantage, as Reckless ended when my turn began
     $out = run_command(hero('Testc'), 'flee');
     check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [],
@@ -761,7 +773,8 @@ try {
     $out = run_command(hero('Testa'), 'grapple');
     check(says($out, 'You grab hold of the Training Dummy, Grappled (Str save 4 vs DC 13).') && $dice_queue === [],
         'Grapple: no Disadvantage against the one holding it');
-    $dice_queue = [10, 1, 1, 15, 2];
+    $dice_queue = [10, 1, 15, 2]; // I join; a natural 1; its Slam (15 and 2, with Disadvantage) at me
+    turn('Testb');
     check(says(run_command(hero('Testb'), 'kill dummy'), 'misses you (5 vs AC 17, with Disadvantage)')
         && $dice_queue === [], 'held, it has Disadvantage against other heroes');
     leave('Testa');
@@ -897,20 +910,26 @@ try {
     check(says(run_command(hero('Teste'), 'cast hold dummy'), 'works only on a Humanoid, and the Training Dummy is an '
         . 'Aberration.'), "Hold Person refuses a foe that isn't a Humanoid");
     q("UPDATE monsters SET type = 'humanoid' WHERE id = 9999");
-    $dice_queue = [10, 1, 5, 3]; // its Wis save 5 fails; it can't act, and fails again at the end of its turn
+    $dice_queue = [10, 5, 3]; // I join; its Wis save 5 fails; it can't act, and fails again at the end of its turn
+    turn('Teste');
     $out = run_command(hero('Teste'), 'cast hold dummy');
     check(says($out, 'fails its Wis save (5 vs DC 12) against your Hold Person and is Paralyzed.')
         && says($out, "is Paralyzed and can't act") && says($out, 'still held by your Hold Person')
         && says(run_command(hero('Teste'), 'score'), 'concentrating on Hold Person') && $dice_queue === [],
         'Hold Person: Paralyzed until it makes the save again');
     $dice_queue = [4, 3];
+    turn('Teste');
     check(says(run_command(hero('Teste'), 'cast sacred'), 'fails its Dex save (automatic fail, DC 12) against your '
         . 'Sacred Flame and takes 4 damage.') && $dice_queue === [], 'Paralyzed fails Dex saves');
-    $dice_queue = [2, 12, 1, 1, 1, 1, 15]; // Advantage; a melee hit is a crit (4d6); then its save at 15 frees it
+    $dice_queue = [2, 12, 1, 1, 1, 1]; // Advantage; a melee hit is a crit (4d6)
+    turn('Testb');
     $out = run_command(hero('Testb'), 'kill');
     check(says($out, 'Critical hit! You hit the Training Dummy (16 vs AC 10, with Advantage) for 6 damage.')
-        && says($out, 'shakes off your Hold Person (Wis save 15 vs DC 12)') && $dice_queue === [],
-        'attacks on the Paralyzed have Advantage and crit; the new Concentration ended Bless');
+        && $dice_queue === [], 'attacks on the Paralyzed have Advantage and crit; the new Concentration ended Bless');
+    $dice_queue = [1, 1, 15]; // my Mace misses (with Advantage); on its turn its save at 15 frees it
+    check(says(run_command(hero('Teste'), 'kill'), 'shakes off your Hold Person (Wis save 15 vs DC 12)')
+        && $dice_queue === [], 'Hold Person ends when it makes the save');
+    leave('Testb');
     run_command(hero('Teste'), 'cast shield');
     $dice_queue = [1, 15, 4, 5]; // my Mace misses; the Slam hits for 4; Con save 6 vs DC 10
     check(says(run_command(hero('Teste'), 'kill'), 'You lose your Concentration on Shield of Faith (Con save 6 vs DC '
@@ -2347,6 +2366,60 @@ try {
         'the fight ends when the last one dies');
     q('UPDATE monsters SET aggressive = FALSE WHERE id = 9999');
     q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+
+    // Shared fights (task 7b). Board (Longbow, Initiative 17 here) fights the dummy; Mage (a Wizard: AC 12, Fire Bolt
+    // +4, 1d10) walks in and joins. Turns go in one order, a turn waits for a hero who's here, and an away hero Dodges.
+    $fresh();
+    q('UPDATE monsters SET speed = 0 WHERE id = 9999');
+    q('UPDATE spawns SET dead_since = NOW() WHERE id = 9902');
+    q("UPDATE users SET room_id = 4, hp = max_hp, xp = 0, gold = 0 WHERE name = 'Mage'");
+    q("UPDATE users SET xp = 0, gold = 0 WHERE name = 'Board'");
+    $dice_queue = [15, 1, 12, 4]; // Initiative 17 vs 1; my arrow hits for 6; it can't move
+    run_command(hero('Board'), 'kill dummy');
+    $dice_queue = [11]; // Mage's Initiative: 12
+    $out = run_command(hero('Mage'), 's');
+    check(says($out, 'You join the fight (Initiative 12).') && hero('Mage')['fighting'] === 9901
+        && $dice_queue === [], 'a hero who walks into a fight joins it');
+    check(says(run_command(hero('Mage'), 'cast fire bolt'), "It's Board's turn (") && $dice_queue === [],
+        'a turn waits for the hero whose it is');
+    $dice_queue = [12, 4];
+    run_command(hero('Board'), 'kill');
+    $out = run_command(hero('Mage'), '');
+    check(says($out, 'Board hits the Training Dummy (16 vs AC 10) for 6 damage.'),
+        "the others hear each turn, told from their side");
+    $grid = board_map(with_stats(hero('Board')));
+    $mage = hero('Mage');
+    check($grid[$mage['y'] + 1][$mage['x'] + 1] === 'M', "the board shows the other heroes by initial");
+    check(third_person("You're hurt. The Kobold strikes as you pull away! Your Fire Bolt misses you.", 'Ana', 'Bo')
+        === "Ana is hurt. The Kobold strikes as Ana pulls away! Ana's Fire Bolt misses Ana."
+        && third_person("You catch Bo's arrow and fly.", 'Ana', 'Bo') === "Ana catches your arrow and fly."
+        && third_person('You: 7/7 HP.', 'Ana') === 'Ana: 7/7 HP.', 'fight lines retold in the third person');
+    // The dummy can move again, and stands by Mage: on its turn it goes for the nearest hero.
+    q('UPDATE monsters SET speed = 30 WHERE id = 9999');
+    q("UPDATE users SET x = 4, y = 0 WHERE name = 'Mage'");
+    q('UPDATE spawns SET x = 5, y = 1 WHERE id = 9901');
+    $dice_queue = [15, 15, 5, 5]; // next to it: Disadvantage, 19 hits for 5; its Slam at me, 8, misses
+    $out = run_command(hero('Mage'), 'cast fire bolt');
+    check(says($out, 'Your Fire Bolt hits the Training Dummy') && says($out, "The Training Dummy's Slam misses you")
+        && $dice_queue === [], 'a monster attacks the nearest hero');
+    check(says(run_command(hero('Board'), ''), "The Training Dummy's Slam misses Mage"), "and the others hear it");
+    // Board's page is open, but Board's 2 minutes are up: Mage's next command passes Board's turn as a Dodge.
+    q('UPDATE rooms SET turn_at = NOW() - INTERVAL 121 SECOND WHERE id = 9');
+    $dice_queue = [1, 1]; // Mage Dodges; its Slam misses (with Disadvantage)
+    $out = run_command(hero('Mage'), 'dodge');
+    check(says($out, "Board's 2 minutes are up, so Board takes the Dodge action.") && says($out, 'You Dodge')
+        && $dice_queue === [], "a turn passes after 2 minutes");
+    // Board's page is closed, so on Mage's next command Board's turn passes as a Dodge. Mage's Fire Bolt kills it: the
+    // XP (25) and gold (4) are split.
+    q("UPDATE users SET last_seen = NOW() - INTERVAL 1 MINUTE WHERE name = 'Board'");
+    q('UPDATE spawns SET hp = 1 WHERE id = 9901');
+    $dice_queue = [15, 15, 5, 4, 2]; // Fire Bolt hits and kills; gold 4, no loot
+    $out = run_command(hero('Mage'), 'cast fire bolt');
+    check(says($out, 'Board is away, so Board takes the Dodge action.') && says($out, 'You gain 12 XP and 2 gold.')
+        && hero('Board')['xp'] === 12 && hero('Board')['gold'] === 2 && hero('Mage')['xp'] === 12
+        && hero('Board')['fighting'] === null && hero('Mage')['fighting'] === null && $dice_queue === [],
+        "an away hero Dodges; XP and gold are split among the heroes in the fight");
+    q('UPDATE monsters SET speed = 30 WHERE id = 9999');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

@@ -22,7 +22,7 @@ let queue = Promise.resolve(); // keeps replies in the order commands were typed
 let restTimer = 0;
 /** @type {RegExp | null} the other heroes' names (letters only, from api.php), to pick them out of the log */
 let heroNames = null;
-const LISTEN_MS = 5000; // how often an open, visible page asks what others said or shouted
+const LISTEN_MS = 5000; // how often an open, visible page asks what others said, shouted or did
 
 /** @param {string} text @param {string} [cls] @returns {HTMLDivElement} */
 function print(text, cls) {
@@ -345,7 +345,8 @@ input.addEventListener('keydown', (e) => {
 });
 
 queue = queue.then(() => send('look'));
-// An empty command returns only what others said or shouted since my last command, so this makes speech show up live.
+// An empty command returns only what others said, shouted or did in a fight since my last command, so they show up live
+// (and keeps my turns in a shared fight from passing: see my_turn() in game.php).
 // Not while creating a hero (no sheet then): there an empty command shows the step again.
 setInterval(() => {
     if (!document.hidden && !sheet.hidden) queue = queue.then(() => send('', true));

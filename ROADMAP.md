@@ -5,9 +5,9 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-Three goals, in any order: **the town redrawn** from Aaron's sketch and feedback, **travel** over distances as ordinary
-rooms until something attacks, and **encounters on a battle map** with positions, so a ranged hero can kite (Aaron
-plans to, with a Longbow). The tasks below are in a sensible order, and each ships alone.
+Two goals, in any order: **the town redrawn** from Aaron's sketch and feedback, and **travel** over distances as
+ordinary rooms until something attacks. (The third, **encounters on a battle map**, shipped as tasks 4 to 7: see
+Decided.) The tasks below are in a sensible order, and each ships alone.
 
 ### Travel and the town
 
@@ -22,38 +22,6 @@ plans to, with a Longbow). The tasks below are in a sensible order, and each shi
    rooms (aggressive ones attack as you come in, as today). Open: a random encounter roll on entering a road room
    (through `roll()`, a table per zone), and how long a road can be before walking it is a chore (a speedwalk command
    only if it becomes one).
-
-### Encounters on a battle map
-
-Rooms as small boards (5-ft squares, like chess) so distance, movement, shooting, disengaging, retreating and cover
-matter. SRD 5.2.1 already has the rules: Speed, reach, weapon ranges, Disadvantage on ranged attacks within 5 ft of an
-enemy, opportunity attacks, Disengage/Dash/Dodge, cover (+2/+5 AC), difficult terrain. Today a fight is one hero
-against one spawn with no distance (ranged weapons get an opening volley), and fight state is on `users`. Kiting works
-by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
-size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
-
-7. **Shared fights others can join** (step 3; its monster half shipped as task 7a, see Decided). The fight belongs to
-   the room, not the hero: 7a's Initiatives (`spawns.init`, `users.init`) become the room's one order for every hero
-   and monster in it. A hero who walks into a room mid-fight rolls
-   Initiative, is slotted into the order and appears at the edge of the exit they came through. Players aren't online
-   together, so an away hero's turn passes as a Dodge (see Decided), computed on read.
-
-```
-#########
-#..k....#    k kobold     @ you
-#...##..+    # wall       + exit (east)
-#.......#    T table (half cover)
-#..T..@.#
-#########
-```
-
-Skipped: **cross-room shooting** (`shoot north goblin`). Finding the target is easy, but with no ticks a monster hit
-from 2 rooms away can't walk to you, and "feet per room" is made up. **Coordinate math** is the cheap part (BFS and
-line of sight on ~100 cells).
-
-Costs, most expensive first: room layout content (Kobold Mines' 174 rooms, the Delve, the seed rooms have none);
-positions with no ticks and async play; making one command a whole 5e turn (move + action) so fights aren't tedious;
-monster AI (close, kite, flee), which needs selftest coverage.
 
 Any time: **approve account requests** (friends ask on the login page):
 `ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
@@ -253,3 +221,21 @@ Any time: **approve account requests** (friends ask on the login page):
   monster's ambush now runs the monsters that beat me, then leaves my turn under way (`moved` 0), instead of making me
   go first ever after. The migration ends fights under way. Shortcuts until 7b: two heroes in one room each run their
   own rounds over the same monsters, and a hireling leaving reach draws only my target's attack.
+- 2026-10-16 **Shared fights** (task 7b, which finishes task 7 and the battle map): a fight belongs to its room. Every
+  hero fighting there and every monster in it take turns in one Initiative order (`fight_heroes()`,
+  `fight_monsters()`; ties to heroes, `foe_first` now only informs). The monsters between one hero and the next act
+  when the first one's turn ends, and those ahead of the first hero when that hero's turn begins. `rooms.turn` is
+  whose turn it is, since `turn_at`: anyone else's command gets "It's Ana's turn (1:40 left)", unless Ana is away (no
+  news asked for in 15 seconds: page closed or tab hidden) or her 2 minutes are up (`TURN_SECS`); then her turn
+  passes as the Dodge action, worked out on the next command from anyone in the fight (`my_turn()`, `pass_turn()`;
+  play.js's 5-second listen counts). A hero who walks in mid-fight joins (`arrive()`): rolls Initiative, targets the
+  nearest monster, and stands where they came in; the monsters keep their Initiative and squares. Each monster goes
+  for the nearest hero, the one whose command it is on a tie. A kill's XP and gold are split evenly among the heroes
+  in the fight (gold left over to the killer, XP's dropped; `award()`), and everyone whose target died turns to the
+  nearest one left. Everything is retold: fight lines become events (`events.about`, the hero whose "you" they are),
+  shown to the others in the third person ("Ana hits the Kobold", and "your Hold Person" for my own spell,
+  `third_person()`) on their next command or listen, and to Ana as they happened when she's back, even after dying
+  in town. Other heroes and their hirelings show on the board in capitals and block squares (`crowd()`). Shortcuts:
+  Bonus Actions, potions and orders don't wait for your turn; a hero who flees skips the monsters between them and the
+  next hero that round; a pass needs a command from a hero in the fight. Still skipped: cross-room shooting (with no
+  ticks, a monster hit from 2 rooms away can't walk to you).
