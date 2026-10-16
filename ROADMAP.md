@@ -32,8 +32,9 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-7. **Shared fights others can join** (step 3). The fight belongs to the room, not the hero: a per-room encounter
-   table, one initiative order for every hero and monster in it. A hero who walks into a room mid-fight rolls
+7. **Shared fights others can join** (step 3; its monster half shipped as task 7a, see Decided). The fight belongs to
+   the room, not the hero: 7a's Initiatives (`spawns.init`, `users.init`) become the room's one order for every hero
+   and monster in it. A hero who walks into a room mid-fight rolls
    Initiative, is slotted into the order and appears at the edge of the exit they came through. Players aren't online
    together, so an away hero's turn passes as a Dodge (see Decided), computed on read.
 
@@ -241,3 +242,14 @@ Any time: **approve account requests** (friends ask on the login page):
   The board's glyphs are ASCII in PHP and swapped for the font's in `play.js` (`MAP_CELLS`): Aaron wants Dungeon
   Mode's own trees, rocks and water there later. Shortcuts: half cover doesn't help Dex saves, and creatures give no
   cover.
+- 2026-10-16 **Several monsters in a fight** (task 7a): starting a fight, every aggressive monster in the room that
+  sees you (and isn't 5 levels below you) joins, rolling Initiative (`spawns.init`, mine `users.init`), where it stood
+  or by the first; a peaceful one joins when you attack it. Each round they act in Initiative order around my turn
+  (`monsters_act()`; my target still by `foe_first`, ties to the hero), named apart (`Kobold 2`, by id) in the log,
+  status line and board legend. `users.fighting` is my target: `kill kobold 2`, or a tap on a monster (`kill c3`),
+  switches to it; when it dies I turn to the nearest other (`win()`), and the fight ends with the last. All of them
+  block paths, and each takes its opportunity attack on its own Reaction (`spawns.conditions` 'reacted', back at its
+  turn; `users.conditions` 'provoked' is gone). A shot has Disadvantage with any of them within 5 ft. An aggressive
+  monster's ambush now runs the monsters that beat me, then leaves my turn under way (`moved` 0), instead of making me
+  go first ever after. The migration ends fights under way. Shortcuts until 7b: two heroes in one room each run their
+  own rounds over the same monsters, and a hireling leaving reach draws only my target's attack.

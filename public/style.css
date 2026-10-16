@@ -128,7 +128,7 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 .map-grid { position: relative; overflow: auto; max-height: calc(21 * 12px * 8 / 9); }
 #map { padding-inline: 0.5rem; }
 .map { margin-top: 0.25rem; }
-.map-text { font-size: 0.8rem; }
+.map-text { font-size: 0.8rem; white-space: pre-wrap; } /* a fight's legend can be long */
 /*
  * cmd_map(): square cells 8/9 em, the font's own cell, so wall glyphs join. It's pixel art, so a font pixel must be a
  * whole number of device pixels: 12px here (4 per pixel on 3x phones), 13.5px on wide screens (3 per pixel on 2x).

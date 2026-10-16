@@ -1206,7 +1206,9 @@ try {
     q("UPDATE users SET level = 7, room_id = 2 WHERE name = 'Testh'");
     q('UPDATE monsters SET attacks = 2 WHERE id = 9999');
     q('DELETE FROM effects');
-    $dice_queue = [10, 1, 1, 1]; // an opening volley of two misses
+    q("UPDATE users SET x = 4, y = 5 WHERE name = 'Testh'");
+    q('UPDATE spawns SET x = 3, y = 0, placed_at = NOW() WHERE id = 9999');
+    $dice_queue = [10, 1, 1, 1, 1, 1]; // two arrows from 25 ft miss; it closes in, and both Slams roll 1s
     run_command(hero('Testh'), 'kill dummy');
     $dice_queue = [1, 1, 1, 1, 15, 2, 15, 1]; // two misses; its first Slam hits, so the second rolls twice
     $out = run_command(hero('Testh'), 'kill');
@@ -1643,8 +1645,8 @@ try {
     $away();
     $dice_queue = [1, 20, 2]; // initiative: it goes first and swings now (a natural 2 misses)
     $out = run_command(hero('Sly'), 'n');
-    check(says($out, "The Lurker's Club misses you") && hero('Sly')['foe_first'] === 0 && $dice_queue === [],
-        'winning Initiative it attacks at once, and the hero acts first after that');
+    check(says($out, "The Lurker's Club misses you") && hero('Sly')['foe_first'] === 1 && hero('Sly')['moved'] === 0
+        && $dice_queue === [], 'winning Initiative it attacks at once, and my next command is my turn');
     $away();
     q("UPDATE users SET level = 6 WHERE name = 'Sly'");
     check(!says(run_command(hero('Sly'), 'n'), 'attacks you') && hero('Sly')['fighting'] === null,
@@ -2283,6 +2285,67 @@ try {
     q("UPDATE users SET x = 0, y = 0, moved = 0 WHERE name = 'Board'");
     check(says(run_command(hero('Board'), 'move e1'), 'and e1 is 35 ft away')
         && says(run_command(hero('Board'), 'move d4'), 'blocked'), 'undergrowth costs double; rock is no square');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+
+    // Several monsters (task 7a): every aggressive one in the room joins the fight, each with its Initiative. Two
+    // dummies (AC 10, Slam +3) in the Armorer, on an open board; Board shoots a Longbow (+4, 1d8+2; Dex +2).
+    q('UPDATE rooms SET layout = ? WHERE id = 9', [$open(8, 6)]);
+    q('INSERT INTO spawns (id, room_id, monster_id, hp, max_hp) VALUES (9902, 9, 9999, 30, 30)');
+    $fresh = function (): void {
+        q('UPDATE users SET ' . END_FIGHT . ", room_id = 9, x = 0, y = 2, hp = max_hp, advantage = FALSE
+            WHERE name = 'Board'");
+        q("UPDATE spawns SET x = NULL, y = NULL, init = NULL, hp = 30, dead_since = NULL, conditions = '',
+            grappled_by = NULL WHERE id IN (9901, 9902)");
+    };
+    $fresh();
+    q('UPDATE monsters SET speed = 0 WHERE id = 9999'); // so neither moves, for now
+    $dice_queue = [15, 1, 12, 4]; // Initiative 17 vs 1; my arrow hits; it can't move
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(!says($out, 'joins the fight') && count(array_filter($out, fn ($l) => str_contains($l, "can't move"))) === 1
+        && $dice_queue === [], 'a peaceful monster stays out of it');
+    $fresh();
+    q('UPDATE monsters SET aggressive = TRUE WHERE id = 9999');
+    $dice_queue = [15, 1, 1, 12, 4]; // Initiative: me 17, my target 1, the other 1; my arrow hits; neither can move
+    $out = run_command(hero('Board'), 'kill dummy');
+    $map = cmd_map(with_stats(hero('Board')));
+    check(says($out, 'The Training Dummy 2 joins the fight (Initiative 1).')
+        && count(array_filter($out, fn ($l) => str_contains($l, "can't move"))) === 2
+        && says($out, 'Training Dummy: 24 HP.  Training Dummy 2: 30 HP.') && $dice_queue === []
+        && str_contains($map[count($map) - 2], 'Training Dummy 2: '), 'an aggressive one joins, and both show');
+    q('UPDATE monsters SET speed = 30 WHERE id = 9999');
+    // The second dummy is next to me and its Initiative (30) beats mine: it acts first, and stepping away from it
+    // draws its opportunity attack though I'm not fighting it.
+    q("UPDATE users SET x = 3, y = 2, moved = NULL, foe_first = FALSE WHERE name = 'Board'");
+    q("UPDATE spawns SET x = 7, y = 2, conditions = '' WHERE id = 9901");
+    q("UPDATE spawns SET x = 2, y = 2, init = 30, conditions = '' WHERE id = 9902");
+    $dice_queue = [5, 5]; // its Slam, 8, misses; its opportunity attack, 8, misses
+    $out = run_command(hero('Board'), 'move e3');
+    check(says($out, 'The Training Dummy 2 strikes as you pull away!') && $dice_queue === [],
+        'any monster in the fight takes its opportunity attack');
+    // A round in Initiative order: the second dummy (30), me (17), my target (1).
+    q("UPDATE users SET x = 0, y = 2, moved = NULL WHERE name = 'Board'");
+    q("UPDATE spawns SET x = 1, y = 2, conditions = '' WHERE id = 9902");
+    $dice_queue = [5, 12, 15, 4]; // its Slam misses; my shot next to it has Disadvantage (12); Slowed, mine runs
+    $out = run_command(hero('Board'), 'kill');
+    $first = array_search(true, array_map(fn ($l) => str_contains($l, "Training Dummy 2's Slam"), $out), true);
+    $shot = array_search(true, array_map(fn ($l) => str_contains($l, 'You hit'), $out), true);
+    $last = array_search(true, array_map(fn ($l) => str_contains($l, 'Training Dummy runs at you'), $out), true);
+    check($first !== false && $shot !== false && $last !== false && $first < $shot && $shot < $last
+        && says($out, '(16 vs AC 10, with Disadvantage)') && $dice_queue === [], 'each acts in Initiative order');
+    // Naming one fights it instead; killing it turns me to the other, and the fight goes on.
+    q("UPDATE users SET x = 0, y = 2 WHERE name = 'Board'");
+    q("UPDATE spawns SET x = 6, y = 5, conditions = '' WHERE id = 9901");
+    q("UPDATE spawns SET x = 1, y = 2, hp = 1, conditions = '' WHERE id = 9902");
+    $dice_queue = [5, 12, 15, 4, 3, 2, 5]; // its Slam; I kill it (gold 3, no loot); mine closes in, Slam misses
+    $out = run_command(hero('Board'), 'kill dummy 2');
+    check(says($out, 'The Training Dummy 2 dies!') && says($out, 'You turn to the Training Dummy.')
+        && hero('Board')['fighting'] === 9901 && $dice_queue === [], 'kill <monster> 2; then on to the next');
+    q("UPDATE spawns SET hp = 1 WHERE id = 9901");
+    $dice_queue = [12, 15, 4, 3, 2]; // next to it: Disadvantage, 12 hits; gold 3, no loot
+    $out = run_command(hero('Board'), 'kill');
+    check(says($out, 'The Training Dummy dies!') && hero('Board')['fighting'] === null && $dice_queue === [],
+        'the fight ends when the last one dies');
+    q('UPDATE monsters SET aggressive = FALSE WHERE id = 9999');
     q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.

@@ -85,13 +85,15 @@ CREATE TABLE spawns (
     dead_since DATETIME NULL,
     -- Prone ends at the start of its next turn, Sapped at its next attack roll or the start of my next turn, Stunned
     -- at the start of my next turn, and reeling (a Stunning Strike saved against) then or at the next attack on it.
-    conditions SET('prone', 'sapped', 'stunned', 'reeling', 'slowed') NOT NULL DEFAULT '',
+    -- reacted: it has made an opportunity attack since its turn began (its Reaction).
+    conditions SET('prone', 'sapped', 'stunned', 'reeling', 'slowed', 'reacted') NOT NULL DEFAULT '',
     grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
     -- Its square on the room's board (cmd_map()), set when a fight starts, and when it last moved: 10 minutes after,
     -- with nobody fighting it, it's back at a fresh spot.
     x TINYINT UNSIGNED NULL,
     y TINYINT UNSIGNED NULL,
     placed_at DATETIME NULL,
+    init TINYINT NULL, -- its Initiative while in a fight; NULL out of one
     KEY (room_id),
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (monster_id) REFERENCES monsters (id)
@@ -192,14 +194,14 @@ CREATE TABLE users (
     innate BOOLEAN NOT NULL DEFAULT FALSE, -- a Sorcerer's Innate Sorcery, until the fight ends
     advantage BOOLEAN NOT NULL DEFAULT FALSE, -- on my next attack roll (Vex, Guiding Bolt); cleared when a fight ends
     -- Conditions and effects on me (SRD 5.2.1 p.177-191). Each ends at the start of my next turn or with the fight.
-    -- provoked: my foe has spent its Reaction on me (an opportunity attack) this round.
-    conditions SET('reckless', 'dodging', 'provoked') NOT NULL DEFAULT '',
+    conditions SET('reckless', 'dodging') NOT NULL DEFAULT '',
     bonus_used BOOLEAN NOT NULL DEFAULT FALSE, -- my Bonus Action this round of a fight; my turn's end clears it
     -- My square on this room's board: where I came in (the middle of that wall), then where I move in a fight. NULL is
     -- the middle of the board.
     x TINYINT UNSIGNED NULL,
     y TINYINT UNSIGNED NULL,
     moved SMALLINT UNSIGNED NULL, -- feet of my Speed used this turn; NULL between my turns
+    init TINYINT NULL, -- my Initiative in this fight
     prepared VARCHAR(255) NOT NULL DEFAULT '', -- spell ids, e.g. '5,2'; empty means the class's defaults
     may_prepare BOOLEAN NOT NULL DEFAULT TRUE, -- a long rest lets me change them
     gold INT UNSIGNED NOT NULL DEFAULT 0,

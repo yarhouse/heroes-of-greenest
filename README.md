@@ -192,7 +192,9 @@ allows, or to a square you name (`kite e5`; with a bow and the foe next to you, 
 `kite e5` is move, shoot, move, and `dash`, `disengage` and `dodge` are the SRD
 actions. Reach weapons attack from 10 ft, spells need their range (Touch means next to it), and from hiding you creep
 up before the first turn. A Monk's Unarmored Movement and a Barbarian's Fast Movement add to your Speed. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
-range, and stepping out of a foe's reach draws its opportunity attack. Monsters walk to you, or with a ranged attack
+range, and stepping out of a foe's reach draws its opportunity attack. Every aggressive monster in the room joins a fight, each
+with its own Initiative, acting before or after you in that order; `kill kobold 2` (or a tap on it) picks which one
+you fight, and when it dies you turn to the nearest other. Monsters walk to you, or with a ranged attack
 in their stat block step up to its normal range and shoot until you're next to them; one held in a grapple can't move,
 and one you flee waits where it stood for 10 minutes. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
 their CR). `sneak` makes a Stealth check each time you enter a room with monsters: 15 or more hides you from each one

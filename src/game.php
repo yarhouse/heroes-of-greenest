@@ -1246,10 +1246,9 @@ function arrive(array &$me, array &$lines): void
     foreach ($monsters as $foe) {
         if ($foe['aggressive'] && !hidden_from($me, $foe) && $me['level'] <= (float) $foe['cr'] + 5) {
             start_fight($me, $foe, $lines, "The {$foe['name']} attacks you!");
-            // If it won Initiative it has had its turn, so from here I go first each round.
-            $over = $me['foe_first'] && monster_turn($me, $foe, $lines);
-            q('UPDATE users SET foe_first = FALSE WHERE id = ?', [$me['id']]);
-            if (!$over) {
+            // The monsters that won Initiative act; my next command is my turn in this round.
+            $foe = named($me, $foe);
+            if (!begin_turn($me, $foe, $lines)) {
                 $lines[] = fight_status($me, $foe);
             }
             return;
@@ -1292,7 +1291,7 @@ function room_monsters(int $room_id): array
         // "dead_since IS NOT NULL" so two heroes arriving at once can't both respawn it.
         $hp = max(1, roll($s['dice']));
         q("UPDATE spawns SET dead_since = NULL, hp = ?, max_hp = ?, conditions = '', grappled_by = NULL, x = NULL,
-           y = NULL, placed_at = NULL WHERE id = ? AND dead_since IS NOT NULL", [$hp, $hp, $s['id']]);
+           y = NULL, placed_at = NULL, init = NULL WHERE id = ? AND dead_since IS NOT NULL", [$hp, $hp, $s['id']]);
     }
     $monsters = q(
         // The spawn's columns come last, so its id and hp win over the template's (the HP dice). It has been where it
@@ -1308,15 +1307,24 @@ function room_monsters(int $room_id): array
 /** The monster I'm fighting, or else the first one here with a word in its name starting with $target. */
 function find_foe(array $me, string $target): ?array
 {
-    foreach (room_monsters((int) $me['room_id']) as $m) {
-        if ($me['fighting'] !== null ? $m['id'] === $me['fighting'] : names($target, $m['name'])) {
-            return $m;
+    $all = room_monsters((int) $me['room_id']);
+    if ($target === '' && $me['fighting'] !== null) {
+        foreach ($all as $m) {
+            if ($m['id'] === $me['fighting']) {
+                return $m;
+            }
         }
-    }
-    if ($me['fighting'] !== null) { // never expected (a kill clears everyone fighting it), but don't strand the hero
+        // never expected (a kill moves everyone fighting it on), but don't strand the hero
         q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
+        return null;
     }
-    return null;
+    $sq = $me['fighting'] !== null && preg_match('/^[a-z]\d{1,2}$/i', $target) ? board_square($me, $target) : null;
+    if ($sq !== null) { // a monster by its square on the board, as a tap names it
+        return array_values(array_filter($all, fn ($m) => [$m['x'], $m['y']] === $sq))[0] ?? null;
+    }
+    [$name, $n] = preg_match('/^(.*\S)\s+(\d+)$/', $target, $nth) ? [$nth[1], (int) $nth[2]] : [$target, 1];
+    $named = array_values(array_filter($all, fn ($m) => names($name, $m['name']))); // 'kobold 2': the second here
+    return $named[$n - 1] ?? null;
 }
 
 /** True if some word of $name starts with $target, so "rat" matches "Giant Rat". */
@@ -1383,13 +1391,12 @@ function cmd_kite(array $me, string $arg): array
             return $sq === null ? back_off($me, $foe, $feet, $lines, slips($me))
                 : go_to($me, $foe, $sq, $feet, $lines, slips($me));
         };
-        $first = $me['ranged'] && !$me['far'];
+        $first = $me['ranged'] && $me['pressed'];
         if ($first) {
             if ($go()) {
                 return true;
             }
-            $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
-            $me['far'] = $me['dist'] > 5;
+            sizing($me, $foe);
         }
         return hero_turn($me, $foe, $lines) || (!$first && $go());
     }, 'Kite what?', weapon_reach($me));
@@ -1436,14 +1443,17 @@ function cmd_action(array $me, string $how, string $to): array
 }
 
 /**
- * I $how ('back off', 'dash'...) up to $feet to the square farthest from my foe, the nearest such to me, then the
- * straightest, so along a wall I slide sideways. $free: no opportunity attack. Returns true if one ended the fight.
+ * I $how ('back off', 'dash'...) up to $feet to the square farthest from the nearest monster of my fight, the
+ * nearest such to me, then the straightest, so along a wall I slide sideways. $free: no opportunity attack. Returns
+ * true if one ended the fight.
  */
 function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free = false, string $how = 'back off'): bool
 {
     [$mine, $there] = [my_square($me), [$foe['x'], $foe['y']]];
-    $ways = paths((int) $me['room_id'], $mine, array_values(array_filter([$there, hire_square($me)])));
-    $key = fn ($p, $c) => [-feet($p, $there), $c, abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
+    $foes = [$there, ...monster_squares($me, $foe['id'])];
+    $ways = paths((int) $me['room_id'], $mine, [...$foes, ...array_filter([hire_square($me)])]);
+    $near = fn ($p) => min(array_map(fn ($f) => feet($p, $f), $foes)); // from the nearest monster
+    $key = fn ($p, $c) => [-$near($p), $c, abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
     $best = $mine;
     foreach ($ways as $k => [$cost]) {
         $p = array_map('intval', explode(',', $k));
@@ -1491,9 +1501,13 @@ function fight(
 ): array {
     $foe = find_foe($me, $target);
     if (!$foe) {
-        return [$target === '' || $me['fighting'] !== null ? $what : "You don't see a $target here."];
+        return [$target === '' && $me['fighting'] === null ? $what
+            : ($target === '' ? $what : "You don't see a $target here.")];
     }
     $lines = [];
+    if ($me['fighting'] !== null && $foe['id'] !== $me['fighting']) {
+        retarget($me, $foe, $lines);
+    }
     if ($me['fighting'] === null) {
         $unseen = hidden_from($me, $foe);
         start_fight($me, $foe, $lines, "You attack the {$foe['name']}" . ($unseen ? ' from hiding!' : '!'));
@@ -1505,11 +1519,11 @@ function fight(
             $lines[] = "You creep up on the {$foe['name']}, unseen.";
         }
     }
+    $foe = named($me, $foe);
     $over = begin_turn($me, $foe, $lines);
     if (!$over) {
         if (close_in($me, $foe, $reach, $lines)) {
-            $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
-            $me['far'] = $me['dist'] > 5; // nothing within 5 ft of me: no melee, and no Disadvantage on a shot
+            sizing($me, $foe);
             if ($hostile) {
                 unward($me, $lines);
             }
@@ -1518,10 +1532,14 @@ function fight(
                 $lines[] = "The {$foe['name']} has half cover (+2 AC).";
             }
             $foe['ac'] += $cover; // shortcut: not on its Dex saves, which half cover also helps
-            $over = $act($me, $foe, $lines);
+            $act($me, $foe, $lines);
             $foe['ac'] -= $cover;
         }
-        $over = $over || ($me['hireling'] !== null && hireling_turn($me, $foe, $lines));
+        $over = refocus($me, $foe);
+        if (!$over && $me['hireling'] !== null) {
+            hireling_turn($me, $foe, $lines);
+            $over = refocus($me, $foe);
+        }
         $over = $over || end_turn($me, $foe, $lines);
     }
     if (!$over) {
@@ -1531,22 +1549,26 @@ function fight(
 }
 
 /**
- * My turn starts, unless it's under way (I've moved this turn): a foe that won Initiative acts first. Returns true if
- * its turn ended the fight.
+ * My turn starts, unless it's under way (I've moved this turn): the monsters in my fight that beat me on Initiative
+ * act first (see monsters_act()). Returns true if that ended the fight for me.
  */
 function begin_turn(array &$me, array &$foe, array &$lines): bool
 {
     if ($me['moved'] !== null) {
         return false;
     }
-    if ($me['foe_first'] && monster_turn($me, $foe, $lines)) {
+    if (monsters_act($me, $foe, $lines, true)) {
         return true;
     }
     start_turn($me);
     // shortcut: these end at the start of my turn, though another hero may have caused them
-    foreach (['sapped', 'stunned', 'reeling', 'slowed'] as $c) {
-        if (has($foe, $c)) {
-            set_condition($foe, $c, false);
+    foreach (fight_monsters($me) as $m) {
+        foreach (['sapped', 'stunned', 'reeling', 'slowed'] as $c) {
+            if ($m['id'] === $foe['id'] && has($foe, $c)) {
+                set_condition($foe, $c, false);
+            } elseif ($m['id'] !== $foe['id'] && has($m, $c)) {
+                set_condition($m, $c, false);
+            }
         }
     }
     $me['moved'] = 0;
@@ -1562,7 +1584,123 @@ function end_turn(array &$me, array &$foe, array &$lines): bool
 {
     [$me['moved'], $me['bonus_used']] = [null, false];
     q('UPDATE users SET moved = NULL, bonus_used = FALSE WHERE id = ?', [$me['id']]);
-    return !$me['foe_first'] && monster_turn($me, $foe, $lines);
+    return monsters_act($me, $foe, $lines, false);
+}
+
+/**
+ * The monsters in my fight act in Initiative order: with $before, those that go before me each round (my target if it
+ * won Initiative, any other whose Initiative beats mine; ties go to me), else the rest. $foe follows my target as it
+ * changes. Returns true if the fight is over for me: I dropped, or none is left.
+ */
+function monsters_act(array &$me, array &$foe, array &$lines, bool $before): bool
+{
+    foreach (fight_monsters($me) as $m) {
+        $mine = $m['id'] === $foe['id'];
+        if ($mine ? (bool) $me['foe_first'] !== $before : ($m['init'] > ($me['init'] ?? 0)) !== $before) {
+            continue;
+        }
+        if ($mine ? $foe['hp'] <= 0 : !q('SELECT 1 FROM spawns WHERE id = ? AND dead_since IS NULL', [$m['id']])
+            ->fetch()) {
+            continue; // it died this round
+        }
+        if ($mine) {
+            monster_turn($me, $foe, $lines);
+        } else {
+            monster_turn($me, $m, $lines);
+        }
+        if (refocus($me, $foe)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * The monsters in my fight: alive in my room with an Initiative (see start_fight()), highest Initiative first, named
+ * apart from others of their kind ('Kobold', 'Kobold 2', by id). Spends no dice (no respawns), so the board can use it.
+ */
+function fight_monsters(array $me): array
+{
+    $in = array_map(fn ($m) => $m + ['effects' => effects_on('spawn_id', $m['id'])], q(
+        'SELECT m.*, s.*, COALESCE(s.placed_at < NOW() - INTERVAL 10 MINUTE, TRUE) AS stale
+         FROM spawns s JOIN monsters m ON m.id = s.monster_id
+         WHERE s.room_id = ? AND s.dead_since IS NULL AND s.init IS NOT NULL ORDER BY s.id',
+        [$me['room_id']]
+    )->fetchAll());
+    $seen = [];
+    foreach ($in as &$m) {
+        $n = $seen[$m['name']] = ($seen[$m['name']] ?? 0) + 1;
+        $m['name'] .= $n > 1 ? " $n" : '';
+    }
+    unset($m);
+    usort($in, fn ($a, $b) => [$b['init'], $a['id']] <=> [$a['init'], $b['id']]);
+    return $in;
+}
+
+/** $foe with its name in my fight ('Kobold 2'), if it's in it. */
+function named(array $me, array $foe): array
+{
+    foreach (fight_monsters($me) as $m) {
+        if ($m['id'] === $foe['id']) {
+            $foe['name'] = $m['name'];
+        }
+    }
+    return $foe;
+}
+
+/** The squares of the monsters in my fight, but $except's (an id). */
+function monster_squares(array $me, ?int $except = null): array
+{
+    return array_values(array_map(fn ($m) => [$m['x'], $m['y']],
+        array_filter(fight_monsters($me), fn ($m) => $m['id'] !== $except && $m['x'] !== null)));
+}
+
+/**
+ * After something that may have killed my target: true if my fight is over, else $foe is my target, a new one if
+ * win() turned me to it.
+ */
+function refocus(array $me, array &$foe): bool
+{
+    if ($me['fighting'] === null) {
+        return true;
+    }
+    if ($me['fighting'] !== $foe['id']) {
+        foreach (fight_monsters($me) as $m) {
+            if ($m['id'] === $me['fighting']) {
+                $foe = $m;
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+/** I fight $foe now, in place of my target; one not yet in the fight joins it, rolling Initiative. */
+function retarget(array &$me, array &$foe, array &$lines): void
+{
+    if ($foe['init'] === null) {
+        $foe['init'] = d20(0) + $foe['initiative'];
+        $at = $foe['x'] === null || $foe['stale'] ? open_near((int) $me['room_id'], my_square($me),
+            [my_square($me), ...monster_squares($me)]) : [$foe['x'], $foe['y']];
+        [$foe['x'], $foe['y']] = $at;
+        q('UPDATE spawns SET init = ?, x = ?, y = ?, placed_at = NOW() WHERE id = ?',
+            [$foe['init'], ...$at, $foe['id']]);
+        $lines[] = 'The ' . named($me, $foe)['name'] . " joins the fight (Initiative {$foe['init']}).";
+    }
+    [$me['fighting'], $me['foe_first']] = [$foe['id'], $foe['init'] > ($me['init'] ?? 0)];
+    q('UPDATE users SET fighting = ?, foe_first = ? WHERE id = ?', [$foe['id'], (int) $me['foe_first'], $me['id']]);
+}
+
+/**
+ * How things stand before my action: 'dist', feet to my target; 'far', more than 5 ft (no melee); 'pressed', a monster
+ * of my fight within 5 ft (a shot has Disadvantage).
+ */
+function sizing(array &$me, array $foe): void
+{
+    $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
+    $me['far'] = $me['dist'] > 5;
+    $me['pressed'] = !$me['far'] || (bool) array_filter(monster_squares($me), fn ($p) => feet(my_square($me), $p) <= 5);
 }
 
 /**
@@ -1590,8 +1728,8 @@ function close_in(array &$me, array &$foe, int $reach, array &$lines): bool
 
 /**
  * Walks me square by square toward $to, up to $feet (difficult terrain costs double), stopping once I'm there, or
- * when $stop isn't 0, where a $stop-ft attack reaches my foe (see in_reach()). A step out of its reach draws its
- * opportunity attack (once a round: its Reaction), unless $free (Disengage). Saves my square
+ * when $stop isn't 0, where a $stop-ft attack reaches my foe (see in_reach()). A step out of a monster's reach draws
+ * its opportunity attack (once until its turn: its Reaction), unless $free (Disengage). Saves my square
  * and the feet of Speed I've used. Returns true if that attack ended the fight.
  */
 function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int $stop = 0, bool $free = false): bool
@@ -1600,24 +1738,36 @@ function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int 
     $rows = board($room);
     $at = my_square($me);
     $there = [$foe['x'], $foe['y']];
+    $others = array_values(array_filter(fight_monsters($me), fn ($m) => $m['id'] !== $foe['id'] && $m['x'] !== null));
+    $blocked = [$there, ...array_map(fn ($m) => [$m['x'], $m['y']], $others), ...array_filter([hire_square($me)])];
     for ($left = $feet; $at !== $to && ($stop === 0 || !in_reach($room, $at, $there, $stop));) {
-        $next = toward($room, $at, $to, array_values(array_filter([$there, hire_square($me)])), $stop);
+        $next = toward($room, $at, $to, $blocked, $stop);
         if ($next === $at || step_cost($rows, $next) > $left) {
             break;
         }
         $left -= step_cost($rows, $next);
-        $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
+        $leaving = array_filter([$foe, ...$others], fn ($m) => feet($at, [$m['x'], $m['y']]) <= $m['reach']
+            && feet($next, [$m['x'], $m['y']]) > $m['reach']);
         [$at, $me['x'], $me['y'], $me['moved']] = [$next, $next[0], $next[1], $me['moved'] + step_cost($rows, $next)];
         if ($foe['grappled_by'] === $me['id'] && feet($at, $there) > 5) { // out of my reach, my hold breaks
             $foe['grappled_by'] = null;
             q('UPDATE spawns SET grappled_by = NULL WHERE id = ?', [$foe['id']]);
             $lines[] = "You let go of the {$foe['name']}.";
         }
-        if ($leaving && !$free && !has($me, 'provoked')) {
-            $lines[] = "The {$foe['name']} strikes as you pull away!";
-            $me['conditions'] = implode(',', array_filter([$me['conditions'], 'provoked']));
-            q('UPDATE users SET conditions = ? WHERE id = ?', [$me['conditions'], $me['id']]);
-            if (monster_turn($me, $foe, $lines, 1)) {
+        foreach ($free ? [] : array_keys($leaving) as $i) { // each one's Reaction, once until its turn
+            $m = $i === 0 ? $foe : $others[$i - 1];
+            if (has($m, 'reacted')) {
+                continue;
+            }
+            $lines[] = "The {$m['name']} strikes as you pull away!";
+            if ($i === 0) {
+                set_condition($foe, 'reacted');
+                monster_turn($me, $foe, $lines, 1);
+            } else {
+                set_condition($others[$i - 1], 'reacted');
+                monster_turn($me, $others[$i - 1], $lines, 1);
+            }
+            if ($me['fighting'] === null) {
                 return true;
             }
         }
@@ -1640,16 +1790,21 @@ function cmd_step(array $me, string $to): array
     if (!open_square(board((int) $me['room_id']), $sq)) {
         return [square($sq) . ' is blocked: rock or a tree.'];
     }
-    if ($sq === [$foe['x'], $foe['y']] || $sq === hire_square($me)) {
-        return [$sq === hire_square($me) ? "Your {$me['hireling']['name']} is there." : "The {$foe['name']} is there."];
+    foreach (fight_monsters($me) as $m) {
+        if ($sq === [$m['x'], $m['y']]) {
+            return ["The {$m['name']} is there."];
+        }
+    }
+    if ($sq === hire_square($me)) {
+        return ["Your {$me['hireling']['name']} is there."];
     }
     $lines = [];
     if (begin_turn($me, $foe, $lines)) {
         return $lines;
     }
     $left = $me['speed'] - $me['moved'];
-    $cost = paths((int) $me['room_id'], my_square($me), array_values(array_filter([[$foe['x'], $foe['y']],
-        hire_square($me)])))[implode(',', $sq)][0] ?? null;
+    $cost = paths((int) $me['room_id'], my_square($me), [...monster_squares($me),
+        ...array_filter([hire_square($me)])])[implode(',', $sq)][0] ?? null;
     if ($cost === null || $cost > $left) {
         return [...$lines, $cost === null ? "You can't get to " . square($sq) . ' from here.'
             : "You have $left ft of movement left this turn, and " . square($sq) . " is $cost ft away."];
@@ -1667,8 +1822,10 @@ function cmd_step(array $me, string $to): array
 function fight_status(array $me, array $foe): string
 {
     $h = $me['hireling'];
+    $all = fight_monsters($me) ?: [$foe];
+    usort($all, fn ($a, $b) => $a['id'] <=> $b['id']);
     return "You: {$me['hp']}/{$me['max_hp']} HP.  " . ($h ? "{$h['name']}: {$h['hp']}/{$h['max_hp']} HP.  " : '')
-        . "{$foe['name']}: {$foe['hp']} HP.";
+        . implode('  ', array_map(fn ($m) => "{$m['name']}: {$m['hp']} HP.", $all));
 }
 
 /**
@@ -1701,20 +1858,49 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
     if ([$foe['x'], $foe['y']] === $spot || !open_square(board($room), [$foe['x'], $foe['y']])) {
         [$foe['x'], $foe['y']] = open_near($room, [$foe['x'], $foe['y']], [$spot]);
     }
-    [$me['x'], $me['y']] = $spot;
-    q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$foe['x'], $foe['y'], $foe['id']]);
+    [$me['x'], $me['y'], $me['init'], $foe['init'], $me['moved']] = [...$spot, $mine, $theirs, null];
+    // With no other hero fighting here, the room's last fight is over: its monsters are out of it.
+    $crowd = (bool) q('SELECT 1 FROM users WHERE room_id = ? AND fighting IS NOT NULL AND id <> ?',
+        [$room, $me['id']])->fetch();
+    if (!$crowd) {
+        q('UPDATE spawns SET init = NULL WHERE room_id = ?', [$room]);
+    }
+    q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW(), init = ? WHERE id = ?',
+        [$foe['x'], $foe['y'], $theirs, $foe['id']]);
+    // Every other aggressive monster here that sees me joins in (not one more than 5 levels below me, as arrive()),
+    // where it stood, or by the first.
+    $taken = [$spot, [$foe['x'], $foe['y']]];
+    $joined = [];
+    foreach (room_monsters($room) as $m) {
+        if ($m['id'] === $foe['id'] || ($m['init'] !== null && $crowd) || !$m['aggressive'] || hidden_from($me, $m)
+            || $me['level'] > (float) $m['cr'] + 5) {
+            continue;
+        }
+        $init = d20(0) + $m['initiative'];
+        $at = $m['x'] !== null && !$m['stale'] && !in_array([$m['x'], $m['y']], $taken, true) ? [$m['x'], $m['y']]
+            : open_near($room, [$foe['x'], $foe['y']], $taken);
+        $taken[] = $at;
+        q("UPDATE spawns SET init = ?, x = ?, y = ?, placed_at = NOW(), conditions = IF(?, conditions, ''),
+           grappled_by = IF(?, grappled_by, NULL) WHERE id = ?", [$init, ...$at, (int) $crowd, (int) $crowd, $m['id']]);
+        $joined[$m['id']] = $init;
+    }
     if ($me['hireling'] !== null) { // my hireling starts beside me, nearest the foe
-        $there = beside($room, $spot, [$foe['x'], $foe['y']], [[$foe['x'], $foe['y']]]);
+        $there = beside($room, $spot, [$foe['x'], $foe['y']], $taken);
         [$me['hireling']['x'], $me['hireling']['y']] = $there;
         q('UPDATE users SET hireling_x = ?, hireling_y = ? WHERE id = ?', [$there[0], $there[1], $me['id']]);
     }
     q(
         'UPDATE users SET fighting = ?, foe_first = ?, advantage = ?, sneaking = FALSE, stealth = NULL, resting = NULL,
-         rest_until = NULL, x = ?, y = ? WHERE id = ?',
-        [$foe['id'], (int) $me['foe_first'], (int) $me['advantage'], $spot[0], $spot[1], $me['id']]
+         rest_until = NULL, x = ?, y = ?, init = ?, moved = NULL WHERE id = ?',
+        [$foe['id'], (int) $me['foe_first'], (int) $me['advantage'], $spot[0], $spot[1], $mine, $me['id']]
     );
     $lines[] = $opening . ($surprised ? " It's surprised." : '') . ' Initiative: you ' . $mine . with($unseen ? 1 : 0)
         . ", it $theirs" . with($surprised ? -1 : 0) . '.' . ($me['sneaking'] ? ' You stop sneaking.' : '');
+    foreach (fight_monsters($me) as $m) {
+        if (isset($joined[$m['id']])) {
+            $lines[] = "The {$m['name']} joins the fight (Initiative {$joined[$m['id']]}).";
+        }
+    }
     [$me['sneaking'], $me['stealth']] = [false, null];
     if ($me['class'] === 'monk' && $me['level'] >= 2) {
         focus_on_initiative($me, $lines);
@@ -1832,7 +2018,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             break;
         }
         $aim = ($me['class'] === 'rogue' && $me['level'] >= 3) || (has($me, 'reckless') && $w['str_based']);
-        $dis = $w['ranged'] && (!$me['far'] || $me['dist'] > ($w['normal_range'] ?? PHP_INT_MAX));
+        $dis = $w['ranged'] && ($me['pressed'] || $me['dist'] > ($w['normal_range'] ?? PHP_INT_MAX));
         [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, $aim, $dis);
         $total = $d20 + $w['to_hit'] + $bonus;
         [$you, $s] = match (true) {
@@ -1961,7 +2147,8 @@ function push(array $me, array &$foe, array &$lines): void
     $at = $from;
     for ($n = 0; $n < 2; $n++) {
         $next = [$at[0] + ($at[0] <=> $mine[0]), $at[1] + ($at[1] <=> $mine[1])];
-        if (!open_square($rows, $next) || $next === hire_square($me)) {
+        $crowd = [hire_square($me), ...monster_squares($me, $foe['id'])];
+        if (!open_square($rows, $next) || in_array($next, $crowd, true)) {
             break;
         }
         $at = $next;
@@ -2348,7 +2535,7 @@ function hurt_foe(array &$me, array &$foe, int $dmg, array &$lines): bool
 /** The killer's reward: the stat block's full XP, a little gold by CR, levels, and maybe loot. */
 function win(array &$me, array $foe, array &$lines): void
 {
-    q('UPDATE users SET ' . END_FIGHT . ' WHERE fighting = ?', [$foe['id']]);
+    q('UPDATE users SET ' . END_FIGHT . ' WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']]);
     $cr = max(1, (int) ceil((float) $foe['cr']));
     $gold = roll($cr . 'd6');
     $xp = $me['xp'] + $foe['xp'];
@@ -2376,6 +2563,22 @@ function win(array &$me, array $foe, array &$lines): void
     if ($item !== null) {
         $lines[] = "The {$foe['name']} drops " . lcfirst(a_an($item)) . '.';
     }
+    if ($foe['id'] !== $me['fighting']) { // a Cleave's second foe
+        return;
+    }
+    // My target is dead: on to the nearest other in the fight, else the fight is over.
+    $mine = my_square($me);
+    $left = fight_monsters($me);
+    usort($left, fn ($a, $b) => feet($mine, [$a['x'], $a['y']]) <=> feet($mine, [$b['x'], $b['y']]));
+    if ($left === []) {
+        q('UPDATE users SET ' . END_FIGHT . ' WHERE id = ?', [$me['id']]);
+        $me['fighting'] = null;
+        return;
+    }
+    [$me['fighting'], $me['foe_first']] = [$left[0]['id'], $left[0]['init'] > ($me['init'] ?? 0)];
+    q('UPDATE users SET fighting = ?, foe_first = ? WHERE id = ?',
+        [$me['fighting'], (int) $me['foe_first'], $me['id']]);
+    $lines[] = "You turn to the {$left[0]['name']}.";
 }
 
 /**
@@ -2391,6 +2594,9 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
     $grappled = $foe['grappled_by'] !== null
         && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
     $speed = $grappled ? 0 : max(0, $foe['speed'] - (has($foe, 'slowed') ? 10 : 0));
+    if ($n === null && has($foe, 'reacted')) { // its turn: its Reaction is back
+        set_condition($foe, 'reacted', false);
+    }
     if ($n === null && has($foe, 'prone')) { // its turn starts (an opportunity attack is a Reaction, not a turn)
         set_condition($foe, 'prone', false);
         $lines[] = "The {$foe['name']} gets back up.";
@@ -2524,6 +2730,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
                 [$me['hp'], START_ROOM, $me['id']]
             );
             end_concentration($me);
+            [$me['fighting'], $me['room_id'], $me['x'], $me['y']] = [null, START_ROOM, null, null];
             array_push($lines, 'You have died!', 'You wake in the town square, bruised and lighter of purse.');
             array_push($lines, ...cmd_look(['room_id' => START_ROOM, 'fighting' => null] + $me));
             return true;
@@ -2567,13 +2774,14 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
     $room = (int) $me['room_id'];
     [$mine, $hire] = [my_square($me), hire_square($me)];
     $at = [$foe['x'], $foe['y']];
+    $crowd = [$mine, ...array_filter([$hire]), ...monster_squares($me, $foe['id'])]; // squares it can't step on
     $held = $hire !== null && feet($at, $hire) <= 5;
     $shoot = $foe['shot'] !== null && feet($at, $mine) > 5 && !$held;
     [$want, $need] = $shoot ? [$foe['shot_range'], $foe['shot_long']] : [$foe['reach'], $foe['reach']];
     if ($held && !in_reach($room, $at, $mine, $need)) {
         // A square in its move that reaches me and stays beside the hireling, else it fights the hireling.
         $spots = [];
-        foreach (paths($room, $at, [$mine, $hire]) as $k => [$cost]) {
+        foreach (paths($room, $at, $crowd) as $k => [$cost]) {
             $p = array_map('intval', explode(',', $k));
             if ($cost <= $speed && in_reach($room, $p, $mine, $need) && feet($p, $hire) <= 5) {
                 $spots[] = [$cost, $p];
@@ -2598,7 +2806,7 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
     $reacted = false; // my hireling's Reaction
     foreach ([[$want, $speed], [$need, 2 * $speed]] as [$stop, $limit]) { // its move, then a Dash if need be
         while (!in_reach($room, $at, $mine, $stop)) {
-            $next = toward($room, $at, $mine, array_values(array_filter([$mine, $hire])), $stop);
+            $next = toward($room, $at, $mine, $crowd, $stop);
             if ($next === $at || $walked + step_cost($rows, $next) > $limit) {
                 break;
             }
@@ -3432,7 +3640,7 @@ function cmd_cast(array $me, string $arg): array
         $rays = $beams ? $tier : $spell['count'] + $spell['upcast_targets'] * $up; // Scorching Ray: three
         for ($ray = 0; $ray < $rays; $ray++) {
             [$d20, $edge, $bonus, $with] = attack_d20($me, $foe, (bool) $me['innate'],
-                $spell['ranged'] && !$me['far']);
+                $spell['ranged'] && $me['pressed']);
             $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
             if ($meta === 'seeking' && ($d20 === 1 || ($d20 < 20 && $total < $foe['ac']))) { // one reroll, one d20
                 $meta = null;
@@ -4284,23 +4492,23 @@ function hireling_turn(array &$me, array &$foe, array &$lines): bool
     [$to, $how] = match (true) {
         $h['stance'] === 'attack' && feet($at, $there) > 5 => [$there, 'closes in'],
         $h['stance'] === 'guard' && feet($at, $mine) > 5
-            => [beside($room, $mine, $there, [$there]), 'falls back beside you'],
+            => [beside($room, $mine, $there, [$there, ...monster_squares($me)]), 'falls back beside you'],
         default => [$at, ''],
     };
     $rows = board($room);
     $reach = $how === 'closes in' ? 5 : 0;
     for ($walked = 0; $at !== $to && ($reach === 0 || feet($at, $there) > 5);) {
-        $next = toward($room, $at, $to, [$there, $mine], $reach);
+        $next = toward($room, $at, $to, [$there, $mine, ...monster_squares($me, $foe['id'])], $reach);
         if ($next === $at || $walked + step_cost($rows, $next) > $h['speed']) {
             break;
         }
         $walked += step_cost($rows, $next);
         $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
         $at = $next;
-        if ($leaving && !has($me, 'provoked')) {
+        // shortcut: only my target's opportunity attack on it, not the other monsters' of my fight
+        if ($leaving && !has($foe, 'reacted')) {
             $lines[] = "The {$foe['name']} strikes at your {$h['name']} as it pulls away!";
-            $me['conditions'] = implode(',', array_filter([$me['conditions'], 'provoked']));
-            q('UPDATE users SET conditions = ? WHERE id = ?', [$me['conditions'], $me['id']]);
+            set_condition($foe, 'reacted');
             hit_hireling($me, $foe, $lines, 1);
             if ($me['hireling'] === null) {
                 return false;
@@ -4893,8 +5101,8 @@ function hire_square(array $me): ?array
 function board_map(array $me): array
 {
     // Not find_foe(): its respawn rolls HP, and drawing the board must not spend dice.
-    $foe = q('SELECT s.x, s.y, s.hp, m.name FROM spawns s JOIN monsters m ON m.id = s.monster_id WHERE s.id = ?',
-        [$me['fighting']])->fetch();
+    $all = fight_monsters($me);
+    usort($all, fn ($a, $b) => $a['id'] <=> $b['id']);
     $room = (int) $me['room_id'];
     $rows = board($room);
     [$w, $h] = [strlen($rows[0]), count($rows)];
@@ -4911,13 +5119,15 @@ function board_map(array $me): array
         };
     }
     $mine = my_square($me);
-    $grid[$foe['y'] + 1][$foe['x'] + 1] = strtolower($foe['name'][0]);
+    foreach ($all as $m) {
+        $grid[$m['y'] + 1][$m['x'] + 1] = strtolower($m['name'][0]);
+    }
     if (($hire = hire_square($me)) !== null) {
         $grid[$hire[1] + 1][$hire[0] + 1] = strtoupper($me['hireling']['name'][0]);
     }
     $grid[$mine[1] + 1][$mine[0] + 1] = '@';
-    return [...$grid, "{$foe['name']}: " . feet($mine, [$foe['x'], $foe['y']]) . " ft away, {$foe['hp']} HP.",
-        '@ you  a-z foe  A-Z ally  tap: move, attack, flee'];
+    return [...$grid, implode('  ', array_map(fn ($m) => "{$m['name']}: " . feet($mine, [$m['x'], $m['y']])
+        . " ft away, {$m['hp']} HP.", $all)), '@ you  a-z foe  A-Z ally  tap: move, attack, flee'];
 }
 
 /**

@@ -202,7 +202,7 @@ function drawMap(box, lines, board = false) {
             const cell = el('span', cls, show);
             const inside = x > 0 && x < right && y > 0 && y < bottom;
             const cmd = !board || ch === '#' || ch === '%' || ch === '@' || cls === 'ally' ? '' : inside
-                ? (cls === 'foe' ? 'kill' : `move ${String.fromCharCode(96 + x)}${y}`)
+                ? `${cls === 'foe' ? 'kill' : 'move'} ${String.fromCharCode(96 + x)}${y}` // a monster: fight that one
                 : `flee ${y === 0 ? 'north' : y === bottom ? 'south' : x === 0 ? 'west' : 'east'}`;
             if (cmd) cell.dataset.cmd = cmd;
             row.append(cell);
