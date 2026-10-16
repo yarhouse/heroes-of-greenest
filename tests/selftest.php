@@ -49,7 +49,8 @@ function create(string $name, string $class, string $scores = 'ok', string $spec
  */
 function leave(string $name): void
 {
-    $to = q('SELECT to_room FROM exits WHERE room_id = ? ORDER BY dir LIMIT 1', [hero($name)['room_id']])->fetchColumn();
+    $to = q('SELECT to_room FROM exits WHERE room_id = ? ORDER BY dir LIMIT 1', [hero($name)['room_id']])
+        ->fetchColumn();
     q('UPDATE users SET ' . END_FIGHT . ', room_id = ?, x = NULL, y = NULL WHERE name = ?', [$to, $name]);
 }
 /** The first line containing $text, or ''. */
@@ -342,7 +343,7 @@ try {
         && str_contains(line($inv, 'Flail'), 'weapon, 1d8') && !str_contains(line($inv, 'Flail'), 'equipped')
         && hero('Testa')['gold'] === 4, 'a new hero has Kit A: Chain Mail and Greatsword worn, a Flail, 4 gp');
     check(count(objects_here('user_id', (int) hero('Testa')['id'])) === 11 && str_contains(line($inv, 'Javelin'),
-        'weapon, 1d6, thrown'), 'Kit A also has 8 Javelins; a password reset gives no second kit');
+        'weapon, 1d6, slow, thrown'), 'Kit A also has 8 Javelins; a password reset gives no second kit');
     q('INSERT INTO objects (item_id, room_id) VALUES (50, 1), (18, 1), (22, 1), (32, 1), (36, 1), (60, 1)');
     check(says(run_command(hero('Testa'), 'look'), 'A Longsword lies here.'), 'look shows items on the floor');
     check(says(run_command(hero('Testa'), 'get long'), 'You pick up the Longsword.'), 'get by word prefix');
@@ -586,7 +587,8 @@ try {
     q("UPDATE users SET foe_first = FALSE, conditions = 'reckless' WHERE name = 'Testc'");
     $dice_queue = [12, 3]; // its opportunity attack as I go: no Advantage, as Reckless ended when my turn began
     $out = run_command(hero('Testc'), 'flee');
-    check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [], 'fleeing is my turn, so Reckless ends first');
+    check(says($out, 'hits you (15 vs AC 13) for 3') && $dice_queue === [],
+        'fleeing is my turn, so Reckless ends first');
     check(hero('Testc')['conditions'] === '' && hero('Testc')['fighting'] === null, 'conditions end with the fight');
 
     // Damage types (SRD 5.2.1 p.17): Vulnerability doubles, Resistance halves, Immunity takes it all.
@@ -1470,7 +1472,7 @@ try {
     check(says($out, 'scorching ray') && says($out, 'command <monster>') && says(run_command(hero('Testm'), 'score'),
         'Pact slots 2/2 (level 2)'), 'Fiend Spells always prepared; level 2 Pact slots at level 3');
     q("UPDATE users SET level = 5 WHERE name = 'Testm'");
-    $dice_queue = [10, 1, 10, 5, 3, 1];
+    $dice_queue = [10, 1, 10, 5, 3, 1, 1]; // two beams from 25 ft; the dummy closes in, Slam a 1
     $out = run_command(hero('Testm'), 'cast eldritch dummy');
     check(count(array_filter($out, fn ($l) => str_contains($l, 'Your Eldritch Blast hits'))) === 1
         && says($out, 'Your Eldritch Blast misses') && $dice_queue === [], 'Eldritch Blast: two beams at level 5');
@@ -1970,6 +1972,113 @@ try {
     room_monsters(9);
     check($at() === [null, null], 'a monster that respawns has no square until its next fight');
     check(says(run_command(hero('Board'), 'move a1'), "You're not in a fight"), 'move is for fights');
+
+    // Kiting and the other moves (task 4b). Board shoots, then backs off to the square farthest from the dummy (Speed
+    // 30, 60 HP here).
+    q('UPDATE spawns SET hp = 60, x = 7, y = 2, placed_at = NOW() WHERE id = 9901');
+    q("UPDATE users SET x = 4, y = 2, advantage = FALSE WHERE name = 'Board'");
+    $dice_queue = [15, 1, 12, 4, 5]; // Initiative; the arrow hits for 6; I back off 20 ft to a3; it closes in, Slam 8
+    $out = run_command(hero('Board'), 'kite dummy');
+    $b = hero('Board');
+    check(says($out, 'You hit the Training Dummy (16 vs AC 10) for 6 damage.') && says($out, 'You back off to a3')
+        && [$b['x'], $b['y']] === [0, 2] && says($out, 'The Training Dummy closes in.') && $dice_queue === [],
+        'kite: shoot, then back off as far from it as my Speed allows');
+    q("UPDATE users SET x = 2, y = 2, advantage = FALSE WHERE name = 'Board'");
+    q('UPDATE spawns SET x = 1, y = 2 WHERE id = 9901');
+    $dice_queue = [1, 12, 4, 5]; // next to it I back off first (its opportunity attack, a 1), then shoot; Slam 8
+    $out = run_command(hero('Board'), 'kite');
+    $away = array_search(true, array_map(fn ($l) => str_contains($l, 'pull away'), $out), true);
+    $shot = array_search(true, array_map(fn ($l) => str_contains($l, 'You hit'), $out), true);
+    check($away !== false && $shot !== false && $away < $shot && !says($out, 'Disadvantage')
+        && hero('Board')['x'] === 7 && $dice_queue === [],
+        'next to it, kite backs off first, so the shot has no Disadvantage');
+    q("UPDATE users SET advantage = FALSE WHERE name = 'Board'");
+    $dice_queue = [1, 5]; // its opportunity attack (a 1) as I run 35 ft to a3; it closes in, Slam 8
+    $out = run_command(hero('Board'), 'dash');
+    check(says($out, 'You dash to a3') && hero('Board')['x'] === 0 && !says($out, 'You hit') && !says($out, 'You miss')
+        && $dice_queue === [], 'dash: run twice as far, with no attack');
+    $dice_queue = [5]; // no opportunity attack; it closes in, Slam 8
+    $out = run_command(hero('Board'), 'disengage');
+    check(says($out, 'You disengage') && !says($out, 'pull away') && hero('Board')['x'] === 6 && $dice_queue === [],
+        'disengage: move away with no opportunity attack');
+    $dice_queue = [5, 15]; // Dodging: its Slam takes the lower d20
+    check(says(run_command(hero('Board'), 'dodge'), 'misses you (8 vs AC 17, with Disadvantage)')
+        && $dice_queue === [], 'dodge: attacks on me have Disadvantage');
+
+    // Weapon masteries that move things: Slow (a Longbow) and Push (a Pike, which also has Reach: 10 ft).
+    $id = hero('Board')['id'];
+    q('INSERT INTO objects (item_id, user_id) VALUES (77, ?), (21, ?)', [$id, $id]); // Longbow, Pike
+    q('UPDATE users SET ' . END_FIGHT . ", x = 0, y = 2, advantage = FALSE WHERE name = 'Board'");
+    run_command(hero('Board'), 'equip longbow');
+    q('UPDATE spawns SET x = 6, y = 2, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [15, 1, 12, 4]; // Initiative; the arrow hits; at 20 ft a turn it can't reach me, so it runs
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, "Slow: the Training Dummy's Speed drops 10 ft") && says($out, 'runs at you')
+        && $dice_queue === [], 'Slow: 10 ft off its Speed until my next turn');
+    q('UPDATE users SET ' . END_FIGHT . ", x = 0, y = 2 WHERE name = 'Board'");
+    run_command(hero('Board'), 'equip pike');
+    q("UPDATE spawns SET x = 3, y = 2, placed_at = NOW(), conditions = '' WHERE id = 9901");
+    $dice_queue = [15, 1, 12, 5, 5]; // Initiative; I step to 10 ft and hit, pushing it 10 ft; it closes in, Slam 8
+    $out = run_command(hero('Board'), 'kill dummy');
+    $b = hero('Board');
+    check([$b['x'], $b['y']] === [1, 2] && says($out, 'You hit the Training Dummy (16 vs AC 10) for 7')
+        && says($out, 'pushed 10 ft') && says($out, 'The Training Dummy closes in.') && $at() === [2, 2]
+        && $dice_queue === [], 'a Reach weapon hits from 10 ft; Push shoves it 10 ft back');
+
+    // Grappled: held by another hero still fighting it, it can't move; my own hold ends when I step out of reach.
+    q('UPDATE users SET ' . END_FIGHT . ", x = 0, y = 2 WHERE name = 'Board'");
+    run_command(hero('Board'), 'equip longbow');
+    q('UPDATE spawns SET x = 6, y = 2, grappled_by = ? WHERE id = 9901', [hero('Testa')['id']]);
+    q("UPDATE users SET fighting = 9901 WHERE name = 'Testa'");
+    $dice_queue = [15, 1, 1]; // Initiative; my natural 1; held, it can't come at me
+    check(says(run_command(hero('Board'), 'kill dummy'), "The Training Dummy can't move.") && $at() === [6, 2]
+        && $dice_queue === [], "a grappled monster can't move");
+    q("UPDATE users SET fighting = NULL WHERE name = 'Testa'");
+    q('UPDATE users SET ' . END_FIGHT . ", x = 5, y = 2, fighting = 9901, foe_first = FALSE WHERE name = 'Board'");
+    q('UPDATE spawns SET grappled_by = ? WHERE id = 9901', [hero('Board')['id']]);
+    $dice_queue = [1]; // its opportunity attack, a 1
+    $out = run_command(hero('Board'), 'move a3');
+    check(says($out, 'You let go of the Training Dummy.')
+        && q('SELECT grappled_by FROM spawns WHERE id = 9901')->fetchColumn() === null,
+        'stepping out of reach lets go');
+    q("UPDATE monsters SET shot = 'Dagger', shot_hit = 4, shot_damage = '1d4+2', shot_type = 'piercing',
+        shot_range = 20, shot_long = 60 WHERE id = 9999");
+    q('UPDATE users SET ' . END_FIGHT . ", x = 0, y = 2 WHERE name = 'Board'");
+    q('UPDATE spawns SET x = 7, y = 2, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [15, 1, 1, 10]; // Initiative; my natural 1; it steps in 15 ft and throws: 14 misses
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'The Training Dummy steps in.')
+        && says($out, "The Training Dummy's Dagger misses you (14 vs AC 17)") && $at() === [4, 2] && $dice_queue === [], 'a monster that shoots walks up to its normal range first');
+    q('UPDATE monsters SET shot = NULL, shot_hit = NULL, shot_damage = NULL, shot_type = NULL, shot_range = NULL,
+        shot_long = NULL WHERE id = 9999');
+
+    // From hiding I creep up before the fight's first turn (here as far as my Pike's reach), with Advantage.
+    q('UPDATE users SET ' . END_FIGHT . ", x = 0, y = 2, stealth = 30 WHERE name = 'Board'");
+    run_command(hero('Board'), 'equip pike');
+    q('UPDATE spawns SET x = 7, y = 2, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [10, 5, 1, 1, 12, 3, 5, 5]; // Initiative 10 (Advantage) vs 1 (surprised); 12 (Advantage) hits; Slam 8
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'You creep up on the Training Dummy, unseen.') && hero('Board')['x'] === 5
+        && says($out, '(16 vs AC 10, with Advantage)') && $dice_queue === [], 'from hiding I close in before it acts');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+
+    // Speed: a Monk's Unarmored Movement (+10 ft at level 2, 5 more every 4 levels) and a Barbarian's Fast Movement
+    // (+10 ft from level 5).
+    check(with_stats(['level' => 2] + hero('Testf'))['speed'] === 40
+        && with_stats(['level' => 14] + hero('Testf'))['speed'] === 55
+        && with_stats(['level' => 5] + hero('Testc'))['speed'] === 40 && with_stats(hero('Board'))['speed'] === 30,
+        'Unarmored Movement (+25 ft by level 14) and Fast Movement');
+
+    // Spell ranges: a touch spell closes in first.
+    save_account('Mage', 'correct horse');
+    create('Mage', 'wizard');
+    q("UPDATE users SET room_id = 9, x = 0, y = 2 WHERE name = 'Mage'");
+    q('UPDATE spawns SET x = 6, y = 2, placed_at = NOW() WHERE id = 9901');
+    $dice_queue = [15, 1, 12, 4, 5]; // Initiative; I close 25 ft and touch it: 16 hits for 4; Slam 8 misses
+    $out = run_command(hero('Mage'), 'cast shocking dummy');
+    check(says($out, 'You close in on the Training Dummy.') && hero('Mage')['x'] === 5 && $dice_queue === [],
+        'a touch spell closes in first');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Mage'");
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

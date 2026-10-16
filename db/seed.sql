@@ -451,6 +451,20 @@ ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classe
     save = new.save, half = new.half, targets = new.targets, count = new.count, upcast_targets = new.upcast_targets,
     creature = new.creature, effect = new.effect, value = new.value, repeat_save = new.repeat_save,
     concentration = new.concentration, minutes = new.minutes, about = new.about;
+-- How near a foe must be for each spell cast at one, in feet: its range, 5 for Touch, the size of the cone, cube or line
+-- of a Self spell (p.107+). NULL for spells on heroes, and for smites, which ride a weapon.
+UPDATE spells s JOIN (SELECT 'Sacred Flame' AS name, 60 AS reach UNION ALL SELECT 'Guiding Bolt', 120
+    UNION ALL SELECT 'Hold Person', 60 UNION ALL SELECT 'Bane', 30 UNION ALL SELECT 'Command', 60
+    UNION ALL SELECT 'Inflict Wounds', 5 UNION ALL SELECT 'Blindness/Deafness', 120 UNION ALL SELECT 'Entangle', 90
+    UNION ALL SELECT 'Fire Bolt', 120 UNION ALL SELECT 'Ray of Frost', 60 UNION ALL SELECT 'Shocking Grasp', 5
+    UNION ALL SELECT 'Chill Touch', 5 UNION ALL SELECT 'Acid Splash', 60 UNION ALL SELECT 'Poison Spray', 30
+    UNION ALL SELECT 'Magic Missile', 120 UNION ALL SELECT 'Burning Hands', 15 UNION ALL SELECT 'Thunderwave', 15
+    UNION ALL SELECT 'Scorching Ray', 120 UNION ALL SELECT 'Shatter', 60 UNION ALL SELECT 'Web', 60
+    UNION ALL SELECT 'Mind Spike', 120 UNION ALL SELECT 'Fireball', 150 UNION ALL SELECT 'Lightning Bolt', 100
+    UNION ALL SELECT 'Vicious Mockery', 60 UNION ALL SELECT 'Starry Wisp', 60 UNION ALL SELECT 'Dissonant Whispers', 60
+    UNION ALL SELECT 'Faerie Fire', 60 UNION ALL SELECT 'Produce Flame', 60 UNION ALL SELECT 'Eldritch Blast', 120) r
+    ON r.name = s.name
+SET s.reach = r.reach;
 
 -- SRD 5.2.1 Weapons (p.90; ranges and ammunition left out), Armor (p.92) and Potion of Healing (p.99).
 -- Ids are fixed: the class kits (CLASSES in game.php) and the finds below use them. Every weapon has its mastery;
@@ -531,17 +545,19 @@ UPDATE items i JOIN (SELECT 'Dagger' AS name, 20 AS near, 60 AS far UNION ALL SE
     UNION ALL SELECT 'Longbow', 150, 600 UNION ALL SELECT 'Musket', 40, 120 UNION ALL SELECT 'Pistol', 30, 90) r
     ON r.name = i.name
 SET i.normal_range = r.near, i.long_range = r.far WHERE i.id < 100;
+UPDATE items SET reach = name IN ('Glaive', 'Halberd', 'Lance', 'Pike', 'Whip') WHERE id < 100; -- Reach: 10 ft
 -- The Curio Loft sells Uncommon magic items (p.206: 400 GP plus the item's own cost): a +1 Weapon (p.253) of every
 -- weapon the Smithy sells, at its id + 100, and a +1 Shield (p.243). Rare ones (+1 Armor, +2 Weapons) aren't sold.
 INSERT INTO items (id, name, slot, cost, dice, versatile, martial, finesse, light, mastery, two_handed, ac, armor,
-    damage_type, ranged, thrown, loading, normal_range, long_range, bonus, shop)
+    damage_type, ranged, thrown, loading, reach, normal_range, long_range, bonus, shop)
 SELECT * FROM (SELECT id + 100 AS id, CONCAT(name, ' +1') AS name, slot, cost + 400 AS cost, dice, versatile, martial,
     finesse, light, mastery, two_handed, ac + (slot = 'shield') AS ac, armor, damage_type, ranged, thrown, loading,
-    normal_range, long_range, slot = 'weapon' AS bonus, 11 AS shop FROM items WHERE id < 100 AND (shop = 8 OR id = 50)) AS m
+    reach, normal_range, long_range, slot = 'weapon' AS bonus, 11 AS shop FROM items WHERE id < 100 AND (shop = 8 OR id = 50)) AS m
 ON DUPLICATE KEY UPDATE name = m.name, slot = m.slot, cost = m.cost, dice = m.dice, versatile = m.versatile,
     martial = m.martial, finesse = m.finesse, light = m.light, mastery = m.mastery, two_handed = m.two_handed,
     ac = m.ac, armor = m.armor, damage_type = m.damage_type, ranged = m.ranged, thrown = m.thrown,
-    loading = m.loading, normal_range = m.normal_range, long_range = m.long_range, bonus = m.bonus, shop = m.shop;
+    loading = m.loading, reach = m.reach, normal_range = m.normal_range, long_range = m.long_range, bonus = m.bonus,
+    shop = m.shop;
 
 -- Finds around Greenest. INSERT IGNORE leaves them wherever they are (or whoever has them) on re-runs, but brings
 -- back the potion if it was drunk.

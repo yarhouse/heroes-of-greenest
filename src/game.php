@@ -47,7 +47,7 @@ const LOOT_GP_PER_CR = 50; // and the item costs at most this x the monster's CR
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
 const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
 /** The Weapon Mastery properties the game models (SRD 5.2.1 p.89); items list each weapon's own. */
-const MASTERIES = ['cleave', 'graze', 'nick', 'sap', 'topple', 'vex'];
+const MASTERIES = ['cleave', 'graze', 'nick', 'push', 'sap', 'slow', 'topple', 'vex'];
 /**
  * Ends my fight, and what lasts only for one: Rage, Innate Sorcery, saved Advantage, conditions, my turn. For UPDATE
  * users. I keep my square: it's where I stand in the room.
@@ -352,6 +352,10 @@ const COMMANDS = [
     'kill <monster>' => 'attack, closing in first if you need to; one round per command (or k)',
     'shoot <monster>' => 'throw or shoot your weapon from where you stand (kill does this with a bow)',
     'move <square>' => 'in a fight, move to a square of the board, like c3 (or tap it); the rest of your turn waits',
+    'kite <monster>' => 'attack, then back off as far as you can (next to it with a bow, back off first, then shoot)',
+    'dash [square]' => 'in a fight, run twice as far: away from your foe, or to a square; no attack',
+    'disengage [square]' => 'in a fight, move away (or to a square) without drawing opportunity attacks; no attack',
+    'dodge' => 'in a fight, attacks on you have Disadvantage until your next turn; no attack',
     'reckless <monster>' => 'Barbarian 2: attack with Advantage, but attacks on you get it too',
     'shove <monster>' => 'knock a foe Prone, in place of one attack: attacks on it get Advantage',
     'grapple <monster>' => 'hold a foe, in place of one attack: it has Disadvantage against other heroes',
@@ -567,6 +571,13 @@ function with_stats(array $me): array
         $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0) + $aura;
     }
     $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
+    // Unarmored Movement (Monk 2: +10 ft, 5 more every 4 levels) and Fast Movement (Barbarian 5, not in Heavy armor)
+    $me['speed'] += match (true) {
+        $class === 'monk' && $me['level'] >= 2 && !$me['armored'] && $me['shield_ac'] === 0
+            => 10 + 5 * intdiv($me['level'] - 2, 4),
+        $class === 'barbarian' && $me['level'] >= 5 && !$me['heavy'] => 10,
+        default => 0,
+    };
     if ($me['shape'] !== null) {
         $me = beast_form($me);
     }
@@ -642,6 +653,8 @@ function run_command(array $me, string $input): array
         $verb === 'k' || $verb === 'kill' => cmd_kill($me, trim($arg)),
         $verb === 'shoot' => cmd_shoot($me, trim($arg)),
         $verb === 'move' => cmd_step($me, trim($arg)),
+        $verb === 'kite' => cmd_kite($me, trim($arg)),
+        in_array($verb, ['dash', 'disengage', 'dodge'], true) => cmd_action($me, $verb, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
         $verb === 'breathe' => cmd_breathe($me, trim($arg)),
@@ -1314,10 +1327,109 @@ function cmd_shoot(array $me, string $target): array
     return fight($me, $target, 'hero_turn', 'Shoot what?', weapon_reach($me));
 }
 
-/** How near my foe my weapon attack needs me, in feet: its long range for a shot, else 5 (shortcut: no Reach yet). */
+/** How near my foe my weapon attack needs me, in feet: its long range for a shot, 10 with Reach, else 5. */
 function weapon_reach(array $me): int
 {
-    return $me['ranged'] ? $me['long_range'] ?? 5 : 5;
+    return $me['ranged'] ? $me['long_range'] ?? 5 : ($me['reach'] ? 10 : 5);
+}
+
+/** A Rogue's Cunning Action or a Monk's Step of the Wind, from level 2: a free Disengage whenever I move away. */
+function slips(array $me): bool
+{
+    return in_array($me['class'], ['rogue', 'monk'], true) && $me['level'] >= 2;
+}
+
+/**
+ * Kites: my attack, then I back off with what's left of my Speed (see back_off()). With a ranged attack and my foe
+ * next to me I back off first, so the shot has no Disadvantage.
+ */
+function cmd_kite(array $me, string $target): array
+{
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        $first = $me['ranged'] && !$me['far'];
+        if ($first) {
+            if (back_off($me, $foe, $me['speed'] - $me['moved'], $lines, slips($me))) {
+                return true;
+            }
+            $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
+            $me['far'] = $me['dist'] > 5;
+        }
+        return hero_turn($me, $foe, $lines)
+            || (!$first && back_off($me, $foe, $me['speed'] - $me['moved'], $lines, slips($me)));
+    }, 'Kite what?', weapon_reach($me));
+}
+
+/**
+ * My action is a Dash (twice my Speed this turn), a Disengage (no opportunity attacks this turn) or a Dodge (attacks
+ * on me have Disadvantage until my next turn). Dash and Disengage take me to square $to (like c3), or as far from my
+ * foe as they can.
+ */
+function cmd_action(array $me, string $how, string $to): array
+{
+    $sq = $to === '' ? null : board_square($me, $to);
+    if ($to !== '' && $sq === null) {
+        return ['Where to? Name a square on the board, like b3 (a1 is the top left).'];
+    }
+    return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($how, $sq): bool {
+        if ($how === 'dodge') {
+            $me['conditions'] = implode(',', array_filter([$me['conditions'], 'dodging']));
+            q('UPDATE users SET conditions = ? WHERE id = ?', [$me['conditions'], $me['id']]);
+            $lines[] = 'You Dodge: attacks on you have Disadvantage until your next turn.';
+            return false;
+        }
+        $feet = $me['speed'] * ($how === 'dash' ? 2 : 1) - $me['moved'];
+        $free = $how === 'disengage' || slips($me);
+        $verb = $how === 'dash' ? 'dash' : 'disengage and move';
+        if ($sq === null) {
+            return back_off($me, $foe, $feet, $lines, $free, $verb);
+        }
+        if (walk($me, $foe, $sq, $feet, $lines, 0, $free)) {
+            return true;
+        }
+        $lines[] = "You $verb to " . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
+            . " ft from the {$foe['name']}.";
+        return false;
+    }, "You aren't fighting anything.", PHP_INT_MAX);
+}
+
+/**
+ * I $how ('back off', 'dash'...) up to $feet to the square farthest from my foe, the nearest such to me, then the
+ * straightest, so along a wall I slide sideways. $free: no opportunity attack. Returns true if one ended the fight.
+ */
+function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free = false, string $how = 'back off'): bool
+{
+    [, , , $w, $h] = zone((int) $me['room_id']);
+    [$mine, $there] = [my_square($me), [$foe['x'], $foe['y']]];
+    $key = fn ($p) => [-feet($p, $there), feet($p, $mine), abs($p[0] - $mine[0]) + abs($p[1] - $mine[1])];
+    $best = $mine;
+    for ($x = 0; $x < $w; $x++) {
+        for ($y = 0; $y < $h; $y++) {
+            if (feet([$x, $y], $mine) <= $feet && [$x, $y] !== $there && $key([$x, $y]) < $key($best)) {
+                $best = [$x, $y];
+            }
+        }
+    }
+    if ($best === $mine) {
+        $lines[] = "You can't get any farther from the {$foe['name']}.";
+        return false;
+    }
+    if (walk($me, $foe, $best, $feet, $lines, 0, $free)) {
+        return true;
+    }
+    $lines[] = "You $how to " . square(my_square($me)) . ', ' . feet(my_square($me), $there)
+        . " ft from the {$foe['name']}.";
+    return false;
+}
+
+/** Square $to (like c3) of my room's board as [x, y], or null if it isn't one. */
+function board_square(array $me, string $to): ?array
+{
+    [, , , $w, $h] = zone((int) $me['room_id']);
+    if (!preg_match('/^([a-z])(\d{1,2})$/', strtolower($to), $m) || ord($m[1]) - 97 >= $w || $m[2] < 1
+        || $m[2] > $h) {
+        return null;
+    }
+    return [ord($m[1]) - 97, (int) $m[2] - 1];
 }
 
 /**
@@ -1334,8 +1446,15 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
     }
     $lines = [];
     if ($me['fighting'] === null) {
-        $how = hidden_from($me, $foe) ? ' from hiding!' : '!';
-        start_fight($me, $foe, $lines, "You attack the {$foe['name']}$how");
+        $unseen = hidden_from($me, $foe);
+        start_fight($me, $foe, $lines, "You attack the {$foe['name']}" . ($unseen ? ' from hiding!' : '!'));
+        if ($unseen && feet(my_square($me), [$foe['x'], $foe['y']]) > $reach) { // unnoticed, before the first turn
+            $me['moved'] = 0;
+            walk($me, $foe, [$foe['x'], $foe['y']], $me['speed'], $lines, $reach); // toward it: no opportunity attack
+            $me['moved'] = null;
+            q('UPDATE users SET moved = NULL WHERE id = ?', [$me['id']]);
+            $lines[] = "You creep up on the {$foe['name']}, unseen.";
+        }
     }
     $over = begin_turn($me, $foe, $lines);
     if (!$over) {
@@ -1369,7 +1488,7 @@ function begin_turn(array &$me, array &$foe, array &$lines): bool
     }
     start_turn($me);
     // shortcut: these end at the start of my turn, though another hero may have caused them
-    foreach (['sapped', 'stunned', 'reeling'] as $c) {
+    foreach (['sapped', 'stunned', 'reeling', 'slowed'] as $c) {
         if (has($foe, $c)) {
             set_condition($foe, $c, false);
         }
@@ -1427,6 +1546,11 @@ function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int 
         }
         $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
         [$at, $me['x'], $me['y'], $me['moved']] = [$next, $next[0], $next[1], $me['moved'] + 5];
+        if ($foe['grappled_by'] === $me['id'] && feet($at, $there) > 5) { // out of my reach, my hold breaks
+            $foe['grappled_by'] = null;
+            q('UPDATE spawns SET grappled_by = NULL WHERE id = ?', [$foe['id']]);
+            $lines[] = "You let go of the {$foe['name']}.";
+        }
         if ($leaving && !$free && !has($me, 'provoked')) {
             $lines[] = "The {$foe['name']} strikes as you pull away!";
             $me['conditions'] = implode(',', array_filter([$me['conditions'], 'provoked']));
@@ -1447,12 +1571,10 @@ function cmd_step(array $me, string $to): array
     if (!$foe) {
         return ["You're not in a fight. To walk elsewhere: north, south, east, west, up or down."];
     }
-    [, , , $w, $h] = zone((int) $me['room_id']);
-    if (!preg_match('/^([a-z])(\d{1,2})$/', strtolower($to), $m) || ord($m[1]) - 97 >= $w || $m[2] < 1
-        || $m[2] > $h) {
+    $sq = board_square($me, $to);
+    if ($sq === null) {
         return ['Move where? Name a square on the board, like b3 (a1 is the top left).'];
     }
-    $sq = [ord($m[1]) - 97, (int) $m[2] - 1];
     if ($sq === [$foe['x'], $foe['y']]) {
         return ["The {$foe['name']} is there."];
     }
@@ -1578,7 +1700,7 @@ function cmd_flee(array $me, string $dir = ''): array
         $dir = $exits[0];
     }
     $held = has($foe, 'paralyzed') || has($foe, 'stunned') || has($foe, 'incapacitated');
-    $free = (in_array($me['class'], ['rogue', 'monk'], true) && $me['level'] >= 2) || $held;
+    $free = slips($me) || $held;
     $near = feet(my_square($me), [$foe['x'], $foe['y']]) <= $foe['reach'];
     $jaunt = !$free && $near && $me['species'] === 'goliath' && $me['lineage'] === 'cloud' && spend_species($me);
     if ($jaunt) {
@@ -1605,8 +1727,9 @@ function cmd_flee(array $me, string $dir = ''): array
  * Strength attacks. A Rogue's Sneak Attack, once a turn with a Finesse or Ranged weapon, needs Advantage or another
  * hero on the same foe; Steady Aim gives them Advantage from level 3 (in a fight you never move). A Vex weapon's hit
  * gives Advantage on the next attack, and a Topple weapon's hit can knock it Prone (shortcut: MASTERIES are modeled for
- * any weapon you wield, not the few your class picks). A ranged attack has Disadvantage within 5 ft of my foe or past
- * its normal range; from afar ('far', set by fight()) only thrown or shot weapons attack.
+ * any weapon you wield, not the few your class picks); Slow takes 10 ft off its Speed, and Push shoves it 10 ft. A
+ * ranged attack has Disadvantage within 5 ft of my foe or past its normal range; from afar ('far', set by fight())
+ * only thrown, shot or Reach weapons attack.
  */
 function hero_turn(array &$me, array &$foe, array &$lines): bool
 {
@@ -1627,7 +1750,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     $cleaved = false;
     $savage = has_feat($me, 'savage') && $me['shape'] === null; // Savage Attacker, once a turn, with a weapon
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
-    foreach ($swings as $w) {
+    foreach ($swings as $i => $w) {
         $off = isset($w['off']);
         // Light: the extra attack takes my Bonus Action, unless its weapon's Nick makes it part of the Attack action.
         if ((($off && $w['mastery'] !== 'nick') || ($w['strike'] ?? '') === 'bonus') && !spend_bonus($me)) {
@@ -1741,8 +1864,38 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             $me['advantage'] = true;
             q('UPDATE users SET advantage = TRUE WHERE id = ?', [$me['id']]);
         }
+        if ($w['mastery'] === 'slow' && $dmg > 0 && !has($foe, 'slowed')) {
+            set_condition($foe, 'slowed');
+            $lines[] = "Slow: the {$foe['name']}'s Speed drops 10 ft until your next turn.";
+        }
+        // Push on my last attack of the turn, so it never carries the foe out of reach of my next one
+        if ($w['mastery'] === 'push' && $i === array_key_last($swings)
+            && array_search($foe['size'], SIZES, true) <= array_search('large', SIZES, true)) {
+            push($me, $foe, $lines);
+        }
     }
     return false;
+}
+
+/** Push: my foe goes up to 10 ft straight away from me, as far as the board allows. */
+function push(array $me, array &$foe, array &$lines): void
+{
+    [, , , $w, $h] = zone((int) $me['room_id']);
+    $mine = my_square($me);
+    $from = [$foe['x'], $foe['y']];
+    $at = $from;
+    for ($n = 0; $n < 2; $n++) {
+        $next = [$at[0] + ($at[0] <=> $mine[0]), $at[1] + ($at[1] <=> $mine[1])];
+        if ($next[0] < 0 || $next[0] >= $w || $next[1] < 0 || $next[1] >= $h) {
+            break;
+        }
+        $at = $next;
+    }
+    if ($at !== $from) {
+        [$foe['x'], $foe['y']] = $at;
+        q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$at[0], $at[1], $foe['id']]);
+        $lines[] = "Push: the {$foe['name']} is pushed " . feet($at, $from) . ' ft back.';
+    }
 }
 
 /**
@@ -2057,7 +2210,7 @@ function cmd_breathe(array $me, string $target): array
             $me['attacks']--;
         }
         return hero_turn($me, $foe, $lines);
-    }, 'Breathe on what?');
+    }, 'Breathe on what?', 15); // a 15-ft Cone
 }
 
 /**
@@ -2159,7 +2312,10 @@ function win(array &$me, array $foe, array &$lines): void
  */
 function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): bool
 {
-    $speed = $foe['speed'];
+    // Grappled by a hero still fighting it, it can't move; Slow takes 10 ft off.
+    $grappled = $foe['grappled_by'] !== null
+        && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
+    $speed = $grappled ? 0 : max(0, $foe['speed'] - (has($foe, 'slowed') ? 10 : 0));
     if ($n === null && has($foe, 'prone')) { // its turn starts (an opportunity attack is a Reaction, not a turn)
         set_condition($foe, 'prone', false);
         $lines[] = "The {$foe['name']} gets back up.";
@@ -2193,8 +2349,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         return end_of_turn($me, $foe, $lines);
     }
     // Held by another hero still fighting it, it has Disadvantage against me.
-    $held = $foe['grappled_by'] !== null && $foe['grappled_by'] !== $me['id']
-        && q('SELECT 1 FROM users WHERE id = ? AND fighting = ?', [$foe['grappled_by'], $foe['id']])->fetch();
+    $held = $grappled && $foe['grappled_by'] !== $me['id'];
     $deflect = $me['class'] === 'monk' && $me['level'] >= 3; // my Reaction, once a turn of theirs
     $cutting = $me['class'] === 'bard' && $me['level'] >= 3; // Cutting Words, my Reaction too
     $giant = $me['species'] === 'goliath' && in_array($me['lineage'], ['stone', 'storm'], true);
@@ -2302,23 +2457,30 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
 }
 
 /**
- * $foe's move on its turn, up to $speed feet: with a ranged attack and me not within 5 ft, it shoots from where it
- * stands, walking closer first if I'm past its long range; else it walks into reach. If that takes more than its
- * Speed it Dashes, as far again, and can't attack. Returns 'shoot', 'melee', or null when it Dashed.
+ * $foe's move on its turn, with $speed feet: with a ranged attack and me not within 5 ft, it walks up to its normal
+ * range and shoots (with Disadvantage if it can't get that close); else it walks into reach. If it can't get within
+ * its long range or reach this turn it Dashes, as far again, and can't attack. Returns 'shoot', 'melee', or null when
+ * it Dashed or couldn't move.
  */
 function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
 {
     $mine = my_square($me);
     $at = [$foe['x'], $foe['y']];
     $shoot = $foe['shot'] !== null && feet($at, $mine) > 5;
-    $need = $shoot ? $foe['shot_long'] : $foe['reach'];
+    [$want, $need] = $shoot ? [$foe['shot_range'], $foe['shot_long']] : [$foe['reach'], $foe['reach']];
+    if ($speed === 0 && feet($at, $mine) > $need) {
+        $lines[] = "The {$foe['name']} can't move.";
+        return null;
+    }
     $walked = 0;
-    while (feet($at, $mine) > $need && $walked < 2 * $speed) {
-        $next = toward((int) $me['room_id'], $at, $mine, $mine);
-        if ($next === $at) {
-            break;
+    foreach ([[$want, $speed], [$need, 2 * $speed]] as [$stop, $limit]) { // its move, then a Dash if need be
+        while (feet($at, $mine) > $stop && $walked < $limit) {
+            $next = toward((int) $me['room_id'], $at, $mine, $mine);
+            if ($next === $at) {
+                break;
+            }
+            [$at, $walked] = [$next, $walked + 5];
         }
-        [$at, $walked] = [$next, $walked + 5];
     }
     [$foe['x'], $foe['y']] = $at;
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$at[0], $at[1], $foe['id']]);
@@ -2327,7 +2489,7 @@ function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
         return null;
     }
     if ($walked > 0) {
-        $lines[] = "The {$foe['name']} closes in.";
+        $lines[] = "The {$foe['name']} " . ($shoot ? 'steps in' : 'closes in') . '.';
     }
     return $shoot ? 'shoot' : 'melee';
 }
@@ -2659,7 +2821,7 @@ function cmd_land(array $me, string $target): array
         $me['hp'] = $hp;
         q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
         return hurt_foe($me, $foe, $dmg, $lines);
-    }, "Land's Aid at what?", PHP_INT_MAX);
+    }, "Land's Aid at what?", 60);
 }
 
 /**
@@ -3180,9 +3342,7 @@ function cmd_cast(array $me, string $arg): array
         }
         return false;
     };
-    // shortcut: no spell ranges yet (task 4b); only a melee spell attack closes in
-    return fight($me, $target, $act, 'Cast it at what?', $spell['kind'] === 'attack' && !$spell['ranged'] ? 5
-        : PHP_INT_MAX);
+    return fight($me, $target, $act, 'Cast it at what?', $spell['reach'] ?? PHP_INT_MAX);
 }
 
 /**
@@ -3544,6 +3704,7 @@ function gear(array $me): array
     return [
         'ac' => $ac + ($worn['shield']['ac'] ?? 0),
         'armored' => $armor !== null,
+        'heavy' => $armor !== null && $armor['armor'] === 'heavy',
         // Disadvantage on Stealth (SRD 5.2.1 p.92): heavy armor, and Padded, Scale Mail and Half Plate (and their +1s)
         'noisy' => $armor !== null && ($armor['armor'] === 'heavy'
             || preg_match('/^(Padded Armor|Scale Mail|Half Plate Armor)\b/', $armor['name']) === 1),
@@ -3571,7 +3732,7 @@ function beast_form(array $me): array
         'damage_type' => $b['damage_type'], 'attacks' => $b['attacks'],
         'beast_extra' => $b['extra_damage'] === null ? null : [$b['extra_damage'], $b['extra_type']],
         'finesse' => false, 'str_based' => true, 'ranged' => false, 'thrown' => false, 'loading' => false,
-        'normal_range' => null, 'long_range' => null, 'speed' => $b['speed'],
+        'reach' => $b['reach'] > 5, 'normal_range' => null, 'long_range' => null, 'speed' => $b['speed'],
         'mastery' => null, 'monk' => false, 'offhand' => null, 'arts' => false,
         'str_save' => $b['str_save'], 'dex_save' => $b['dex_save'], 'con_save' => $b['con_save'],
     ] + $me;
@@ -3614,6 +3775,7 @@ function wielding(array $me, ?array $weapon, bool $one_hand, bool $arts = false)
         'ranged' => $ranged,
         'thrown' => $weapon !== null && $weapon['thrown'],
         'loading' => $weapon !== null && $weapon['loading'],
+        'reach' => $weapon !== null && $weapon['reach'],
         'normal_range' => $weapon['normal_range'] ?? null,
         'long_range' => $weapon['long_range'] ?? null,
         'mastery' => (CLASSES[$me['class']]['mastery'] ?? false) ? ($weapon['mastery'] ?? null) : null,
@@ -3648,7 +3810,8 @@ function describe(array $o): string
         'weapon' => "weapon, {$o['dice']}" . ($o['versatile'] ? " ({$o['versatile']} two-handed)" : '')
             . ($o['two_handed'] ? ', two-handed' : '') . ($o['finesse'] ? ', finesse' : '')
             . ($o['light'] ? ', light' : '') . (in_array($o['mastery'], MASTERIES, true) ? ", {$o['mastery']}" : '')
-            . ($o['ranged'] ? ', ranged' : '') . ($o['thrown'] ? ', thrown' : '') . ($o['loading'] ? ', loading' : '')
+            . ($o['reach'] ? ', reach' : '') . ($o['ranged'] ? ', ranged' : '') . ($o['thrown'] ? ', thrown' : '')
+            . ($o['loading'] ? ', loading' : '')
             . ($o['bonus'] ? ", +{$o['bonus']} to hit and damage" : ''),
         'armor' => "{$o['armor']} armor, AC {$o['ac']}"
             . ['light' => ' + Dex', 'medium' => ' + Dex (max 2)', 'heavy' => ''][$o['armor']],

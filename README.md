@@ -175,15 +175,20 @@ hand (`equip dagger offhand`) you get an extra attack each round, using your Bon
 has Nick; in a fight you get one Bonus Action a round (Rage, Second Wind, a potion, Healing Word or that attack).
 Weapon masteries: Cleave carries a hit on to a second monster in the room, Graze deals your modifier on a miss, Nick
 frees the off-hand attack, Sap gives the foe Disadvantage on its next attack, Topple can knock it Prone and Vex gives
-Advantage on your next attack (Push and Slow aren't modeled yet). Damage has SRD types, and Resistance, Immunity and
+Advantage on your next attack, Slow takes 10 ft off the foe's Speed until your next turn and Push shoves it 10 ft
+away (on your last attack of the turn). Damage has SRD types, and Resistance, Immunity and
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions of Healing and Uncommon +1 Weapons and Shield; AC and attacks come
 from what you wear, and you can wear only the armor your class is trained in. A fight puts you and your foe on the
 room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground), drawn in place of the map: you start
 by the exit you came in by, it across the room. `kill` closes in and attacks (a Dash, and no attack, if it's too far),
 `shoot` throws or shoots from where you stand, `move c3` (or a tap on the board) moves you and leaves your action for
-the next command, and `flee` runs for an exit. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
+the next command, and `flee` runs for an exit. `kite` attacks and then backs off as far from your foe as your Speed
+allows (with a bow and the foe next to you, backing off first), and `dash`, `disengage` and `dodge` are the SRD
+actions. Reach weapons attack from 10 ft, spells need their range (Touch means next to it), and from hiding you creep
+up before the first turn. A Monk's Unarmored Movement and a Barbarian's Fast Movement add to your Speed. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
 range, and stepping out of a foe's reach draws its opportunity attack. Monsters walk to you, or with a ranged attack
-in their stat block shoot until you're next to them; one you flee waits where it stood for 10 minutes. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
+in their stat block step up to its normal range and shoot until you're next to them; one held in a grapple can't move,
+and one you flee waits where it stood for 10 minutes. Aggressive monsters attack a hero they see come into their room (not one more than 5 levels above
 their CR). `sneak` makes a Stealth check each time you enter a room with monsters: 15 or more hides you from each one
 whose passive Perception is lower (heavy armor and some medium give Disadvantage), and attacking from hiding gives
 Advantage on Initiative and your first attack and surprises the monster (Disadvantage on its Initiative). A fight,

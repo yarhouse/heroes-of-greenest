@@ -83,7 +83,7 @@ CREATE TABLE spawns (
     dead_since DATETIME NULL,
     -- Prone ends at the start of its next turn, Sapped at its next attack roll or the start of my next turn, Stunned
     -- at the start of my next turn, and reeling (a Stunning Strike saved against) then or at the next attack on it.
-    conditions SET('prone', 'sapped', 'stunned', 'reeling') NOT NULL DEFAULT '',
+    conditions SET('prone', 'sapped', 'stunned', 'reeling', 'slowed') NOT NULL DEFAULT '',
     grappled_by INT UNSIGNED NULL, -- the hero holding it; it counts only while that hero still fights it
     -- Its square on the room's board (cmd_map()), set when a fight starts, and when it last moved: 10 minutes after,
     -- with nobody fighting it, it's back at a fresh spot.
@@ -132,6 +132,7 @@ CREATE TABLE items (
     ranged BOOLEAN NOT NULL DEFAULT FALSE, -- a Ranged weapon: Dex to hit, Disadvantage once a foe is next to you
     thrown BOOLEAN NOT NULL DEFAULT FALSE, -- can be thrown, so it can open a fight from afar
     loading BOOLEAN NOT NULL DEFAULT FALSE, -- one shot a turn, however many attacks you have
+    reach BOOLEAN NOT NULL DEFAULT FALSE, -- Reach: its melee attacks reach 10 ft, not 5
     normal_range SMALLINT UNSIGNED NULL, -- a ranged or thrown weapon's, in feet: Disadvantage beyond it
     long_range SMALLINT UNSIGNED NULL, -- and no attack beyond this
     bonus TINYINT UNSIGNED NOT NULL DEFAULT 0, -- a magic weapon's bonus to attack and damage rolls (+1 Weapon)
@@ -292,7 +293,8 @@ CREATE TABLE spells (
     repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
     concentration BOOLEAN NOT NULL DEFAULT FALSE,
     minutes SMALLINT UNSIGNED NULL, -- how long its effect lasts, and at least until the fight it was cast in ends
-    about VARCHAR(100) NOT NULL -- for the spell list
+    about VARCHAR(100) NOT NULL, -- for the spell list
+    reach SMALLINT UNSIGNED NULL -- how near a foe must be, in feet (5 for Touch); NULL for spells on heroes
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- A spell's lasting effect on a hero (user_id) or a monster (spawn_id). It lasts until `until`, and also while its

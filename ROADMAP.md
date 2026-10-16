@@ -32,14 +32,7 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-4. **Distance on a grid** (step 1), the rest: the board and movement shipped (task 4a, see Decided). Two parts, each
-   alone:
-   - **b. Kiting.** `kite` (attack, then back off to the square farthest from the nearest foe, so you slide along a
-     wall; next to a foe with a ranged weapon, back off first), `dash`, `disengage`, `dodge`. Slow, Push, standing
-     from Prone costs a hero half their Speed (monsters already pay it), a grappled creature can't move. Reach
-     weapons. Spell ranges and touch spells (`spells.range`); `breathe` and the like use their range rather than
-     closing in. Starting from hiding you move before Initiative. Unarmored Movement and Fast Movement (species Speed
-     is in).
+4. **Distance on a grid** (step 1), the rest: the board, movement and kiting shipped (tasks 4a and 4b, see Decided).
    - **c. Hirelings on the board.** Its own square, starting next to you. `order attack|guard|hold`
      (`users.hireling_order`): the guard and mastiff default to attack, the acolyte to guard (stays beside you). One
      with a ranged attack uses it when no enemy is next to it (the acolyte's Radiant Flame, the guard's thrown spear).
@@ -220,3 +213,16 @@ Any time: **approve account requests** (friends ask on the login page):
   fights under way. Shortcuts until 4b and 4c: a hireling fights only when its hero is next to the foe, spells other
   than melee spell attacks work from anywhere, and no monster ever steps out of a hero's reach, so heroes take no
   opportunity attacks yet.
+- 2026-10-16 **Kiting** (task 4b): `kite` attacks, then backs off with what's left of my Speed to the square farthest
+  from my foe (nearest me on a tie, then straightest, so along a wall I slide sideways); with a ranged attack and the
+  foe next to me I back off first. `dash` (twice my Speed) and `disengage` (no opportunity attacks) go as far from
+  the foe as they can, or to a square; `dodge` gives attacks on me Disadvantage until my next turn; Rogues and Monks
+  from level 2 move away free (`slips()`). Slow (a hit with damage: 10 ft off its Speed until the start of my next
+  turn, `spawns.conditions` 'slowed') and Push (10 ft straight away, Large or smaller, on my last attack of the turn
+  so it never wastes one) are modeled. Reach weapons attack from 10 ft (`items.reach`); spells have a reach
+  (`spells.reach`: range, 5 for Touch, the cone, cube or line of a Self spell; Breath Weapon 15, Land's Aid 60). From
+  hiding I creep up as far as my Speed before the first turn. Unarmored Movement (+10 ft at Monk 2, 5 more every 4
+  levels) and Fast Movement (Barbarian 5, not in Heavy armor). A monster grappled by a hero still fighting it can't
+  move, and my hold breaks when I step out of 5 ft. A monster with a ranged attack now walks up to its normal range
+  before it shoots. Left out: a hero standing up from Prone (nothing knocks heroes Prone yet), and a `shoot` button
+  (`actions()` sees no weapon stats).
