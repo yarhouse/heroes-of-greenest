@@ -2123,6 +2123,14 @@ try {
     check($shot !== false && $went !== false && $shot < $went && [hero('Board')['x'], hero('Board')['y']] === [0, 0]
         && $dice_queue === [], 'move, shoot, move: move a4, then kite a1');
     check(says(run_command(hero('Board'), 'kite z9'), 'Kite to where?'), 'kite needs a square on the board');
+    $it = q('SELECT x, y FROM spawns WHERE id = 9901')->fetch();
+    $dice_queue = [];
+    check(says(run_command(hero('Board'), 'kite ' . square([$it['x'], $it['y']])), 'The Training Dummy is there.')
+        && $dice_queue === [], "kite won't go to a square someone's on, and doesn't shoot");
+    q("UPDATE users SET moved = 30 WHERE name = 'Board'"); // my Speed is spent this turn
+    $out = run_command(hero('Board'), 'kite b1');
+    check(says($out, 'You stay at a1: no movement left this turn for b1') && hero('Board')['x'] === 0,
+        'kite says when it has no movement left to go to the square');
     q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
 
     // Speed: a Monk's Unarmored Movement (+10 ft at level 2, 5 more every 4 levels) and a Barbarian's Fast Movement

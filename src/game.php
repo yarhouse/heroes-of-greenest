@@ -1507,6 +1507,9 @@ function cmd_kite(array $me, string $arg): array
         if ($sq === null) {
             return ['Kite to where? Name a square on the board, like b3 (a1 is the top left).'];
         }
+        if ($me['fighting'] !== null && ($why = taken($me, $sq)) !== null) {
+            return [$why];
+        }
     }
     return fight($me, implode(' ', $words), function (array &$me, array &$foe, array &$lines) use ($sq): bool {
         $go = function () use (&$me, &$foe, &$lines, $sq): bool { // by reference: it moves me
@@ -1531,11 +1534,18 @@ function cmd_kite(array $me, string $arg): array
  */
 function go_to(array &$me, array &$foe, array $sq, int $feet, array &$lines, bool $free, string $how = 'move'): bool
 {
+    $from = my_square($me);
     if (walk($me, $foe, $sq, $feet, $lines, 0, $free)) {
         return true;
     }
-    $lines[] = "You $how to " . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
-        . " ft from the {$foe['name']}.";
+    [$at, $there] = [my_square($me), square($sq)];
+    $off = feet($at, [$foe['x'], $foe['y']]) . " ft from the {$foe['name']}.";
+    $lines[] = match (true) {
+        $at === $sq => "You $how to $there, $off",
+        $at === $from => 'You stay at ' . square($at) . ($feet <= 0 ? ": no movement left this turn for $there"
+            : ": you can't get to $there from here") . ", $off",
+        default => "You $how to " . square($at) . ', ' . feet($at, $sq) . " ft short of $there (out of movement), $off",
+    };
     return false;
 }
 
@@ -1549,6 +1559,9 @@ function cmd_action(array $me, string $how, string $to): array
     $sq = $to === '' ? null : board_square($me, $to);
     if ($to !== '' && $sq === null) {
         return ['Where to? Name a square on the board, like b3 (a1 is the top left).'];
+    }
+    if ($sq !== null && $me['fighting'] !== null && ($why = taken($me, $sq)) !== null) {
+        return [$why];
     }
     return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($how, $sq): bool {
         if ($how === 'dodge') {
@@ -2022,6 +2035,20 @@ function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int 
     return false;
 }
 
+/** Why I can't stand on square $sq of my fight's board (rock, a tree, someone there), or null if I can. */
+function taken(array $me, array $sq): ?string
+{
+    if (!open_square(board((int) $me['room_id']), $sq)) {
+        return square($sq) . ' is blocked: rock or a tree.';
+    }
+    foreach (fight_monsters($me) as $m) {
+        if ($sq === [$m['x'], $m['y']]) {
+            return "The {$m['name']} is there.";
+        }
+    }
+    return $sq === hire_square($me) || in_array($sq, crowd($me), true) ? 'Someone is there.' : null;
+}
+
 /** In a fight, walks me to square $to (like c3) with what's left of my Speed this turn; my action waits. */
 function cmd_step(array $me, string $to): array
 {
@@ -2033,16 +2060,8 @@ function cmd_step(array $me, string $to): array
     if ($sq === null) {
         return ['Move where? Name a square on the board, like b3 (a1 is the top left).'];
     }
-    if (!open_square(board((int) $me['room_id']), $sq)) {
-        return [square($sq) . ' is blocked: rock or a tree.'];
-    }
-    foreach (fight_monsters($me) as $m) {
-        if ($sq === [$m['x'], $m['y']]) {
-            return ["The {$m['name']} is there."];
-        }
-    }
-    if ($sq === hire_square($me) || in_array($sq, crowd($me), true)) {
-        return ['Someone is there.'];
+    if (($why = taken($me, $sq)) !== null) {
+        return [$why];
     }
     $lines = [];
     $room = (int) $me['room_id'];
