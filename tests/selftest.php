@@ -2099,6 +2099,91 @@ try {
         'a touch spell closes in first');
     q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Mage'");
 
+    // Hirelings on the board (task 4c). Board (Longbow +4, 1d8+2; AC 17) hires a Guard (AC 16, 11 HP, Spear +3 for
+    // 1d6+1, thrown 20/60 ft; Speed 30). It starts beside me, nearest my foe, and by default closes in and fights it.
+    $id = hero('Board')['id'];
+    $hire = fn ($monster, $hp) => q('UPDATE users SET hireling_monster_id = ?, hireling_hp = ?, hireling_order = NULL,
+        hireling_aid = FALSE, hired_until = NOW() + INTERVAL 1 DAY WHERE id = ?', [$monster, $hp, $id]);
+    $its = fn () => array_values(q('SELECT hireling_x, hireling_y FROM users WHERE id = ?', [$id])->fetch());
+    $hire(32, 11);
+    q('UPDATE users SET ' . END_FIGHT . ', x = 0, y = 2, hp = max_hp, advantage = FALSE, stealth = NULL WHERE id = ?',
+        [$id]);
+    q("UPDATE spawns SET x = 7, y = 2, placed_at = NOW(), conditions = '', grappled_by = NULL, hp = 60
+        WHERE id = 9901");
+    $dice_queue = [15, 1, 12, 4, 12, 3, 5]; // Initiative; my arrow hits; the Guard walks 25 ft and hits for 4; Slam 8
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'Your Guard closes in.') && says($out, "Your Guard's Spear hits the Training Dummy (15 vs AC 10)")
+        && says($out, "The Training Dummy's Slam misses your Guard (8 vs AC 16).") && $its() === [6, 2]
+        && $dice_queue === [], "it closes in and fights; held by it, the dummy can't reach me, so it fights the Guard");
+    check(cmd_map(with_stats(hero('Board')))[3][7] === 'G', 'the board shows it, upper-case');
+    check(says(run_command(hero('Board'), 'order guard'), 'Your Guard will stay by your side.')
+        && hero('Board')['hireling_order'] === 'guard', 'order: a stance, at no cost');
+    // It falls back beside me (the dummy's opportunity attack misses), throws its Spear from 30 ft (Disadvantage: two
+    // 1s), and the dummy comes at us both; a d2 of 1 picks me, and its Slam misses.
+    $dice_queue = [1, 5, 1, 1, 1, 5];
+    $out = run_command(hero('Board'), 'kill');
+    check(says($out, 'The Training Dummy strikes at your Guard as it pulls away!')
+        && says($out, 'Your Guard falls back beside you.') && $its() === [1, 2]
+        && says($out, "Your Guard's Spear misses the Training Dummy (natural 1, with Disadvantage).")
+        && says($out, 'Slam misses you') && $dice_queue === [], 'guard: by my side, throwing its Spear from there');
+    // Held fast elsewhere (grappled by Testa), the dummy can't come on; holding, the Guard stays put and throws.
+    run_command(hero('Board'), 'order hold');
+    q('UPDATE users SET fighting = 9901 WHERE id = ?', [hero('Testa')['id']]);
+    q('UPDATE spawns SET x = 7, y = 2, grappled_by = ? WHERE id = 9901', [hero('Testa')['id']]);
+    $dice_queue = [1, 1]; // its Spear: two 1s (Disadvantage past 20 ft)
+    $out = run_command(hero('Board'), 'dodge');
+    check($its() === [1, 2] && says($out, "can't move") && $dice_queue === [], 'hold: it stays where it is');
+    q('UPDATE users SET fighting = NULL WHERE id = ?', [hero('Testa')['id']]);
+    q('UPDATE spawns SET grappled_by = NULL, x = 6, y = 1 WHERE id = 9901');
+    q('UPDATE users SET hireling_x = 3, hireling_y = 1 WHERE id = ?', [$id]);
+    // From 15 ft its Spear hits for 4; then the dummy walks past it (its opportunity attack hits for 4) to me, Dodging.
+    $dice_queue = [12, 3, 12, 3, 5, 5];
+    $out = run_command(hero('Board'), 'dodge');
+    check(says($out, 'Your Guard strikes as the Training Dummy goes past!')
+        && says($out, 'misses you (8 vs AC 17, with ') && $dice_queue === [], 'it makes opportunity attacks too');
+
+    // A Mastiff (Bite +3 for 1d6+1, Speed 40) knocks a Medium or smaller foe Prone. Standing costs the dummy half its
+    // Speed (Slowed too: 10 ft), still enough to step next to me and stay beside the Mastiff; a d2 of 1 picks me.
+    $hire(68, 5);
+    q('UPDATE users SET ' . END_FIGHT . ', x = 0, y = 2 WHERE id = ?', [$id]);
+    q("UPDATE spawns SET x = 2, y = 2, placed_at = NOW(), conditions = '' WHERE id = 9901");
+    $dice_queue = [15, 1, 12, 4, 12, 3, 1, 5];
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, "Your Mastiff's Bite hits the Training Dummy (15 vs AC 10) for 4 damage.")
+        && says($out, 'The Training Dummy goes down, Prone.') && says($out, 'gets back up')
+        && says($out, 'Slam misses you') && $dice_queue === [], "a Mastiff's Bite knocks it Prone");
+
+    // A Priest Acolyte (Mace +4; Radiant Flame +4 for 2d6, 60 ft; AC 13, 11 HP) stays by me and casts. Once a long rest
+    // its Divine Aid heals me (Healing Word, 2d4 + 2) when I'm at half HP or less, or blesses or wards me on order.
+    $hire(36, 11);
+    q('UPDATE users SET ' . END_FIGHT . ', x = 0, y = 2, hp = 3 WHERE id = ?', [$id]);
+    q("UPDATE spawns SET x = 7, y = 2, placed_at = NOW(), conditions = '' WHERE id = 9901");
+    $dice_queue = [15, 1, 1, 2, 3, 12, 3, 3, 1, 5]; // my natural 1; Healing Word 2+3+2; Radiant Flame 6; d2 1; Slam 8
+    $out = run_command(hero('Board'), 'kill dummy');
+    check(says($out, 'Your Priest Acolyte casts Healing Word on you: +7 HP.') && hero('Board')['hp'] === 10
+        && says($out, "Your Priest Acolyte's Radiant Flame hits the Training Dummy (16 vs AC 10) for 6 damage.")
+        && $its() === [1, 2] && hero('Board')['hireling_aid'] === 1 && $dice_queue === [],
+        'the acolyte stays by me, heals me when I am hurt, and casts Radiant Flame');
+    check(says(run_command(hero('Board'), 'order bless'), 'used its Divine Aid'), 'Divine Aid: once a long rest');
+    q('UPDATE users SET hireling_aid = FALSE WHERE id = ?', [$id]);
+    check(says(run_command(hero('Board'), 'order bless'), 'Your Priest Acolyte blesses you')
+        && says(run_command(hero('Board'), 'score'), 'Bless'), 'order bless: Bless on me, a d4 on attacks and saves');
+    q('UPDATE users SET hireling_aid = FALSE WHERE id = ?', [$id]);
+    q("DELETE FROM effects WHERE user_id = ?", [$id]);
+    check(says(run_command(hero('Board'), 'order sanctuary'), 'Sanctuary'), 'order sanctuary');
+    // Its Mace misses; the dummy's d2 picks me, its Wis save fails against Sanctuary, so it turns on the acolyte.
+    $dice_queue = [1, 1, 5, 5];
+    $out = run_command(hero('Board'), 'dodge');
+    check(says($out, "can't bring itself to attack you (Sanctuary, Wis save 5 vs DC 12)")
+        && says($out, "Slam misses your Priest Acolyte") && $dice_queue === [], 'Sanctuary turns its attack aside');
+    $dice_queue = [1, 1, 1, 1, 5]; // my shot next to it (two 1s), the Mace a 1; a d2 of 1 picks me, Slam 8
+    check(says(run_command(hero('Board'), 'kill'), 'Your Sanctuary ends.') && $dice_queue === [],
+        'and it ends when I attack');
+    check(says(run_command(hero('Board'), 'order heal'), 'used its Divine Aid'), 'still once a long rest');
+    q('UPDATE users SET ' . END_FIGHT . ', hireling_monster_id = NULL, hireling_hp = NULL, hired_until = NULL
+        WHERE id = ?', [$id]);
+    check(says(run_command(hero('Board'), 'order attack'), 'You have no hireling.'), 'order needs a hireling');
+
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
     foreach ([1, 2, 3, 202642, 202701] as $seed) {

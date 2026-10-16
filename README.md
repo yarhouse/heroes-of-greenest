@@ -198,7 +198,12 @@ speaking or dying ends sneaking. Rest with
 room: the town square, the Swaying Lantern or the temple. The hero sheet counts down the time left, an open page finishes the rest
 by itself, and a fight that leaves you at half HP or less ends with where to rest. At
 the Lantern you can `hire` a guard, a mastiff or an acolyte (the SRD's Guard, Mastiff and Priest Acolyte) for 2 gold a
-day: it follows you, attacks your foe after you, takes some of its attacks, and heals when you rest. The shops off
+day: it follows you and fights from its own square on the board, after you. `order attack` (the guard's and
+mastiff's way) sends it at your foe, `order guard` (the acolyte's) keeps it by you, `order hold` keeps it put; a foe
+next to it fights it unless it can reach you without leaving it, and both sides take opportunity attacks. The guard
+throws its spear and the acolyte casts Radiant Flame from afar, the mastiff's bite knocks a foe Prone, and once a long
+rest the acolyte's Divine Aid heals you at half HP or less, or blesses or wards you (`order heal`, `bless`,
+`sanctuary`). It heals when you rest. The shops off
 Market Lane `list`, `buy` and `sell` (at half price): weapons at the Smithy, armor and shields at the Armorer,
 potions at the Apothecary and +1 items in the Curio Loft above it (SRD prices; magic items 400 GP plus the item). At
 the temple of Chauntea, east of the Mill Bridge, `pray cure`, `heal` or `aid` buys a priest's spell at the SRD's

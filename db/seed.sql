@@ -444,7 +444,11 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
     'foe', 1, 0, NULL, NULL, NULL, FALSE, FALSE, NULL, 'spell attack, 1d10 Force; more beams at 5, 11 and 17'),
 (45, 'Hex', 1, 'warlock', 'bonus', 'buff', FALSE, NULL, NULL, 'necrotic', NULL, FALSE,
     'self', 1, 0, NULL, 'damage', '1d6', FALSE, TRUE, 60,
-    'your attack hits on your foe deal an extra 1d6 Necrotic; a Bonus Action')
+    'your attack hits on your foe deal an extra 1d6 Necrotic; a Bonus Action'),
+-- The acolyte hireling's Divine Aid (see divine_aid()), no class's spell: a foe makes a Wis save to attack the hero.
+(46, 'Sanctuary', 1, '', 'bonus', 'buff', FALSE, NULL, NULL, NULL, 'wis', FALSE,
+    'ally', 1, 0, NULL, 'condition', 'sanctuary', FALSE, FALSE, 1,
+    'a foe makes a Wis save to attack you, until you attack or cast a spell')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

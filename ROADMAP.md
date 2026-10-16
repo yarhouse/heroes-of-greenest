@@ -32,13 +32,6 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-4. **Distance on a grid** (step 1), the rest: the board, movement and kiting shipped (tasks 4a and 4b, see Decided).
-   - **c. Hirelings on the board.** Its own square, starting next to you. `order attack|guard|hold`
-     (`users.hireling_order`): the guard and mastiff default to attack, the acolyte to guard (stays beside you). One
-     with a ranged attack uses it when no enemy is next to it (the acolyte's Radiant Flame, the guard's thrown spear).
-     A monster next to it fights it unless it can reach you without leaving its reach; it makes opportunity attacks.
-     The acolyte's Divine Aid, once a long rest: Healing Word on its own when you drop to half HP, or
-     `order heal|bless|sanctuary`. The mastiff's Bite knocks a Medium or smaller foe Prone.
 5. **Fog of war and a bigger map.** A per-hero visited-rooms table, written on each move. A room's shape shows once
    you've been next to it, its contents only while you're in it. With that, the map can grow past `MAP_REACH` 2 to the
    explored part of the zone, centred on `@` and scrolling in the sidebar, like the reference maps in
@@ -228,3 +221,14 @@ Any time: **approve account requests** (friends ask on the login page):
   (`actions()` sees no weapon stats). Then `kite <monster> [square]`: a square goes there instead of backing off, so
   `move c3` then `kite e5` is move, shoot, move in one turn (Aaron's ask; an attack still ends the turn, so a fight
   never waits on an `end`).
+- 2026-10-16 **Hirelings on the board** (task 4c, which finishes task 4): a hireling starts each fight beside me,
+  nearest the foe (`users.hireling_x`, `y`), and acts after me by its stance, `order attack|guard|hold`
+  (`hireling_order`; the guard and mastiff attack, the acolyte guards): it closes in, comes back beside me, or stays
+  put, then attacks in melee within 5 ft, else with its ranged attack (the guard's thrown Spear, the acolyte's Radiant
+  Flame). A monster next to it fights it unless it can reach me while staying beside it; if both of us are in its
+  reach a d2 picks, as before. Both sides take opportunity attacks: my foe's Reaction is shared between me and the
+  hireling (`provoked`), and the hireling strikes a foe that walks out of its reach. The Mastiff's Bite knocks a
+  Medium or smaller foe Prone. The acolyte's Divine Aid, once a long rest (`hireling_aid`): Healing Word (2d4 + 2) on
+  its own turn when I'm at half HP or less, or `order heal|bless|sanctuary` at any time. Bless is the spell's effect
+  on me without Concentration; Sanctuary (a spells row with no class) makes a foe pass a Wis save (DC 12) to attack me,
+  else it turns on the hireling beside it, and ends when I attack or cast. No new hireling kinds yet (backlog).

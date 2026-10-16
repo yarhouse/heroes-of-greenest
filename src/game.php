@@ -391,6 +391,8 @@ const COMMANDS = [
     'hire <guard|mastiff|acolyte>' => 'at the Swaying Lantern, 2 gold a day: it fights beside you (hire again for '
         . 'more days)',
     'dismiss' => 'send your hireling away',
+    'order <stance|aid>' => 'your hireling: attack (close in and fight), guard (stay by you) or hold (stay put); an '
+        . 'acolyte heals, blesses or wards you (heal, bless, sanctuary) once a long rest',
     'list' => 'in a shop or the temple: what you can buy',
     'buy <item>' => 'in a shop off Market Lane: buy something',
     'sell <item>' => 'in a shop: sell something for half its price',
@@ -601,17 +603,23 @@ function with_stats(array $me): array
 
 /**
  * My hireling while its paid time lasts: its monsters row with its 'hp' now, 'max_hp' (the stat block's average, so
- * it isn't rolled) and 'mins' left; null if I have none.
+ * it isn't rolled), 'mins' left, its square in a fight ('x', 'y'), its 'stance' (see cmd_order()) and whether its
+ * Divine Aid is spent ('aid'); null if I have none.
  */
 function hireling(array $me): ?array
 {
     $h = q(
         // The hireling's columns come last, so its hp wins over the template's (the HP dice).
-        'SELECT m.*, m.hp AS dice, u.hireling_hp AS hp, TIMESTAMPDIFF(MINUTE, NOW(), u.hired_until) AS mins
+        'SELECT m.*, m.hp AS dice, u.hireling_hp AS hp, TIMESTAMPDIFF(MINUTE, NOW(), u.hired_until) AS mins,
+         u.hireling_x AS x, u.hireling_y AS y, u.hireling_order AS stance, u.hireling_aid AS aid
          FROM users u JOIN monsters m ON m.id = u.hireling_monster_id WHERE u.id = ? AND u.hired_until > NOW()',
         [$me['id']]
     )->fetch();
-    return $h ? ['max_hp' => average($h['dice'])] + $h : null;
+    if (!$h) {
+        return null;
+    }
+    $h['stance'] ??= $h['id'] === HIRELINGS['acolyte'] ? 'guard' : 'attack'; // a caster stays back
+    return ['max_hp' => average($h['dice'])] + $h;
 }
 
 /** The average of dice like '2d8+2' (11), rounded down, as a stat block gives it. */
@@ -684,6 +692,7 @@ function run_command(array $me, string $input): array
         $verb === 'drink' => cmd_drink($me, trim($arg)),
         $verb === 'hire' => cmd_hire($me, trim($arg)),
         $verb === 'dismiss' => cmd_dismiss($me),
+        $verb === 'order' => cmd_order($me, trim($arg)),
         $verb === 'list' => cmd_list($me),
         $verb === 'buy' => cmd_buy($me, trim($arg)),
         $verb === 'sell' => cmd_sell($me, trim($arg)),
@@ -1409,7 +1418,7 @@ function cmd_action(array $me, string $how, string $to): array
         $verb = $how === 'dash' ? 'dash' : 'disengage and move';
         return $sq === null ? back_off($me, $foe, $feet, $lines, $free, $verb)
             : go_to($me, $foe, $sq, $feet, $lines, $free, $verb);
-    }, "You aren't fighting anything.", PHP_INT_MAX);
+    }, "You aren't fighting anything.", PHP_INT_MAX, false);
 }
 
 /**
@@ -1424,7 +1433,8 @@ function back_off(array &$me, array &$foe, int $feet, array &$lines, bool $free 
     $best = $mine;
     for ($x = 0; $x < $w; $x++) {
         for ($y = 0; $y < $h; $y++) {
-            if (feet([$x, $y], $mine) <= $feet && [$x, $y] !== $there && $key([$x, $y]) < $key($best)) {
+            if (feet([$x, $y], $mine) <= $feet && !in_array([$x, $y], [$there, hire_square($me)], true)
+                && $key([$x, $y]) < $key($best)) {
                 $best = [$x, $y];
             }
         }
@@ -1456,10 +1466,17 @@ function board_square(array $me, string $to): ?array
  * One round against $target (or the monster I'm fighting), starting the fight if need be, with $act as my action:
  * a function (array &$me, array &$foe, array &$lines): bool that returns true if the monster died. First I close in
  * until it's within $reach feet (5 for a melee attack, my weapon's long range for a shot, PHP_INT_MAX for anything
- * that works from where I stand); if what's left of my Speed can't get me there, I Dash, and that's my action.
+ * that works from where I stand); if what's left of my Speed can't get me there, I Dash, and that's my action. A
+ * $hostile action (an attack or a spell) ends my Sanctuary.
  */
-function fight(array $me, string $target, callable $act, string $what = 'Kill what?', int $reach = 5): array
-{
+function fight(
+    array $me,
+    string $target,
+    callable $act,
+    string $what = 'Kill what?',
+    int $reach = 5,
+    bool $hostile = true
+): array {
     $foe = find_foe($me, $target);
     if (!$foe) {
         return [$target === '' || $me['fighting'] !== null ? $what : "You don't see a $target here."];
@@ -1481,11 +1498,12 @@ function fight(array $me, string $target, callable $act, string $what = 'Kill wh
         if (close_in($me, $foe, $reach, $lines)) {
             $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
             $me['far'] = $me['dist'] > 5; // nothing within 5 ft of me: no melee, and no Disadvantage on a shot
+            if ($hostile) {
+                unward($me, $lines);
+            }
             $over = $act($me, $foe, $lines);
         }
-        // shortcut: until it has a square of its own (task 4c), my hireling fights only beside me
-        $beside = feet(my_square($me), [$foe['x'], $foe['y']]) <= 5;
-        $over = $over || ($me['hireling'] !== null && $beside && hireling_turn($me, $foe, $lines));
+        $over = $over || ($me['hireling'] !== null && hireling_turn($me, $foe, $lines));
         $over = $over || end_turn($me, $foe, $lines);
     }
     if (!$over) {
@@ -1560,7 +1578,7 @@ function walk(array &$me, array &$foe, array $to, int $feet, array &$lines, int 
     $at = my_square($me);
     $there = [$foe['x'], $foe['y']];
     for ($left = $feet; $left >= 5 && $at !== $to && feet($at, $there) > $stop; $left -= 5) {
-        $next = toward((int) $me['room_id'], $at, $to, $there);
+        $next = toward((int) $me['room_id'], $at, $to, array_filter([$there, hire_square($me)]));
         if ($next === $at) {
             break;
         }
@@ -1595,8 +1613,8 @@ function cmd_step(array $me, string $to): array
     if ($sq === null) {
         return ['Move where? Name a square on the board, like b3 (a1 is the top left).'];
     }
-    if ($sq === [$foe['x'], $foe['y']]) {
-        return ["The {$foe['name']} is there."];
+    if ($sq === [$foe['x'], $foe['y']] || $sq === hire_square($me)) {
+        return [$sq === hire_square($me) ? "Your {$me['hireling']['name']} is there." : "The {$foe['name']} is there."];
     }
     $lines = [];
     if (begin_turn($me, $foe, $lines)) {
@@ -1653,6 +1671,11 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
     }
     [$me['x'], $me['y']] = $spot;
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$foe['x'], $foe['y'], $foe['id']]);
+    if ($me['hireling'] !== null) { // my hireling starts beside me, nearest the foe
+        $there = beside((int) $me['room_id'], $spot, [$foe['x'], $foe['y']], [[$foe['x'], $foe['y']]]);
+        [$me['hireling']['x'], $me['hireling']['y']] = $there;
+        q('UPDATE users SET hireling_x = ?, hireling_y = ? WHERE id = ?', [$there[0], $there[1], $me['id']]);
+    }
     q(
         'UPDATE users SET fighting = ?, foe_first = ?, advantage = ?, sneaking = FALSE, stealth = NULL, resting = NULL,
          rest_until = NULL, x = ?, y = ? WHERE id = ?',
@@ -2356,17 +2379,35 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         return end_of_turn($me, $foe, $lines);
     }
     $how = $n === null ? advance($me, $foe, $speed, $lines) : 'melee';
-    if ($how === null) { // it Dashed
-        return end_of_turn($me, $foe, $lines);
+    if ($how === 'dead' || $how === null) { // my hireling's opportunity attack killed it, or it Dashed
+        return $how === 'dead' || end_of_turn($me, $foe, $lines);
     }
     $shot = $how === 'shoot';
     $a = $shot ? ['attack' => $foe['shot'], 'to_hit' => $foe['shot_hit'], 'damage' => $foe['shot_damage'],
         'damage_type' => $foe['shot_type'], 'extra_damage' => null, 'extra_type' => null] : $foe;
     $long = $shot && feet([$foe['x'], $foe['y']], my_square($me)) > $foe['shot_range']; // Disadvantage
-    // With my hireling beside me, its turn in melee goes at one of us (an opportunity attack is always at me).
-    if ($n === null && !$shot && $me['hireling'] !== null && roll('1d2') === 2) {
+    // In melee it fights my hireling if that's all it can reach, or on a d2 if it can reach us both (an opportunity
+    // attack is always at me).
+    $hire = hire_square($me);
+    $by_hire = $hire !== null && feet([$foe['x'], $foe['y']], $hire) <= 5;
+    if ($n === null && !$shot && ($how === 'hireling'
+        || ($by_hire && feet([$foe['x'], $foe['y']], my_square($me)) <= $foe['reach'] && roll('1d2') === 2))) {
         hit_hireling($me, $foe, $lines);
         return end_of_turn($me, $foe, $lines);
+    }
+    // Sanctuary (an acolyte's Divine Aid): a Wis save to attack me, or it turns on my hireling beside it, if any.
+    $ward = array_values(array_filter($me['effects'], fn ($e) => $e['effect'] === 'condition'
+        && $e['value'] === 'sanctuary'))[0] ?? null;
+    if ($ward !== null) {
+        [$save, $saved] = save($foe, 'wis', (int) $ward['dc']);
+        if (!$saved) {
+            $lines[] = "The {$foe['name']} can't bring itself to attack you (Sanctuary, Wis save "
+                . vs($save, (int) $ward['dc']) . ').';
+            if ($n === null && $by_hire && !$shot) {
+                hit_hireling($me, $foe, $lines);
+            }
+            return $n === null && end_of_turn($me, $foe, $lines);
+        }
     }
     // Held by another hero still fighting it, it has Disadvantage against me.
     $held = $grappled && $foe['grappled_by'] !== $me['id'];
@@ -2477,32 +2518,65 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
 }
 
 /**
- * $foe's move on its turn, with $speed feet: with a ranged attack and me not within 5 ft, it walks up to its normal
- * range and shoots (with Disadvantage if it can't get that close); else it walks into reach. If it can't get within
- * its long range or reach this turn it Dashes, as far again, and can't attack. Returns 'shoot', 'melee', or null when
- * it Dashed or couldn't move.
+ * $foe's move on its turn, with $speed feet. With a ranged attack and nobody within 5 ft of it, it walks up to its
+ * normal range and shoots me (with Disadvantage if it can't get that close). Else it goes for me in melee, unless my
+ * hireling is next to it and it can't reach me without leaving the hireling's reach: then it fights the hireling. If
+ * it can't get within its long range or reach this turn it Dashes, as far again, and can't attack. Stepping out of my
+ * hireling's reach draws its opportunity attack. Returns 'shoot', 'melee', 'hireling', null when it Dashed or
+ * couldn't move, or 'dead' when that attack killed it.
  */
 function advance(array &$me, array &$foe, int $speed, array &$lines): ?string
 {
-    $mine = my_square($me);
+    $room = (int) $me['room_id'];
+    [$mine, $hire] = [my_square($me), hire_square($me)];
     $at = [$foe['x'], $foe['y']];
-    $shoot = $foe['shot'] !== null && feet($at, $mine) > 5;
+    $held = $hire !== null && feet($at, $hire) <= 5;
+    $shoot = $foe['shot'] !== null && feet($at, $mine) > 5 && !$held;
     [$want, $need] = $shoot ? [$foe['shot_range'], $foe['shot_long']] : [$foe['reach'], $foe['reach']];
+    if ($held && feet($at, $mine) > $need) {
+        // A square in its move that reaches me and stays beside the hireling, else it fights the hireling.
+        $spots = [];
+        for ($x = 0; $x < zone($room)[3]; $x++) {
+            for ($y = 0; $y < zone($room)[4]; $y++) {
+                $p = [$x, $y];
+                if (feet($p, $at) <= $speed && feet($p, $mine) <= $need && feet($p, $hire) <= 5
+                    && !in_array($p, [$mine, $hire], true)) {
+                    $spots[] = $p;
+                }
+            }
+        }
+        usort($spots, fn ($a, $b) => feet($a, $at) <=> feet($b, $at));
+        if ($spots === []) {
+            return 'hireling';
+        }
+        [$foe['x'], $foe['y']] = $spots[0];
+        q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [...$spots[0], $foe['id']]);
+        $lines[] = "The {$foe['name']} closes in.";
+        return 'melee';
+    }
     if ($speed === 0 && feet($at, $mine) > $need) {
         $lines[] = "The {$foe['name']} can't move.";
         return null;
     }
     $walked = 0;
+    $reacted = false; // my hireling's Reaction
     foreach ([[$want, $speed], [$need, 2 * $speed]] as [$stop, $limit]) { // its move, then a Dash if need be
         while (feet($at, $mine) > $stop && $walked < $limit) {
-            $next = toward((int) $me['room_id'], $at, $mine, $mine);
+            $next = toward($room, $at, $mine, array_filter([$mine, $hire]));
             if ($next === $at) {
                 break;
             }
-            [$at, $walked] = [$next, $walked + 5];
+            $passing = $hire !== null && !$reacted && feet($at, $hire) <= 5 && feet($next, $hire) > 5;
+            [$at, $walked, $foe['x'], $foe['y']] = [$next, $walked + 5, $next[0], $next[1]];
+            if ($passing) {
+                $reacted = true;
+                $lines[] = "Your {$me['hireling']['name']} strikes as the {$foe['name']} goes past!";
+                if (hireling_attacks($me, $foe, $lines, 1)) {
+                    return 'dead';
+                }
+            }
         }
     }
-    [$foe['x'], $foe['y']] = $at;
     q('UPDATE spawns SET x = ?, y = ?, placed_at = NOW() WHERE id = ?', [$at[0], $at[1], $foe['id']]);
     if (feet($at, $mine) > $need || $walked > $speed) {
         $lines[] = "The {$foe['name']} runs at you.";
@@ -3252,7 +3326,9 @@ function cmd_cast(array $me, string $arg): array
             return [BONUS_USED];
         }
         if ($spell['casting'] === 'bonus' || $me['fighting'] === null) { // a Bonus Action costs no turn
-            return [$cast($me)];
+            $lines = [];
+            unward($me, $lines);
+            return [...$lines, $cast($me)];
         }
         return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($cast): bool {
             $lines[] = $cast($me);
@@ -3552,7 +3628,7 @@ function finish_rest(array &$me): array
             . ($me['slots'] ? ' and spell slots back, and you may change your prepared spells' : ' back') . '.';
         // shortcut: a Wild Shape lasts until now, not half my level in hours
         q("UPDATE users SET may_prepare = TRUE, once_used = FALSE, feature_spent = 0, temp_hp = 0, shape = NULL,
-           species_spent = 0, origin_spent = '' WHERE id = ?", [$me['id']]);
+           species_spent = 0, origin_spent = '', hireling_aid = FALSE WHERE id = ?", [$me['id']]);
     } else {
         $spent = 0;
         while ($me['hp'] < $me['max_hp'] && $me['hit_dice_spent'] < $me['level']) {
@@ -4128,7 +4204,8 @@ function cmd_hire(array $me, string $kind): array
     }
     $m = q('SELECT name, hp FROM monsters WHERE id = ?', [$id])->fetch();
     q(
-        'UPDATE users SET hireling_monster_id = ?, hireling_hp = ?, hired_until = NOW() + INTERVAL 1 DAY WHERE id = ?',
+        'UPDATE users SET hireling_monster_id = ?, hireling_hp = ?, hired_until = NOW() + INTERVAL 1 DAY,
+         hireling_x = NULL, hireling_y = NULL, hireling_order = NULL, hireling_aid = FALSE WHERE id = ?',
         [$id, average($m['hp']), $me['id']]
     );
     return [a_an($m['name']) . ' takes your ' . HIRE_GP . " gold and will fight beside you for a day. 'dismiss' sends "
@@ -4153,44 +4230,182 @@ function dismiss(array &$me): void
 }
 
 /**
- * My hireling attacks my foe after my action, as Luminari's charmies auto-assist. Returns true if it killed it; the
- * kill (XP, gold) is mine. shortcut: no Advantage or Disadvantage from conditions, and no traits.
+ * My hireling's turn, after my action, by its stance (see cmd_order()): on 'attack' it closes in on my foe, on 'guard'
+ * it comes back beside me, on 'hold' it stays put; stepping out of my foe's reach draws its opportunity attack (once
+ * a round, my foe's Reaction). Then it attacks: in melee if my foe is within 5 ft, else with its ranged attack if it
+ * has one in range (Disadvantage past normal range). An acolyte first spends its Divine Aid on Healing Word if I'm at
+ * half HP or less. Returns true if it killed my foe; the kill (XP, gold) is mine.
  */
 function hireling_turn(array &$me, array &$foe, array &$lines): bool
 {
     $h = $me['hireling'];
-    for ($i = 0; $i < $h['attacks']; $i++) {
-        $d20 = roll('1d20');
-        $total = $d20 + $h['to_hit'];
-        $its = "Your {$h['name']}'s {$h['attack']}";
+    if ($h['id'] === HIRELINGS['acolyte'] && !$h['aid'] && $me['hp'] <= intdiv($me['max_hp'], 2)) {
+        divine_aid($me, 'heal', $lines);
+    }
+    $room = (int) $me['room_id'];
+    [$mine, $there] = [my_square($me), [$foe['x'], $foe['y']]];
+    $at = hire_square($me) ?? beside($room, $mine, $there, [$there]); // a fight from before it had a square
+    [$to, $how] = match (true) {
+        $h['stance'] === 'attack' && feet($at, $there) > 5 => [$there, 'closes in'],
+        $h['stance'] === 'guard' && feet($at, $mine) > 5
+            => [beside($room, $mine, $there, [$there]), 'falls back beside you'],
+        default => [$at, ''],
+    };
+    for ($walked = 0; $at !== $to && feet($at, $there) > ($how === 'closes in' ? 5 : 0) && $walked < $h['speed'];
+        $walked += 5) {
+        $next = toward($room, $at, $to, [$there, $mine]);
+        if ($next === $at) {
+            break;
+        }
+        $leaving = feet($at, $there) <= $foe['reach'] && feet($next, $there) > $foe['reach'];
+        $at = $next;
+        if ($leaving && !has($me, 'provoked')) {
+            $lines[] = "The {$foe['name']} strikes at your {$h['name']} as it pulls away!";
+            $me['conditions'] = implode(',', array_filter([$me['conditions'], 'provoked']));
+            q('UPDATE users SET conditions = ? WHERE id = ?', [$me['conditions'], $me['id']]);
+            hit_hireling($me, $foe, $lines, 1);
+            if ($me['hireling'] === null) {
+                return false;
+            }
+        }
+    }
+    [$me['hireling']['x'], $me['hireling']['y']] = $at;
+    q('UPDATE users SET hireling_x = ?, hireling_y = ? WHERE id = ?', [$at[0], $at[1], $me['id']]);
+    if ($walked > 0) {
+        $lines[] = "Your {$h['name']} $how.";
+    }
+    return hireling_attacks($me, $foe, $lines);
+}
+
+/**
+ * My hireling's attacks on my foe: $n of them (an opportunity attack), else its Multiattack; in melee from within 5 ft,
+ * else its ranged attack if it has one and my foe is in range. A Mastiff's Bite knocks a Medium or smaller foe Prone.
+ * Returns true if it killed my foe. shortcut: no Advantage or Disadvantage from conditions, and no other traits.
+ */
+function hireling_attacks(array &$me, array &$foe, array &$lines, ?int $n = null): bool
+{
+    $h = $me['hireling'];
+    $d = feet(hire_square($me), [$foe['x'], $foe['y']]);
+    $shot = $d > 5 && $n === null;
+    if ($shot && ($h['shot'] === null || $d > $h['shot_long'])) {
+        return false;
+    }
+    [$attack, $to_hit, $damage, $type, $extra] = $shot
+        ? [$h['shot'], $h['shot_hit'], $h['shot_damage'], $h['shot_type'], null]
+        : [$h['attack'], $h['to_hit'], $h['damage'], $h['damage_type'], $h['extra_damage']];
+    $edge = $shot && $d > $h['shot_range'] ? -1 : 0;
+    for ($i = 0; $i < ($n ?? $h['attacks']); $i++) {
+        $d20 = d20($edge);
+        $total = $d20 + $to_hit;
+        $its = "Your {$h['name']}'s $attack";
         if ($d20 === 1 || ($d20 < 20 && $total < $foe['ac'])) {
             $lines[] = "$its misses the {$foe['name']} (" . ($d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}")
-                . ').';
+                . with($edge) . ').';
             continue;
         }
-        [$dmg, $note] = typed(max(0, roll($h['damage'], $d20 === 20)), $h['damage_type'], $foe);
-        if ($h['extra_damage'] !== null) {
-            [$extra, $extra_note] = typed(roll($h['extra_damage'], $d20 === 20), $h['extra_type'], $foe);
-            $dmg += $extra;
-            $note = implode('', array_unique([$note, $extra_note]));
+        [$dmg, $note] = typed(max(0, roll($damage, $d20 === 20)), $type, $foe);
+        if ($extra !== null) {
+            [$more, $more_note] = typed(roll($extra, $d20 === 20), $h['extra_type'], $foe);
+            $dmg += $more;
+            $note = implode('', array_unique([$note, $more_note]));
         }
-        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits the {$foe['name']} ($total vs AC {$foe['ac']}) "
-            . "for $dmg damage$note.";
+        $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits the {$foe['name']} ($total vs AC {$foe['ac']}"
+            . with($edge) . ") for $dmg damage$note.";
         if (hurt_foe($me, $foe, $dmg, $lines)) {
             return true;
+        }
+        if ($h['id'] === HIRELINGS['mastiff'] && !has($foe, 'prone')
+            && array_search($foe['size'], SIZES, true) <= array_search('medium', SIZES, true)) {
+            set_condition($foe, 'prone');
+            $lines[] = "The {$foe['name']} goes down, Prone.";
         }
     }
     return false;
 }
 
 /**
- * $foe's turn goes at my hireling instead of me. At 0 HP the hireling is gone. shortcut: plain d20s, no Advantage or
- * Disadvantage from conditions on either side, and the whole turn picks one target.
+ * An acolyte hireling's Divine Aid (the SRD Priest Acolyte's, once a long rest), cast on me: 'heal' is Healing Word
+ * (2d4 + its Wis +2), 'bless' Bless (a d4 on my attack rolls and saves for a minute; shortcut: it holds no
+ * Concentration), 'sanctuary' Sanctuary (a foe makes a Wis save against its DC 12 to attack me, for a minute or until I
+ * attack or cast a spell).
  */
-function hit_hireling(array &$me, array $foe, array &$lines): void
+function divine_aid(array &$me, string $what, array &$lines): void
+{
+    $name = $me['hireling']['name'];
+    q('UPDATE users SET hireling_aid = TRUE WHERE id = ?', [$me['id']]);
+    $me['hireling']['aid'] = true;
+    if ($what === 'heal') {
+        $hp = min($me['max_hp'], $me['hp'] + roll('2d4') + 2);
+        $lines[] = "Your $name casts Healing Word on you: +" . ($hp - $me['hp']) . ' HP.';
+        $me['hp'] = $hp;
+        q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $me['id']]);
+        return;
+    }
+    [$spell, $effect, $value, $line] = $what === 'bless'
+        ? ['Bless', 'd20', '1d4', "Your $name blesses you: a d4 on your attack rolls and saves for a minute."]
+        : ['Sanctuary', 'condition', 'sanctuary', "Your $name wards you with Sanctuary: for a minute, a foe must make "
+            . 'a Wis save (DC 12) to attack you, until you attack or cast a spell.'];
+    q(
+        "INSERT INTO effects (user_id, caster_id, spell_id, effect, value, save, dc, concentration, until)
+         VALUES (?, ?, (SELECT id FROM spells WHERE name = ?), ?, ?, 'wis', 12, FALSE, NOW() + INTERVAL 1 MINUTE)",
+        [$me['id'], $me['id'], $spell, $effect, $value]
+    );
+    $me['effects'] = effects_on('user_id', (int) $me['id']);
+    $lines[] = $line;
+}
+
+/** My Sanctuary ends, if I have one: I attacked or cast a spell. */
+function unward(array &$me, array &$lines): void
+{
+    if (!has($me, 'sanctuary')) {
+        return;
+    }
+    q("DELETE FROM effects WHERE user_id = ? AND effect = 'condition' AND value = 'sanctuary'", [$me['id']]);
+    $me['effects'] = effects_on('user_id', (int) $me['id']);
+    $lines[] = 'Your Sanctuary ends.';
+}
+
+/**
+ * Orders my hireling, at no cost: a stance ('attack': it closes in and fights my foe; 'guard': it stays beside me;
+ * 'hold': it stays where it is), or an acolyte's Divine Aid now ('heal', 'bless', 'sanctuary', see divine_aid()).
+ */
+function cmd_order(array $me, string $what): array
 {
     $h = $me['hireling'];
-    for ($i = 0; $i < $foe['attacks'] && $h['hp'] > 0; $i++) {
+    $what = strtolower($what);
+    if ($h === null) {
+        return ['You have no hireling.'];
+    }
+    $stances = ['attack' => 'will close in and fight your foe', 'guard' => 'will stay by your side',
+        'hold' => 'will hold its ground'];
+    if (isset($stances[$what])) {
+        q('UPDATE users SET hireling_order = ? WHERE id = ?', [$what, $me['id']]);
+        return ["Your {$h['name']} {$stances[$what]}."];
+    }
+    if (!in_array($what, ['heal', 'bless', 'sanctuary'], true)) {
+        return ['Order what? attack, guard or hold' . ($h['id'] === HIRELINGS['acolyte'] ? '; heal, bless or sanctuary'
+            : '') . '.'];
+    }
+    if ($h['id'] !== HIRELINGS['acolyte']) {
+        return ["Only an acolyte has Divine Aid, and your {$h['name']} isn't one."];
+    }
+    if ($h['aid']) {
+        return ["Your {$h['name']} has used its Divine Aid until your next long rest."];
+    }
+    $lines = [];
+    divine_aid($me, $what, $lines);
+    return $lines;
+}
+
+/**
+ * $foe's turn goes at my hireling instead of me ($n attacks, else its Multiattack). At 0 HP the hireling is gone.
+ * shortcut: plain d20s, no Advantage or Disadvantage from conditions on either side, and the whole turn picks one
+ * target.
+ */
+function hit_hireling(array &$me, array $foe, array &$lines, ?int $n = null): void
+{
+    $h = $me['hireling'];
+    for ($i = 0; $i < ($n ?? $foe['attacks']) && $h['hp'] > 0; $i++) {
         $d20 = roll('1d20');
         $total = $d20 + $foe['to_hit'];
         $its = "The {$foe['name']}'s {$foe['attack']}";
@@ -4385,21 +4600,44 @@ function my_square(array $me): array
 }
 
 /**
- * The next square from $from toward $to: of the eight neighbours on room $room's board, other than $blocked, the one
- * nearest $to (on a tie, the one straightest toward it). $from itself if none is nearer.
+ * The next square from $from toward $to: of the eight neighbours on room $room's board, not among the $blocked squares,
+ * the one nearest $to (on a tie, the one straightest toward it). $from itself if none is nearer.
  */
 function toward(int $room, array $from, array $to, array $blocked): array
 {
-    [, , , $w, $h] = zone($room);
-    $key = fn ($p) => [feet($p, $to), abs($p[0] - $to[0]) + abs($p[1] - $to[1])];
     $best = $from;
-    foreach (STEPS as [$dx, $dy]) {
-        $p = [$from[0] + $dx, $from[1] + $dy];
-        if ($p[0] >= 0 && $p[0] < $w && $p[1] >= 0 && $p[1] < $h && $p !== $blocked && $key($p) < $key($best)) {
-            $best = $p;
-        }
+    $key = fn ($p) => [feet($p, $to), abs($p[0] - $to[0]) + abs($p[1] - $to[1])];
+    foreach (neighbours($room, $from, $blocked) as $p) {
+        $best = $key($p) < $key($best) ? $p : $best;
     }
     return $best;
+}
+
+/** The squares next to $at on room $room's board, other than the $blocked ones. */
+function neighbours(int $room, array $at, array $blocked): array
+{
+    [, , , $w, $h] = zone($room);
+    $all = array_map(fn ($d) => [$at[0] + $d[0], $at[1] + $d[1]], STEPS);
+    return array_values(array_filter($all, fn ($p) => $p[0] >= 0 && $p[0] < $w && $p[1] >= 0 && $p[1] < $h
+        && !in_array($p, $blocked, true)));
+}
+
+/** The square next to $at nearest $near (straightest on a tie), not a $blocked one; $at if there's none. */
+function beside(int $room, array $at, array $near, array $blocked): array
+{
+    $key = fn ($p) => [feet($p, $near), abs($p[0] - $near[0]) + abs($p[1] - $near[1])];
+    $best = null;
+    foreach (neighbours($room, $at, $blocked) as $p) {
+        $best = $best === null || $key($p) < $key($best) ? $p : $best;
+    }
+    return $best ?? $at;
+}
+
+/** My hireling's square in this fight, or null if I have none (or it has none yet). */
+function hire_square(array $me): ?array
+{
+    $h = $me['hireling'] ?? null;
+    return $h === null || $h['x'] === null ? null : [$h['x'], $h['y']];
 }
 
 /**
@@ -4428,9 +4666,12 @@ function board_map(array $me): array
     }
     $mine = my_square($me);
     $grid[$foe['y'] + 1][$foe['x'] + 1] = strtolower($foe['name'][0]);
+    if (($hire = hire_square($me)) !== null) {
+        $grid[$hire[1] + 1][$hire[0] + 1] = strtoupper($me['hireling']['name'][0]);
+    }
     $grid[$mine[1] + 1][$mine[0] + 1] = '@';
     return [...$grid, "{$foe['name']}: " . feet($mine, [$foe['x'], $foe['y']]) . " ft away, {$foe['hp']} HP.",
-        '@ you  a-z foe  tap: move, attack, flee'];
+        '@ you  a-z foe  A-Z ally  tap: move, attack, flee'];
 }
 
 /**

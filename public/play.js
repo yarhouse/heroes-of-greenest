@@ -153,7 +153,7 @@ function drawHero(h, map, board = false) {
 
 /**
  * cmd_map() in game.php: glyph => [CSS class, what to show]. `#` is a wall (see MAP_WALLS); any other glyph is a
- * monster's initial. A space is solid rock.
+ * monster's initial, or upper-case a hireling's. A space is solid rock.
  * @type {Record<string, [string, string]>}
  */
 const MAP_CELLS = { ' ': ['rock', '⋰'], '.': ['f', '∙'], ':': ['s', '∙'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'] };
@@ -182,10 +182,10 @@ function drawMap(box, lines, board = false) {
             const ch = line[x] ?? ' ';
             const [cls, show] = ch === '#'
                 ? ['w', MAP_WALLS[wall(y - 1, x) | wall(y, x + 1) << 1 | wall(y + 1, x) << 2 | wall(y, x - 1) << 3]]
-                : MAP_CELLS[ch] ?? ['foe', ch];
+                : MAP_CELLS[ch] ?? [/[A-Z]/.test(ch) ? 'ally' : 'foe', ch]; // a hireling by its initial, upper-case
             const cell = el('span', cls, show);
             const inside = x > 0 && x < right && y > 0 && y < bottom;
-            const cmd = !board || ch === '#' || ch === '@' ? '' : inside
+            const cmd = !board || ch === '#' || ch === '@' || cls === 'ally' ? '' : inside
                 ? (cls === 'foe' ? 'kill' : `move ${String.fromCharCode(96 + x)}${y}`)
                 : `flee ${y === 0 ? 'north' : y === bottom ? 'south' : x === 0 ? 'west' : 'east'}`;
             if (cmd) cell.dataset.cmd = cmd;

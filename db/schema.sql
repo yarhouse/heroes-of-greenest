@@ -211,6 +211,10 @@ CREATE TABLE users (
     hireling_monster_id INT UNSIGNED NULL,
     hireling_hp SMALLINT NULL,
     hired_until DATETIME NULL,
+    hireling_x TINYINT UNSIGNED NULL, -- its square on the board in a fight, beside me when one starts
+    hireling_y TINYINT UNSIGNED NULL,
+    hireling_order ENUM('attack', 'guard', 'hold') NULL, -- its stance; NULL is its kind's (the acolyte guards)
+    hireling_aid BOOLEAN NOT NULL DEFAULT FALSE, -- an acolyte's Divine Aid is spent until my next long rest
     FOREIGN KEY (room_id) REFERENCES rooms (id),
     FOREIGN KEY (hireling_monster_id) REFERENCES monsters (id),
     FOREIGN KEY (fighting) REFERENCES spawns (id) ON DELETE SET NULL
