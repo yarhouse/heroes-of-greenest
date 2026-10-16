@@ -2048,7 +2048,8 @@ try {
     $dice_queue = [15, 1, 1, 10]; // Initiative; my natural 1; it steps in 15 ft and throws: 14 misses
     $out = run_command(hero('Board'), 'kill dummy');
     check(says($out, 'The Training Dummy steps in.')
-        && says($out, "The Training Dummy's Dagger misses you (14 vs AC 17)") && $at() === [4, 2] && $dice_queue === [], 'a monster that shoots walks up to its normal range first');
+        && says($out, "The Training Dummy's Dagger misses you (14 vs AC 17)") && $at() === [4, 2]
+        && $dice_queue === [], 'a monster that shoots walks up to its normal range first');
     q('UPDATE monsters SET shot = NULL, shot_hit = NULL, shot_damage = NULL, shot_type = NULL, shot_range = NULL,
         shot_long = NULL WHERE id = 9999');
 
@@ -2060,6 +2061,24 @@ try {
     $out = run_command(hero('Board'), 'kill dummy');
     check(says($out, 'You creep up on the Training Dummy, unseen.') && hero('Board')['x'] === 5
         && says($out, '(16 vs AC 10, with Advantage)') && $dice_queue === [], 'from hiding I close in before it acts');
+    q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
+
+    // kite <square>: shoot, then go where I say. With a move first, that's move, shoot, move in one turn.
+    run_command(hero('Board'), 'equip longbow');
+    q("UPDATE users SET x = 0, y = 2, advantage = FALSE, stealth = NULL WHERE name = 'Board'");
+    q("UPDATE spawns SET x = 7, y = 2, placed_at = NOW(), conditions = '' WHERE id = 9901");
+    $dice_queue = [15, 1, 12, 4]; // Initiative; the arrow hits (Slow); I go to a6; slowed, it can only run at me
+    $out = run_command(hero('Board'), 'kite dummy a6');
+    check(says($out, 'You hit the Training Dummy') && says($out, 'You move to a6') && hero('Board')['y'] === 5
+        && says($out, 'runs at you') && $dice_queue === [], 'kite <monster> <square>: shoot, then move there');
+    $dice_queue = [1, 12, 4, 5]; // a4 draws its opportunity attack (a 1); from there the arrow hits; to a1; Slam 8
+    run_command(hero('Board'), 'move a4');
+    $out = run_command(hero('Board'), 'kite a1');
+    $shot = array_search(true, array_map(fn ($l) => str_contains($l, 'You hit'), $out), true);
+    $went = array_search(true, array_map(fn ($l) => str_contains($l, 'You move to a1'), $out), true);
+    check($shot !== false && $went !== false && $shot < $went && [hero('Board')['x'], hero('Board')['y']] === [0, 0]
+        && $dice_queue === [], 'move, shoot, move: move a4, then kite a1');
+    check(says(run_command(hero('Board'), 'kite z9'), 'Kite to where?'), 'kite needs a square on the board');
     q('UPDATE users SET ' . END_FIGHT . " WHERE name = 'Board'");
 
     // Speed: a Monk's Unarmored Movement (+10 ft at level 2, 5 more every 4 levels) and a Barbarian's Fast Movement

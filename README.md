@@ -183,7 +183,8 @@ room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground),
 by the exit you came in by, it across the room. `kill` closes in and attacks (a Dash, and no attack, if it's too far),
 `shoot` throws or shoots from where you stand, `move c3` (or a tap on the board) moves you and leaves your action for
 the next command, and `flee` runs for an exit. `kite` attacks and then backs off as far from your foe as your Speed
-allows (with a bow and the foe next to you, backing off first), and `dash`, `disengage` and `dodge` are the SRD
+allows, or to a square you name (`kite e5`; with a bow and the foe next to you, it moves first), so `move c3` then
+`kite e5` is move, shoot, move, and `dash`, `disengage` and `dodge` are the SRD
 actions. Reach weapons attack from 10 ft, spells need their range (Touch means next to it), and from hiding you creep
 up before the first turn. A Monk's Unarmored Movement and a Barbarian's Fast Movement add to your Speed. Ranged attacks have Disadvantage within 5 ft of your foe or past normal
 range, and stepping out of a foe's reach draws its opportunity attack. Monsters walk to you, or with a ranged attack

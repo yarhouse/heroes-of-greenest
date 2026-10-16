@@ -225,4 +225,6 @@ Any time: **approve account requests** (friends ask on the login page):
   levels) and Fast Movement (Barbarian 5, not in Heavy armor). A monster grappled by a hero still fighting it can't
   move, and my hold breaks when I step out of 5 ft. A monster with a ranged attack now walks up to its normal range
   before it shoots. Left out: a hero standing up from Prone (nothing knocks heroes Prone yet), and a `shoot` button
-  (`actions()` sees no weapon stats).
+  (`actions()` sees no weapon stats). Then `kite <monster> [square]`: a square goes there instead of backing off, so
+  `move c3` then `kite e5` is move, shoot, move in one turn (Aaron's ask; an attack still ends the turn, so a fight
+  never waits on an `end`).

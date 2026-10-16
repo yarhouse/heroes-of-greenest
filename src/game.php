@@ -352,7 +352,8 @@ const COMMANDS = [
     'kill <monster>' => 'attack, closing in first if you need to; one round per command (or k)',
     'shoot <monster>' => 'throw or shoot your weapon from where you stand (kill does this with a bow)',
     'move <square>' => 'in a fight, move to a square of the board, like c3 (or tap it); the rest of your turn waits',
-    'kite <monster>' => 'attack, then back off as far as you can (next to it with a bow, back off first, then shoot)',
+    'kite <monster> [square]' => 'attack, then back off as far as you can, or to the square (next to it with a bow, '
+        . 'move first, then shoot)',
     'dash [square]' => 'in a fight, run twice as far: away from your foe, or to a square; no attack',
     'disengage [square]' => 'in a fight, move away (or to a square) without drawing opportunity attacks; no attack',
     'dodge' => 'in a fight, attacks on you have Disadvantage until your next turn; no attack',
@@ -1340,23 +1341,49 @@ function slips(array $me): bool
 }
 
 /**
- * Kites: my attack, then I back off with what's left of my Speed (see back_off()). With a ranged attack and my foe
- * next to me I back off first, so the shot has no Disadvantage.
+ * Kites: my attack, then with what's left of my Speed I go to the square that $arg ends with (like e5), or back off
+ * (see back_off()). With a ranged attack and my foe next to me I move first, so the shot has no Disadvantage.
  */
-function cmd_kite(array $me, string $target): array
+function cmd_kite(array $me, string $arg): array
 {
-    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+    $words = preg_split('/\s+/', $arg);
+    $sq = null;
+    if (preg_match('/^[a-z]\d{1,2}$/i', end($words))) {
+        $sq = board_square($me, array_pop($words));
+        if ($sq === null) {
+            return ['Kite to where? Name a square on the board, like b3 (a1 is the top left).'];
+        }
+    }
+    return fight($me, implode(' ', $words), function (array &$me, array &$foe, array &$lines) use ($sq): bool {
+        $go = function () use (&$me, &$foe, &$lines, $sq): bool { // by reference: it moves me
+            $feet = $me['speed'] - $me['moved'];
+            return $sq === null ? back_off($me, $foe, $feet, $lines, slips($me))
+                : go_to($me, $foe, $sq, $feet, $lines, slips($me));
+        };
         $first = $me['ranged'] && !$me['far'];
         if ($first) {
-            if (back_off($me, $foe, $me['speed'] - $me['moved'], $lines, slips($me))) {
+            if ($go()) {
                 return true;
             }
             $me['dist'] = feet(my_square($me), [$foe['x'], $foe['y']]);
             $me['far'] = $me['dist'] > 5;
         }
-        return hero_turn($me, $foe, $lines)
-            || (!$first && back_off($me, $foe, $me['speed'] - $me['moved'], $lines, slips($me)));
+        return hero_turn($me, $foe, $lines) || (!$first && $go());
     }, 'Kite what?', weapon_reach($me));
+}
+
+/**
+ * I $how ('move', 'dash'...) toward square $sq, up to $feet; $free: no opportunity attack. Returns true if one ended
+ * the fight.
+ */
+function go_to(array &$me, array &$foe, array $sq, int $feet, array &$lines, bool $free, string $how = 'move'): bool
+{
+    if (walk($me, $foe, $sq, $feet, $lines, 0, $free)) {
+        return true;
+    }
+    $lines[] = "You $how to " . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
+        . " ft from the {$foe['name']}.";
+    return false;
 }
 
 /**
@@ -1380,15 +1407,8 @@ function cmd_action(array $me, string $how, string $to): array
         $feet = $me['speed'] * ($how === 'dash' ? 2 : 1) - $me['moved'];
         $free = $how === 'disengage' || slips($me);
         $verb = $how === 'dash' ? 'dash' : 'disengage and move';
-        if ($sq === null) {
-            return back_off($me, $foe, $feet, $lines, $free, $verb);
-        }
-        if (walk($me, $foe, $sq, $feet, $lines, 0, $free)) {
-            return true;
-        }
-        $lines[] = "You $verb to " . square(my_square($me)) . ', ' . feet(my_square($me), [$foe['x'], $foe['y']])
-            . " ft from the {$foe['name']}.";
-        return false;
+        return $sq === null ? back_off($me, $foe, $feet, $lines, $free, $verb)
+            : go_to($me, $foe, $sq, $feet, $lines, $free, $verb);
     }, "You aren't fighting anything.", PHP_INT_MAX);
 }
 
