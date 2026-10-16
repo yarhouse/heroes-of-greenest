@@ -1,7 +1,7 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
 -- Dropping migrations tells bin/migrate.php this database matches this file, so it marks every migration done.
-DROP TABLE IF EXISTS migrations, bulletins, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
+DROP TABLE IF EXISTS migrations, visited, bulletins, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
     monsters, exits, rooms;
 
 CREATE TABLE rooms (
@@ -325,6 +325,14 @@ CREATE TABLE effects (
     FOREIGN KEY (spawn_id) REFERENCES spawns (id) ON DELETE CASCADE,
     FOREIGN KEY (caster_id) REFERENCES users (id) ON DELETE CASCADE,
     FOREIGN KEY (spell_id) REFERENCES spells (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Rooms each hero has walked into, for the map's fog of war (cmd_map()). No key to rooms: the Delve's are rebuilt.
+CREATE TABLE visited (
+    user_id INT UNSIGNED NOT NULL,
+    room_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (user_id, room_id),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Accounts asked for on account.php, waiting for the DM: bin/requests.php lists, approves and denies them.

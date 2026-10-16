@@ -178,7 +178,9 @@ frees the off-hand attack, Sap gives the foe Disadvantage on its next attack, To
 Advantage on your next attack, Slow takes 10 ft off the foe's Speed until your next turn and Push shoves it 10 ft
 away (on your last attack of the turn). Damage has SRD types, and Resistance, Immunity and
 Vulnerability apply both ways. Gear is the SRD's weapons, armor, Shield, Potions of Healing and Uncommon +1 Weapons and Shield; AC and attacks come
-from what you wear, and you can wear only the armor your class is trained in. A fight puts you and your foe on the
+from what you wear, and you can wear only the armor your class is trained in. The map (in the sidebar, and `map`) is the area you're in, as far as you've
+explored it: rooms you've walked into, the outlines of the rooms next to them, and the whole of Greenest; it scrolls
+to keep you in view. A fight puts you and your foe on the
 room's board of 5-ft squares (8x6 in town, 16x10 in the Woods, 6x5 underground), drawn in place of the map: you start
 by the exit you came in by, it across the room. `kill` closes in and attacks (a Dash, and no attack, if it's too far),
 `shoot` throws or shoots from where you stand, `move c3` (or a tap on the board) moves you and leaves your action for

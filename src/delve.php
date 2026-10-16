@@ -243,6 +243,7 @@ function delve_build(int $seed): void
     q('DELETE FROM events WHERE room_id BETWEEN ? AND ?', $range);
     q('DELETE FROM objects WHERE room_id BETWEEN ? AND ?', $range);
     q('DELETE FROM spawns WHERE room_id BETWEEN ? AND ?', $range);
+    q('DELETE FROM visited WHERE room_id BETWEEN ? AND ?', $range);
     q('DELETE FROM exits WHERE room_id BETWEEN ? AND ? OR (room_id = ? AND dir = ?)', [...$range, DELVE_STAIR, 'down']);
     q('DELETE FROM rooms WHERE id BETWEEN ? AND ?', $range);
 

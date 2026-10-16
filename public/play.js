@@ -56,7 +56,7 @@ async function send(cmd, quiet = false) {
         const at = map.length ? lines.findIndex((_, i) => lines.slice(i, i + map.length).join('\n') === drawn) : -1;
         for (const line of at < 0 ? lines : lines.slice(0, at)) print(line);
         if (at >= 0) {
-            log.append(drawMap(el('div', 'map'), map, data.board));
+            log.append(centre(drawMap(el('div', 'map'), map, data.board)));
             log.scrollTop = log.scrollHeight;
             for (const line of lines.slice(at + map.length)) print(line);
         }
@@ -148,8 +148,21 @@ function drawHero(h, map, board = false) {
     if (h.rest_secs > 0) restTimer = setTimeout(() => (queue = queue.then(() => send(''))), h.rest_secs * 1000 + 1000);
     byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
     bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
-    drawMap(byId('map'), map, board);
+    centre(drawMap(byId('map'), map, board));
 }
+
+/** Scrolls a drawn map so @ is in the middle of its view. @param {HTMLElement} box @returns {HTMLElement} */
+function centre(box) {
+    const grid = /** @type {HTMLElement | null} */ (box.querySelector('.map-grid'));
+    const me = /** @type {HTMLElement | null} */ (box.querySelector('.me'));
+    if (grid && me) {
+        grid.scrollLeft = me.offsetLeft - (grid.clientWidth - me.offsetWidth) / 2;
+        grid.scrollTop = me.offsetTop - (grid.clientHeight - me.offsetHeight) / 2;
+    }
+    return box;
+}
+// On phones the sheet is a hidden drawer, with no size to scroll by until it opens.
+byId('hero').addEventListener('shown.bs.offcanvas', () => centre(byId('map')));
 
 /**
  * cmd_map() in game.php: glyph => [CSS class, what to show]. `#` is a wall (see MAP_WALLS); any other glyph is a
@@ -199,7 +212,9 @@ function drawMap(box, lines, board = false) {
             x > 0 && x < right ? String.fromCharCode(96 + x) : '')));
         rows.unshift(head);
     }
-    box.replaceChildren(...rows, ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
+    const scroller = el('div', 'map-grid');
+    scroller.append(...rows);
+    box.replaceChildren(scroller, ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
     return box;
 }
 

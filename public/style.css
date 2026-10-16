@@ -123,14 +123,16 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 #sheet .progress { --bs-progress-height: 0.375rem; --bs-progress-bg: var(--line); }
 #sheet .stat small { font-size: 0.7rem; }
 #status { display: flex; flex-wrap: wrap; gap: 0.25rem; } /* not d-flex: its !important would beat [hidden] */
-#map, .map { color: var(--dim); white-space: pre; overflow-x: auto; }
+#map, .map { color: var(--dim); white-space: pre; }
+/* The explored map can outgrow its box: it scrolls, kept centred on @ (play.js), at most 21 rows of 8/9-em cells. */
+.map-grid { position: relative; overflow: auto; max-height: calc(21 * 12px * 8 / 9); }
 #map { padding-inline: 0.5rem; }
 .map { margin-top: 0.25rem; }
 .map-text { font-size: 0.8rem; }
 /*
  * cmd_map(): square cells 8/9 em, the font's own cell, so wall glyphs join. It's pixel art, so a font pixel must be a
  * whole number of device pixels: 12px here (4 per pixel on 3x phones), 13.5px on wide screens (3 per pixel on 2x).
- * The 31-cell map then just fits the phone drawer and the 25rem sidebar.
+ * 31 cells just fit the phone drawer and the 25rem sidebar; a wider explored map scrolls.
  */
 .map-row { font-family: "Dungeon Mode", var(--bs-body-font-family); font-size: 12px; height: calc(8em / 9); }
 .map-row span { display: inline-block; width: calc(8em / 9); height: 100%; vertical-align: top; text-align: center; }
@@ -155,6 +157,7 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
     }
 
     .map-row { font-size: 13.5px; }
+    .map-grid { max-height: calc(21 * 13.5px * 8 / 9); }
 
     .play > :not(#hero) { grid-column: 1; }
 

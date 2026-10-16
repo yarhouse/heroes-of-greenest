@@ -32,10 +32,6 @@ against one spawn with no distance (ranged weapons get an opening volley), and f
 by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
 size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
 
-5. **Fog of war and a bigger map.** A per-hero visited-rooms table, written on each move. A room's shape shows once
-   you've been next to it, its contents only while you're in it. With that, the map can grow past `MAP_REACH` 2 to the
-   explored part of the zone, centred on `@` and scrolling in the sidebar, like the reference maps in
-   `ref/ascii maps/`. Load the zone's exits in one query, not one per ring as `cmd_map()` does now.
 6. **Battle maps** (step 2). A layout column on `rooms` (ASCII like below), so rooms come in any size: a hall can be
    20 by 12 squares and still be one cell on the zone map. Step 1's open boards gain walls, cover and terrain:
    line of sight (Bresenham), cover, difficult terrain, monsters walking around obstacles (BFS), and monsters' spots
@@ -232,3 +228,9 @@ Any time: **approve account requests** (friends ask on the login page):
   its own turn when I'm at half HP or less, or `order heal|bless|sanctuary` at any time. Bless is the spell's effect
   on me without Concentration; Sanctuary (a spells row with no class) makes a foe pass a Wis save (DC 12) to attack me,
   else it turns on the hireling beside it, and ends when I attack or cast. No new hireling kinds yet (backlog).
+- 2026-10-16 **Fog of war and a bigger map** (task 5): `visited` (hero, room) gets a row each time a hero walks into
+  a room. `cmd_map()` loads its zone's exits in one query and places every room reachable from you (no `MAP_REACH`
+  any more), then draws what's explored: rooms visited (and the one you're in) in full, rooms next to them as walls
+  around rock, the rest left off; all of Greenest always shows. Heroes from before start with nothing explored outside
+  town. A Delve rebuild forgets its rooms. `play.js` puts the map's rows in a scrolling box, at most 21 rows high, kept
+  centred on `@`, also when the phone drawer opens.

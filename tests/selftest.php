@@ -281,20 +281,39 @@ try {
         "hero saves: the ability modifier, plus PB for the class's two (a Fighter's Str and Con)");
 
     // Map: Town Square (safe) has Market Lane (stair down to the Sewers) west, the inn (safe) east, the keep north, the
-    // Mill Bridge (stair down) south.
+    // Mill Bridge (stair down) south. at($map, dx, dy) reads the map from my @, a room 6 columns and 4 rows apart.
+    $at = function (array $map, int $dx, int $dy): string {
+        $map = array_slice($map, 0, -2); // not the footer
+        foreach ($map as $r => $line) {
+            if (($c = strpos($line, '@')) !== false) {
+                return $c + $dx < 0 || $r + $dy < 0 ? ' ' : $map[$r + $dy][$c + $dx] ?? ' ';
+            }
+        }
+        return '';
+    };
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
     $map = cmd_map(hero('Testa'));
-    check(substr($map[10], 7, 17) === '......::@::.:::::' && $map[11][11] === '>' && $map[15][17] === '>'
-        && substr($map[8], 14, 3) === '#.#', 'map: rooms, exits as gaps in walls, safe floors, stairs');
-    check(count($map) === 23 && max(array_map('strlen', array_slice($map, 0, -2))) <= 31,
-        'map: nothing beyond the reach of the Town Square');
+    $row = implode('', array_map(fn ($dx) => $at($map, $dx, 0), range(-8, 8)));
+    check($row === '......::@::.:::::' && $at($map, -4, 1) === '>' && $at($map, 2, 5) === '>'
+        && $at($map, -1, -2) . $at($map, 0, -2) . $at($map, 1, -2) === '#.#',
+        'map: rooms, exits as gaps in walls, safe floors, stairs');
+    check($at($map, 0, 8) === '.' && $at($map, 0, 4) === '.', 'map: the whole town, explored or not');
     check($map[count($map) - 2] === 'Greenest. Here: no monsters', 'map: the footer names the zone');
     // The Southern Fields lead west into the Wood and south into the Kobold Mines, other zones: gaps onto rock.
     q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
     $map = cmd_map(hero('Testa'));
-    check($map[10][12] === '.' && ($map[10][9] ?? ' ') === ' '
-        && $map[12][15] === '.' && ($map[14][15] ?? ' ') === ' ',
+    check($at($map, -3, 0) === '.' && $at($map, -6, 0) === ' ' && $at($map, 0, 2) === '.' && $at($map, 0, 4) === ' ',
         "map: an exit into another zone is a gap in the wall, the room beyond isn't drawn");
+    // Fog of war in the Wood (6002 - 6001 - 6000, west to east): where I've been shows, its neighbours as outlines.
+    q("UPDATE users SET room_id = 6000 WHERE name = 'Testa'");
+    $map = cmd_map(hero('Testa'));
+    check($at($map, -6, 0) === ' ' && $at($map, -6, -2) === '#' && $at($map, -12, -2) === ' ',
+        "fog: a room I haven't been in is an outline beside one I have, and nothing farther");
+    run_command(hero('Testa'), 'w');
+    run_command(hero('Testa'), 'e');
+    $map = cmd_map(hero('Testa'));
+    check($at($map, -6, 0) === '.' && $at($map, -3, 0) === '.' && $at($map, -12, 0) === ' '
+        && $at($map, -12, -2) === '#', 'fog: walking a room explores it, and outlines the next');
     q("UPDATE users SET room_id = 6000 WHERE name = 'Testa'");
     $map = cmd_map(hero('Testa'));
     check(str_starts_with($map[count($map) - 2], 'Wood of Sharp Teeth. Here: '),
@@ -304,7 +323,7 @@ try {
     q('UPDATE users SET room_id = ? WHERE name = ?', [$foe, 'Testa']);
     $dice_queue = [6];
     $map = cmd_map(hero('Testa'));
-    check(str_contains($map[count($map) - 2], '. Here: ') && !says($map, 'no monsters') && ctype_lower($map[10][13])
+    check(str_contains($map[count($map) - 2], '. Here: ') && !says($map, 'no monsters') && ctype_lower($at($map, -2, 0))
         && $dice_queue === [6], 'map: shows and names monsters in your room, rolls no dice');
     $dice_queue = [];
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
@@ -2224,6 +2243,8 @@ try {
         "arriving at the stair builds this week's Delve");
     $d = delve_layout(delve_week());
     check(says(run_command(hero('Testa'), 'd'), $d['rooms'][DELVE_STAIR + 1][0]), 'down into its first room');
+    check(q('SELECT 1 FROM visited WHERE user_id = ? AND room_id = ?', [hero('Testa')['id'], DELVE_STAIR + 1])
+        ->fetch() !== false, 'walking in records the room as explored');
     check(q('SELECT COUNT(*) FROM objects WHERE room_id = ?', [$d['boss']])->fetchColumn() === 1,
         'the boss guards a treasure');
     q('UPDATE delve SET seed = 1');
@@ -2235,6 +2256,7 @@ try {
     run_command(hero('Testb'), 'd');
     check(q('SELECT seed FROM delve')->fetchColumn() === delve_week() && hero('Testa')['room_id'] === DELVE_STAIR,
         'once they are offline it is rebuilt, and heroes left inside wake at the stair');
+    check(!q('SELECT 1 FROM visited WHERE room_id > ?', [DELVE_STAIR])->fetch(), 'and what was explored is forgotten');
 } finally {
     db()->rollBack();
 }

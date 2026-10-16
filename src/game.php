@@ -8,7 +8,6 @@ require_once __DIR__ . '/delve.php';
 
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
 const MAP_STEPS = ['north' => [0, -1], 'south' => [0, 1], 'east' => [1, 0], 'west' => [-1, 0]]; // up/down: marks only
-const MAP_REACH = 2; // the map shows rooms up to this many grid steps each way
 // Zones: ranges of room ids, each its own map (cmd_map() stops at an exit into another zone), and the battle board
 // its rooms get in a fight, wide and deep in 5-ft squares: against a Speed 30 monster, about 1 free shot in town, 2
 // in the Woods, 0 to 1 underground. Roads get theirs, from 100, as they're built.
@@ -1200,6 +1199,7 @@ function cmd_move(array $me, string $dir): array
         'up' => 'down', 'down' => 'up'][$dir]);
     q('UPDATE users SET room_id = ?, x = ?, y = ?, resting = NULL, rest_until = NULL WHERE id = ?',
         [$to, $in[0], $in[1], $me['id']]);
+    q('INSERT IGNORE INTO visited (user_id, room_id) VALUES (?, ?)', [$me['id'], $to]); // for the map's fog of war
     $lines = $me['resting'] !== null ? ['You stop resting.'] : [];
     [$me['room_id'], $me['x'], $me['y']] = [(int) $to, $in[0], $in[1]];
     array_push($lines, ...cmd_look($me));
@@ -4675,9 +4675,10 @@ function board_map(array $me): array
 }
 
 /**
- * Rooms within MAP_REACH steps in this zone, placed on a grid by walking exits out from the hero; an exit into another
- * zone is a gap onto rock. Shows the shape (rooms, links, stairs, safe rooms) everywhere, but what's inside only for
- * the room you're in.
+ * The explored part of my zone, placed on a grid by walking exits out from me; an exit into another zone is a gap
+ * onto rock. Fog of war: a room I've walked into (visited, or the one I'm in; the whole town always) shows its floor,
+ * exits, stairs and whether it's safe; a room next to one of those shows only its walls; the rest is rock. What's
+ * inside shows only for the room I'm in. play.js scrolls the map to keep @ in view.
  */
 function cmd_map(array $me): array
 {
@@ -4685,32 +4686,37 @@ function cmd_map(array $me): array
         return board_map($me);
     }
     $here = (int) $me['room_id'];
-    $zone = zone($here)[2];
+    [$first, $last, $zone] = zone($here);
+    $exits = [];
+    foreach (q('SELECT room_id, dir, to_room FROM exits WHERE room_id BETWEEN ? AND ?', [$first, $last])->fetchAll()
+        as $e) {
+        $exits[$e['room_id']][$e['dir']] = $e['to_room'];
+    }
     $at = [$here => [0, 0]]; // room id => [x, y]; north is -y
     $taken = ['0,0' => true];
-    $exits = [];
     for ($todo = [$here]; $todo;) {
-        $rows = q(
-            'SELECT room_id, dir, to_room FROM exits WHERE room_id IN ('
-                . implode(',', array_fill(0, count($todo), '?')) . ')',
-            $todo
-        )->fetchAll();
-        $todo = [];
-        foreach ($rows as $e) {
-            $exits[$e['room_id']][] = $e['dir'];
-            if (!isset(MAP_STEPS[$e['dir']]) || isset($at[$e['to_room']]) || zone((int) $e['to_room'])[2] !== $zone) {
+        $id = array_shift($todo);
+        foreach ($exits[$id] ?? [] as $dir => $to) {
+            if (!isset(MAP_STEPS[$dir]) || isset($at[$to]) || $to < $first || $to > $last) {
                 continue;
             }
-            $x = $at[$e['room_id']][0] + MAP_STEPS[$e['dir']][0];
-            $y = $at[$e['room_id']][1] + MAP_STEPS[$e['dir']][1];
+            [$x, $y] = [$at[$id][0] + MAP_STEPS[$dir][0], $at[$id][1] + MAP_STEPS[$dir][1]];
             // shortcut: a room whose cell is already taken is left off (a few in koboldmines), fine while rare.
-            if (abs($x) <= MAP_REACH && abs($y) <= MAP_REACH && !isset($taken["$x,$y"])) {
-                $at[$e['to_room']] = [$x, $y];
-                $taken["$x,$y"] = true;
-                $todo[] = $e['to_room'];
+            if (!isset($taken["$x,$y"])) {
+                [$at[$to], $taken["$x,$y"], $todo[]] = [[$x, $y], true, $to];
             }
         }
     }
+    $known = $here <= TOWN_LAST_ROOM ? array_keys($at) : [$here, ...array_intersect(array_keys($at),
+        q('SELECT room_id FROM visited WHERE user_id = ? AND room_id BETWEEN ? AND ?', [$me['id'], $first, $last])
+            ->fetchAll(PDO::FETCH_COLUMN))];
+    $shown = array_fill_keys($known, true);
+    foreach ($known as $id) {
+        foreach ($exits[$id] ?? [] as $to) {
+            $shown[$to] ??= false; // an outline
+        }
+    }
+    $at = array_intersect_key($at, $shown);
     $ids = array_keys($at);
     $safe = q(
         'SELECT id FROM rooms WHERE safe AND id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')',
@@ -4722,25 +4728,30 @@ function cmd_map(array $me): array
          AND (s.dead_since IS NULL OR s.dead_since < NOW() - INTERVAL s.respawn_secs SECOND) ORDER BY s.id',
         [$here]
     )->fetchAll(PDO::FETCH_COLUMN);
-
     // Each room is a 5x3 floor (: when safe) walled by #, sharing walls with its neighbours; an exit is a gap in the
     // wall. Stairs sit in the right-hand corners (< up, > down); monsters in your room stand around you by initial.
     // play.js colours these glyphs, so keep them in step with MAP_CELLS there.
-    $grid = array_fill(0, 8 * MAP_REACH + 5, array_fill(0, 12 * MAP_REACH + 7, ' '));
+    $xs = array_column($at, 0);
+    $ys = array_column($at, 1);
+    [$x0, $y0] = [min($xs), min($ys)];
+    $grid = array_fill(0, 4 * (max($ys) - $y0) + 5, array_fill(0, 6 * (max($xs) - $x0) + 7, ' '));
     foreach ($at as $id => [$x, $y]) {
-        $top = 4 * ($y + MAP_REACH) + 1;
-        $left = 6 * ($x + MAP_REACH) + 1;
+        $top = 4 * ($y - $y0) + 1;
+        $left = 6 * ($x - $x0) + 1;
         for ($r = $top - 1; $r <= $top + 3; $r++) {
             for ($c = $left - 1; $c <= $left + 5; $c++) {
                 $inside = $r >= $top && $r < $top + 3 && $c >= $left && $c < $left + 5;
-                if ($inside) {
+                if ($inside && $shown[$id]) {
                     $grid[$r][$c] = in_array($id, $safe, true) ? ':' : '.';
-                } elseif ($grid[$r][$c] === ' ') {
+                } elseif (!$inside && $grid[$r][$c] === ' ') {
                     $grid[$r][$c] = '#';
                 }
             }
         }
-        foreach ($exits[$id] ?? [] as $dir) {
+        if (!$shown[$id]) {
+            continue;
+        }
+        foreach (array_keys($exits[$id] ?? []) as $dir) {
             match ($dir) {
                 'north' => $grid[$top - 1][$left + 2] = '.',
                 'south' => $grid[$top + 3][$left + 2] = '.',
