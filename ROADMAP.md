@@ -5,15 +5,92 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-1. **Distance on the fight** (tactical step 1 from `BACKLOG.md`). One `distance` (feet) column with the fight state;
-   in a 1-on-1 fight with no obstacles a 2D grid reduces to this number. Gives ranged and thrown weapons
-   (Disadvantage once adjacent; a free shot while the monster closes), advance-and-attack in one command, reach
-   weapons, Disengage, Dash, retreat to an exit with an opportunity attack, monsters that close or kite. About one
-   `fight()` change plus a few commands. Show it on the map: a room's floor is 5 squares across, so a foe 15 ft away
-   can stand 3 cells from `@`, stepping in as it closes (and `Here:` can say "kobold, 15 ft").
-2. **Fog of war and a bigger map.** A per-hero visited-rooms table, written on each move. A room's shape shows once
+Three goals, in any order: **the town redrawn** from Aaron's sketch and feedback, **travel** over distances as ordinary
+rooms until something attacks, and **encounters on a battle map** with positions, so a ranged hero can kite (Aaron
+plans to, with a Longbow). The tasks below are in a sensible order, and each ships alone.
+
+### Travel and the town
+
+2. **Redraw the town** from Aaron's sketch and feedback: rooms, exits, features, townsfolk and topics in `seed.sql`,
+   ids 1-99. Keep the ids the code and data name, or move them together: `START_ROOM` (1), `LANTERN`, `TEMPLE`, the
+   shops (`items.shop`, 8-11), the area links (room 6 for the Wood and the mines, 4 for the Sewers, 7 for the Delve
+   stair), and rooms heroes stand in on the live server. Takes in the backlog's south gate (a room between the Mill
+   Bridge and the Fields, Greenest's walls and a guard to `ask`).
+3. **Roads.** Travel is walking ordinary rooms, one command a room, the text changing along the way. The first is
+   the road from Greenest to the Wood of Sharp Teeth, its own zone (ids from 100); the Wood re-links to its far end
+   (`convert-area.php` with `<last road room> west 6000` in place of `6 west 6000`). Encounters are spawns on road
+   rooms (aggressive ones attack as you come in, as today). Open: a random encounter roll on entering a road room
+   (through `roll()`, a table per zone), and how long a road can be before walking it is a chore (a speedwalk command
+   only if it becomes one).
+
+### Encounters on a battle map
+
+Rooms as small boards (5-ft squares, like chess) so distance, movement, shooting, disengaging, retreating and cover
+matter. SRD 5.2.1 already has the rules: Speed, reach, weapon ranges, Disadvantage on ranged attacks within 5 ft of an
+enemy, opportunity attacks, Disengage/Dash/Dodge, cover (+2/+5 AC), difficult terrain. Today a fight is one hero
+against one spawn with no distance (ranged weapons get an opening volley), and fight state is on `users`. Kiting works
+by the rules only with a speed edge or a slowed foe: at equal Speed a monster closes and attacks every turn, so room
+size decides how many free shots you get, and the Slow mastery decides whether you can keep them coming.
+
+4. **Distance on a grid** (step 1). Every room in a fight is an open board of 5-ft squares sized by zone (`ZONES`:
+   Greenest 8x6, the Woods 16x10, the Sewers, Mines and Delve 6x5; at most 26 wide, columns a-z), no walls or cover
+   inside until step 2. You stand at the middle of the wall you came in by (a stair corner for up and down, the
+   middle otherwise). A monster stands at the middle of the far wall when its fight starts, not rolled, so fights
+   spend no dice on it: about 1 free Longbow shot in town, 2 in the Woods, 0 to 1 underground, against Speed 30. It
+   keeps its square 10 minutes after the fight (`spawns.placed_at`). Distance is the larger of the two gaps times
+   5 ft (SRD 5.2.1 p.15: a diagonal costs one square). Ships in three parts, each alone:
+   - **a. Board and movement.** `users.x`, `users.y` and `moved` (feet of Speed used this turn), `spawns.x` and `y`;
+     from the SRD, monsters' `speed` (the fastest), `reach` and ranged attack (`shot`, `shot_hit`, `shot_damage`,
+     `shot_type`, `shot_range`, `shot_long`), items' `reach`, `range` and `long_range`. One command is a whole turn,
+     except `move c3`, which leaves your action for the next. `kill` closes in and attacks (Dashing if it can't
+     reach), `shoot` stays put, `flee <dir>` runs to that exit. Ranged attacks have Disadvantage within 5 ft of an
+     enemy or past normal range. Monsters close and attack (Dashing if they can't reach), or with a ranged attack
+     shoot until you're next to them. Opportunity attacks both ways, once a round; yours are automatic (an Unarmed
+     Strike with a bow). The opening volley goes. During a fight `cmd_map()` returns the board for the sidebar and
+     `map`: lettered columns, numbered rows, exits as gaps, `@` you, the foe by initial, allies upper-case; tapping a
+     square sends `move`; the footer gives the foe's distance and HP.
+   - **b. Kiting.** `kite` (attack, then back off to the square farthest from the nearest foe, so you slide along a
+     wall; next to a foe with a ranged weapon, back off first), `dash`, `disengage`, `dodge`. Slow, Push, standing
+     from Prone costs half Speed, a grappled creature can't move. Reach weapons and monsters' 10-ft reach. Spell
+     ranges and touch spells (`spells.range`); other attack commands close in first like `kill`. Starting from hiding
+     you move before Initiative. Hero Speed from species, Unarmored Movement and Fast Movement.
+   - **c. Hirelings on the board.** Its own square, starting next to you. `order attack|guard|hold`
+     (`users.hireling_order`): the guard and mastiff default to attack, the acolyte to guard (stays beside you). One
+     with a ranged attack uses it when no enemy is next to it (the acolyte's Radiant Flame, the guard's thrown spear).
+     A monster next to it fights it unless it can reach you without leaving its reach; it makes opportunity attacks.
+     The acolyte's Divine Aid, once a long rest: Healing Word on its own when you drop to half HP, or
+     `order heal|bless|sanctuary`. The mastiff's Bite knocks a Medium or smaller foe Prone.
+5. **Fog of war and a bigger map.** A per-hero visited-rooms table, written on each move. A room's shape shows once
    you've been next to it, its contents only while you're in it. With that, the map can grow past `MAP_REACH` 2 to the
-   explored part of the floor, centred on `@` and scrolling in the sidebar, like the reference maps in `ref/ascii maps/`.
+   explored part of the zone, centred on `@` and scrolling in the sidebar, like the reference maps in
+   `ref/ascii maps/`. Load the zone's exits in one query, not one per ring as `cmd_map()` does now.
+6. **Battle maps** (step 2). A layout column on `rooms` (ASCII like below), so rooms come in any size: a hall can be
+   20 by 12 squares and still be one cell on the zone map. Step 1's open boards gain walls, cover and terrain:
+   line of sight (Bresenham), cover, difficult terrain, monsters walking around obstacles (BFS), and monsters' spots
+   in the layout. Step 1's commands keep working. Rooms without a hand-drawn layout get one generated from their
+   terrain, the same every time: takes in the backlog's terrain idea (`convert-area.php` keeps Riftshadow's sector in `rooms.terrain`, the town's are tagged by hand;
+   forest gives trees as half cover, water difficult terrain). The Delve generator draws its own layouts.
+7. **Shared fights others can join** (step 3). The fight belongs to the room, not the hero: a per-room encounter
+   table, one initiative order for every hero and monster in it. A hero who walks into a room mid-fight rolls
+   Initiative, is slotted into the order and appears at the edge of the exit they came through. Players aren't online
+   together, so an away hero's turn passes as a Dodge (see Decided), computed on read.
+
+```
+#########
+#..k....#    k kobold     @ you
+#...##..+    # wall       + exit (east)
+#.......#    T table (half cover)
+#..T..@.#
+#########
+```
+
+Skipped: **cross-room shooting** (`shoot north goblin`). Finding the target is easy, but with no ticks a monster hit
+from 2 rooms away can't walk to you, and "feet per room" is made up. **Coordinate math** is the cheap part (BFS and
+line of sight on ~100 cells).
+
+Costs, most expensive first: room layout content (Kobold Mines' 174 rooms, the Delve, the seed rooms have none);
+positions with no ticks and async play; making one command a whole 5e turn (move + action) so fights aren't tedious;
+monster AI (close, kite, flee), which needs selftest coverage.
 
 Any time: **approve account requests** (friends ask on the login page):
 `ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
@@ -114,3 +191,29 @@ Any time: **approve account requests** (friends ask on the login page):
   nothing. It also keeps a hero with the page open "online" in `who`. Fights by other heroes still aren't pushed.
 - 2026-10-15 **Other heroes' names stand out in the log:** `api.php` sends every other hero's name (`heroes`), and
   `play.js` sets them in bold Bootstrap `text-info` wherever they appear, still as text nodes, never HTML.
+- 2026-10-15 **Battle map rules** (tasks 4, 6, 7), from Aaron's answers. Zones go first, then 4, 6, 7. A fight's
+  starting distance depends on the zone: against a Speed 30 melee monster about 2 free Longbow shots outdoors, 1 in
+  town, 0 to 1 underground, rolled within the zone's room size. Leaving the room mid-fight is an escape: the monster
+  waits where it was for a while, then goes home, so stepping out and back in buys no free shot. `flee` is walking to
+  an exit (an opportunity attack if you start next to it, unless you Disengage), no longer a Dex contest. One command
+  is one whole turn: `kill` closes in and attacks, `shoot` stays put, `kite` shoots and backs off your Speed (backing
+  off first if it's next to you), plus `dash`, `disengage`, `dodge` and `flee <dir>`; on boards `move c3`, which
+  tapping a square sends. Monsters with a ranged attack in their stat block shoot from range and melee once adjacent;
+  none kite or flee yet. Ammunition and thrown weapons aren't tracked. A hireling has its own square, closes on your
+  foe and holds it in melee. Layouts are generated from each room's terrain, with hand-drawn ones for rooms Aaron
+  picks. The board replaces the zone map only during a fight; you start at the edge of the exit you came through, and
+  a hidden hero picks how close to start. In shared fights aggressive monsters join (peaceful ones only if attacked);
+  an away hero Dodges at once if their page is closed, or after 2 minutes if it's open; XP and gold split evenly among
+  the heroes in the fight. Also settled: a hero's reactions (opportunity attacks) are automatic, as Deflect Attacks
+  is; boards are at most 29 by 19 squares (today's map, so phones don't scroll); the rest is SRD 5.2.1 as written
+  (ranges, Reach, each stat block's Speed, monsters Dash when they can't reach, Disengage, Dodge, cover, difficult
+  terrain, Slow and Push, spell ranges, touch spells need you adjacent).
+  Then, from the SRD stat blocks and Aaron's follow-ups: step 1 is a grid of open rooms rather than a straight line
+  (in a line a hero starts at the door, so backing off means leaving), and hirelings get stances and their stat
+  blocks' extras (task 4c), with more kinds, such as a Scout with a Longbow, in the backlog.
+- 2026-10-15 **Zones:** a zone is a range of room ids (`ZONES` in `game.php`): Greenest 1-99, the Wood of Sharp
+  Teeth 6000-6099, the Deep Wood 6100-6199 (Haon Dor's own split: one trail, 6004 west to 6100), the Sewers
+  7000-7499, the Kobold Mines 24600-24799 and the Delve 50000-50999; roads get theirs, from 100, as they're built.
+  `cmd_map()` doesn't follow an exit into another zone (it's a gap in the wall onto rock), so zones never compete for
+  map cells and a road can be any length, and the map's footer names the zone (`Greenest. Here: ...`). Movement and
+  shouts are unchanged.

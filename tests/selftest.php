@@ -278,11 +278,23 @@ try {
         && substr($map[8], 14, 3) === '#.#', 'map: rooms, exits as gaps in walls, safe floors, stairs');
     check(count($map) === 23 && max(array_map('strlen', array_slice($map, 0, -2))) <= 31,
         'map: nothing beyond the reach of the Town Square');
+    check($map[count($map) - 2] === 'Greenest. Here: no monsters', 'map: the footer names the zone');
+    // The Southern Fields lead west into the Wood and south into the Kobold Mines, other zones: gaps onto rock.
+    q("UPDATE users SET room_id = 6 WHERE name = 'Testa'");
+    $map = cmd_map(hero('Testa'));
+    check($map[10][12] === '.' && ($map[10][9] ?? ' ') === ' '
+        && $map[12][15] === '.' && ($map[14][15] ?? ' ') === ' ',
+        "map: an exit into another zone is a gap in the wall, the room beyond isn't drawn");
+    q("UPDATE users SET room_id = 6000 WHERE name = 'Testa'");
+    $map = cmd_map(hero('Testa'));
+    check(str_starts_with($map[count($map) - 2], 'Wood of Sharp Teeth. Here: '),
+        'map: the footer names the Wood');
+    q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");
     $foe = q('SELECT room_id FROM spawns ORDER BY id LIMIT 1')->fetchColumn();
     q('UPDATE users SET room_id = ? WHERE name = ?', [$foe, 'Testa']);
     $dice_queue = [6];
     $map = cmd_map(hero('Testa'));
-    check(str_starts_with($map[count($map) - 2], 'Here: ') && !says($map, 'no monsters') && ctype_lower($map[10][13])
+    check(str_contains($map[count($map) - 2], '. Here: ') && !says($map, 'no monsters') && ctype_lower($map[10][13])
         && $dice_queue === [6], 'map: shows and names monsters in your room, rolls no dice');
     $dice_queue = [];
     q("UPDATE users SET room_id = 1 WHERE name = 'Testa'");

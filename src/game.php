@@ -9,6 +9,16 @@ require_once __DIR__ . '/delve.php';
 const DIRS = ['n' => 'north', 's' => 'south', 'e' => 'east', 'w' => 'west', 'u' => 'up', 'd' => 'down'];
 const MAP_STEPS = ['north' => [0, -1], 'south' => [0, 1], 'east' => [1, 0], 'west' => [-1, 0]]; // up/down: marks only
 const MAP_REACH = 2; // the map shows rooms up to this many grid steps each way
+// Zones: ranges of room ids, each its own map (cmd_map() stops at an exit into another zone). Roads get theirs, from
+// 100, as they're built.
+const ZONES = [
+    [1, 99, 'Greenest'],
+    [6000, 6099, 'Wood of Sharp Teeth'],
+    [6100, 6199, 'Deep Wood'],
+    [7000, 7499, 'The Sewers'],
+    [24600, 24799, 'Kobold Mines'],
+    [50000, 50999, 'The Delve'],
+];
 const ONLINE_MINUTES = 10;
 const ECHO_MINUTES = 10; // how long speech lingers in a room for those who come in after
 const TOWN_LAST_ROOM = 99; // the town is seed.sql's rooms 1-99 (areas and the Delve are numbered higher): shouts carry
@@ -3922,13 +3932,26 @@ function cmd_score(array $me): array
     ];
 }
 
+/** The name of the zone (ZONES) room $id is in, '' if none. */
+function zone(int $id): string
+{
+    foreach (ZONES as [$first, $last, $name]) {
+        if ($id >= $first && $id <= $last) {
+            return $name;
+        }
+    }
+    return '';
+}
+
 /**
- * Rooms within MAP_REACH steps on this floor, placed on a grid by walking exits out from the hero. Shows the
- * shape (rooms, links, stairs, safe rooms) everywhere, but what's inside only for the room you're in.
+ * Rooms within MAP_REACH steps in this zone, placed on a grid by walking exits out from the hero; an exit into another
+ * zone is a gap onto rock. Shows the shape (rooms, links, stairs, safe rooms) everywhere, but what's inside only for
+ * the room you're in.
  */
 function cmd_map(array $me): array
 {
     $here = (int) $me['room_id'];
+    $zone = zone($here);
     $at = [$here => [0, 0]]; // room id => [x, y]; north is -y
     $taken = ['0,0' => true];
     $exits = [];
@@ -3941,7 +3964,7 @@ function cmd_map(array $me): array
         $todo = [];
         foreach ($rows as $e) {
             $exits[$e['room_id']][] = $e['dir'];
-            if (!isset(MAP_STEPS[$e['dir']]) || isset($at[$e['to_room']])) {
+            if (!isset(MAP_STEPS[$e['dir']]) || isset($at[$e['to_room']]) || zone((int) $e['to_room']) !== $zone) {
                 continue;
             }
             $x = $at[$e['room_id']][0] + MAP_STEPS[$e['dir']][0];
@@ -4002,7 +4025,7 @@ function cmd_map(array $me): array
         }
     }
     $lines = array_map(fn ($chars) => rtrim(implode('', $chars)), $grid);
-    $lines[] = $foes ? 'Here: ' . implode(', ', $foes) : 'Here: no monsters';
+    $lines[] = ($zone === '' ? '' : "$zone. ") . ($foes ? 'Here: ' . implode(', ', $foes) : 'Here: no monsters');
     $lines[] = '@ you  < > stairs  : safe  a-z monsters';
     return $lines;
 }
