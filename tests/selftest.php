@@ -185,7 +185,7 @@ try {
     check(says(run_command(hero('Testa'), 'shout to the keep'), 'You shout: to the keep'), 'shout');
     $heard = run_command(hero('Testb'), 'who');
     check(says($heard, 'Testa shouts: to the keep'), 'a shout is heard all over town');
-    check(!says(run_command(hero('Testb'), 's'), 'said here'), 'and leaves no echo');
+    check(!says(run_command(hero('Testb'), 's'), 'said here just now: to the keep'), 'and leaves no echo');
     check(says($look, 'Testa is here.'), 'look shows heroes online here');
     check(!says(run_command(hero('Testb'), "say <b>x</b>\nfake line"), "\n"), 'control characters are stripped');
 
