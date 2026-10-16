@@ -5,7 +5,7 @@ Hosted on DreamHost shared hosting, so: PHP 8.1+ and MySQL 8 (not MariaDB; write
 
 ## Layout
 
-- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI and hero sheet, `style.css`, `fonts/` (JetBrains Mono), `vendor/bootstrap/` (Bootstrap 5.3, CSS + JS bundle; never edit). All self-hosted: the CSP is `'self'` (plus `data:` images for Bootstrap's icons).
+- `public/` — the web root (point the domain's web directory here). `index.php` login + play page, `api.php` one command per POST, `play.js` terminal UI and hero sheet, `style.css`, `fonts/` (JetBrains Mono for text, Dungeon Mode for the map), `vendor/bootstrap/` (Bootstrap 5.3, CSS + JS bundle; never edit). All self-hosted: the CSP is `'self'` (plus `data:` images for Bootstrap's icons).
 - `src/boot.php` — config, `db()`/`q()`, `web_init()` (headers, session, Origin check), login/logout/`session_user()`/`save_hero()`.
 - `src/game.php` — `run_command()` parser and `cmd_*` handlers. Handlers take the `users` row and return lines of plain text. `CLASSES` holds the class rules (spells are rows of the `spells` table, resolved by kind in `cmd_cast()`); while `users.setup` is set, every command goes to `cmd_setup()` (character creation).
 - `src/delve.php` — the Delve: a dungeon below the Mill Cellar, generated from a weekly seed (rooms 50001-50999) and rebuilt when a hero next reaches its stair (room 50000).

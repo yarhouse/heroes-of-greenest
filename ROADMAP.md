@@ -97,3 +97,8 @@ Any time: **approve account requests** (friends ask on the login page):
   around you), so the API sends no HTML. `play.js` colours it cell by cell (`MAP_CELLS`) in the sidebar and for the
   `map` command, and skips empty rows at the edges. To make room, the hero card dropped the Species and Background
   rows, put AC, Prof and Gold on one line and took the save line off the ability tiles (all still in `score`).
+- 2026-10-15 **The map is drawn in Dungeon Mode**, an 8x8 pixel font (CC0, `public/fonts/dungeon-mode.woff2`; the
+  source pack is in `ref/dungeonmode`). Map cells only; all text stays JetBrains Mono, which is also its fallback.
+  `play.js` turns each `#` into a double-line wall glyph by which neighbours are walls (`MAP_WALLS`), fills empty
+  cells with rock hatching and pads rows to the map's width; `cmd_map()` is unchanged. Cells are square at 12px (phones)
+  or 13.5px (wide screens) so the pixels stay crisp. The sidebar grew to 25rem and the page to 2000px.

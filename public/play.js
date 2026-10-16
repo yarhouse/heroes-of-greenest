@@ -145,28 +145,36 @@ function drawHero(h, map) {
 }
 
 /**
- * cmd_map() in game.php: glyph => [CSS class, what to show]. Any other glyph but a space is a monster's initial.
+ * cmd_map() in game.php: glyph => [CSS class, what to show]. `#` is a wall (see MAP_WALLS); any other glyph is a
+ * monster's initial. A space is solid rock.
  * @type {Record<string, [string, string]>}
  */
-const MAP_CELLS = { '#': ['w', ' '], '.': ['f', '·'], ':': ['s', '·'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'] };
+const MAP_CELLS = { ' ': ['rock', '⋰'], '.': ['f', '∙'], ':': ['s', '∙'], '@': ['me', '@'], '<': ['st', '<'], '>': ['st', '>'] };
+
+/** A wall's glyph by which neighbours are walls too (north 1, east 2, south 4, west 8), so walls join into lines. */
+const MAP_WALLS = '■║═╚║║╔╠═╝═╩╗╣╦╬';
 
 /**
- * One span per cell, so walls join into solid blocks. The last two lines (who's here, the legend) stay text.
+ * One span per cell, in the Dungeon Mode font (style.css). The last two lines (who's here, the legend) stay text.
  * @param {HTMLElement} box @param {string[]} lines
  */
 function drawMap(box, lines) {
     // Empty rows at the top and bottom are directions with no rooms; skip them to save height.
     const first = lines.findIndex((line) => line !== '');
-    lines = lines.slice(first, lines.length - 2).join('\n').trimEnd().split('\n').concat(lines.slice(-2));
-    box.replaceChildren(...lines.map((line, i) => {
-        if (i >= lines.length - 2) return el('div', 'map-text', line);
+    const grid = lines.slice(first, lines.length - 2).join('\n').trimEnd().split('\n');
+    const width = Math.max(...grid.map((line) => line.length));
+    const wall = (/** @type {number} */ y, /** @type {number} */ x) => (grid[y]?.[x] === '#' ? 1 : 0);
+    box.replaceChildren(...grid.map((line, y) => {
         const row = el('div', 'map-row');
-        for (const ch of line) {
-            const [cls, show] = MAP_CELLS[ch] ?? (ch === ' ' ? ['', ' '] : ['foe', ch]);
+        for (let x = 0; x < width; x++) {
+            const ch = line[x] ?? ' ';
+            const [cls, show] = ch === '#'
+                ? ['w', MAP_WALLS[wall(y - 1, x) | wall(y, x + 1) << 1 | wall(y + 1, x) << 2 | wall(y, x - 1) << 3]]
+                : MAP_CELLS[ch] ?? ['foe', ch];
             row.append(el('span', cls, show));
         }
         return row;
-    }));
+    }), ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
     return box;
 }
 

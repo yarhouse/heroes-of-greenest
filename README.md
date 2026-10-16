@@ -200,7 +200,7 @@ available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the 
 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 The font is JetBrains Mono (https://github.com/JetBrains/JetBrainsMono), SIL Open Font License 1.1, see
-`public/fonts/OFL.txt`.
+`public/fonts/OFL.txt`. The map's font is Dungeon Mode by Vinicius Menezio (https://menez.io/), CC0 1.0.
 
 The layout uses Bootstrap 5.3.8 (https://getbootstrap.com), MIT License, self-hosted in `public/vendor/bootstrap/` with
 its `LICENSE`. To upgrade, copy `bootstrap.min.css` and `bootstrap.bundle.min.js` from the release's `dist/`.
