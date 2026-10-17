@@ -348,6 +348,11 @@ const FEATS = [
         'about' => 'Sacred Flame, and Cure Wounds free once a long rest'],
     'wizard' => ['name' => 'Magic Initiate (Wizard)', 'spells' => ['Fire Bolt', 'Ray of Frost', 'Magic Missile'],
         'about' => 'Fire Bolt and Ray of Frost, and Magic Missile free once a long rest'],
+    // General feats (SRD 5.2.1 p.87), picked at the levels in MORE_FEATS. Grappler's Fast Wrestler is left out: a
+    // grappled foe never moves with you (your hold breaks when you step away).
+    'asi' => ['name' => 'Ability Score Improvement', 'about' => '+2 to one ability, or +1 to two (20 at most)'],
+    'grappler' => ['name' => 'Grappler', 'about' => '+1 Str or Dex; once a turn an Unarmed Strike that hits also '
+        . 'grapples; Advantage on attacks against a foe you grapple. Needs Str or Dex 13'],
 ];
 
 /**
@@ -401,6 +406,9 @@ const SKILL_ABOUT = [
 
 /** Expertise (Rogue p.61, Bard p.30): the class levels that grant 'expertise 1' and 'expertise 2', two skills each. */
 const EXPERTISE = ['rogue' => [1, 6], 'bard' => [2, 9]];
+
+/** The levels that grant a General feat ('feat 4', ...): 4, 8, 12 and 16, and these. Level 19's Epic Boon waits. */
+const MORE_FEATS = ['fighter' => [6, 14], 'rogue' => [10]];
 
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
@@ -541,10 +549,18 @@ function origin(array $me): array
     return ['traits' => [...$s['traits'], ...($k['traits'] ?? [])]] + $k + $s;
 }
 
-/** True if my background or a Human's Versatile gave me Origin feat $feat (a FEATS key). */
+/** True if I have feat $feat (a FEATS key): from my background, a Human's Versatile, or a level's pick. */
 function has_feat(array $me, string $feat): bool
 {
-    return (BACKGROUNDS[$me['background'] ?? '']['feat'] ?? null) === $feat || (origin($me)['feat'] ?? null) === $feat;
+    if ((BACKGROUNDS[$me['background'] ?? '']['feat'] ?? null) === $feat || (origin($me)['feat'] ?? null) === $feat) {
+        return true;
+    }
+    foreach (picks($me) as $choice => [$value]) {
+        if (str_starts_with($choice, 'feat ') && strtok($value, ' ') === $feat) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /** The ids of the spells my lineage (from its level) and Magic Initiate give me, whatever my class. */
@@ -1333,8 +1349,9 @@ function proficient_skills(array $me): array
 
 /**
  * The choices my class, level and feats give me that I haven't made yet, in the order they're made: my class's
- * skills, Skilled's three, then each Expertise. Each is [id, title, pick (how many more), options (every skill it
- * lists, in SKILLS order), locked (the listed ones I already have)]. Nothing before I have a class.
+ * skills, Skilled's three, each Expertise, then each level's General feat. Each is [id, title, pick (how many more),
+ * options (every skill it lists, in SKILLS order; for a feat, FEATS keys), locked (the listed ones I already have)].
+ * Nothing before I have a class.
  */
 function owed_choices(array $me): array
 {
@@ -1365,6 +1382,15 @@ function owed_choices(array $me): array
         $pick = min($n - count($have), count($options) - count($locked) - count($have));
         if ($pick > 0) {
             $owed[] = ['id' => $id, 'title' => $title, 'pick' => $pick, 'options' => $options, 'locked' => $locked];
+        }
+    }
+    $grappler = !has_feat($me, 'grappler') && max($me['strength'], $me['dexterity']) >= 13; // its prerequisite
+    $levels = [4, 8, 12, 16, ...MORE_FEATS[$me['class']] ?? []];
+    sort($levels);
+    foreach ($levels as $level) {
+        if ($me['level'] >= $level && !isset($picks["feat $level"])) {
+            $owed[] = ['id' => "feat $level", 'title' => "Level $level feat", 'pick' => 1,
+                'options' => $grappler ? ['asi', 'grappler'] : ['asi'], 'locked' => []];
         }
     }
     return $owed;
@@ -1426,9 +1452,15 @@ function parse_skills(string $text): array|string
     return $skills;
 }
 
-/** An owed choice (see owed_choices()) as text: its skills, mine marked, and how to choose. */
+/** An owed choice (see owed_choices()) as text: its skills (mine marked) or feats, and how to choose. */
 function choice_lines(array $choice): array
 {
+    if (str_starts_with($choice['id'], 'feat ')) {
+        return [$choice['title'], 'Choose one:', ...array_map(fn ($f) => sprintf('  %-26s %s', FEATS[$f]['name'],
+            FEATS[$f]['about']), $choice['options']), "Type 'choose' and one ability for +2 (choose str) or two for +1 "
+            . 'each (choose str, dex)' . (in_array('grappler', $choice['options'], true)
+            ? ", or 'choose grappler' and Str or Dex." : '.')];
+    }
     $lines = [$choice['title'], "Choose {$choice['pick']}:"];
     foreach ($choice['options'] as $skill) {
         $lines[] = sprintf('  %-16s %s', skill_name($skill), ucfirst(substr(SKILLS[$skill], 0, 3))
@@ -1438,8 +1470,8 @@ function choice_lines(array $choice): array
 }
 
 /**
- * choose [skills]: makes the first choice I owe (see owed_choices()), or shows it. Outside character creation only
- * after a rest (may_choose), and never in a fight.
+ * choose [skills | a feat]: makes the first choice I owe (see owed_choices()), or shows it. Outside character
+ * creation only after a rest (may_choose), and never in a fight.
  */
 function cmd_choose(array $me, string $arg): array
 {
@@ -1457,26 +1489,10 @@ function cmd_choose(array $me, string $arg): array
     if ($arg === '') {
         return choice_lines($c);
     }
-    $skills = parse_skills($arg);
-    if (is_string($skills)) {
-        return [$skills];
+    $lines = (str_starts_with($c['id'], 'feat ') ? 'choose_feat' : 'choose_skills')($me, $c, $arg);
+    if (is_string($lines)) {
+        return [$lines];
     }
-    $skills = array_values(array_unique($skills));
-    if (count($skills) !== $c['pick']) {
-        return ["Choose exactly {$c['pick']}."];
-    }
-    foreach ($skills as $skill) {
-        if (in_array($skill, $c['locked'], true)) {
-            return ['You already have ' . skill_name($skill) . '.'];
-        }
-        if (!in_array($skill, $c['options'], true)) {
-            return [skill_name($skill) . " isn't one of them."];
-        }
-    }
-    foreach ($skills as $skill) {
-        q('INSERT INTO picks (user_id, choice, value) VALUES (?, ?, ?)', [$me['id'], $c['id'], $skill]);
-    }
-    $lines = ['You choose ' . and_list(array_map('skill_name', $skills)) . '.'];
     $next = owed_choices($me);
     if ($next !== []) {
         return [...$lines, '', ...choice_lines($next[0])];
@@ -1486,6 +1502,80 @@ function cmd_choose(array $me, string $arg): array
     }
     q('UPDATE users SET may_choose = FALSE WHERE id = ?', [$me['id']]);
     return $lines;
+}
+
+/** choose <skills> for skill choice $c: the line saying so, or why not. */
+function choose_skills(array $me, array $c, string $arg): array|string
+{
+    $skills = parse_skills($arg);
+    if (is_string($skills)) {
+        return $skills;
+    }
+    $skills = array_values(array_unique($skills));
+    if (count($skills) !== $c['pick']) {
+        return "Choose exactly {$c['pick']}.";
+    }
+    foreach ($skills as $skill) {
+        if (in_array($skill, $c['locked'], true)) {
+            return 'You already have ' . skill_name($skill) . '.';
+        }
+        if (!in_array($skill, $c['options'], true)) {
+            return skill_name($skill) . " isn't one of them.";
+        }
+    }
+    foreach ($skills as $skill) {
+        q('INSERT INTO picks (user_id, choice, value) VALUES (?, ?, ?)', [$me['id'], $c['id'], $skill]);
+    }
+    return ['You choose ' . and_list(array_map('skill_name', $skills)) . '.'];
+}
+
+/**
+ * choose [asi] <ability> [ability] | grappler <str|dex>, for feat choice $c: +2 to one ability or +1 to two, or
+ * Grappler's +1 to Str or Dex, never past 20. The scores change on `users` (as a background's do) and the pick is
+ * kept as 'asi str dex', 'asi con' or 'grappler dex'. A higher Con modifier adds 1 to my HP maximum (and HP) a level
+ * (SRD 5.2.1 p.23). Returns the line saying so, or why not.
+ */
+function choose_feat(array $me, array $c, string $arg): array|string
+{
+    $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // my own scores, not a Wild Shape's
+    $words = preg_split('/[\s,]+/', strtolower($arg), -1, PREG_SPLIT_NO_EMPTY);
+    $feat = in_array($words[0] ?? '', ['asi', 'grappler'], true) ? array_shift($words) : 'asi';
+    if (!in_array($feat, $c['options'], true)) {
+        return has_feat($me, 'grappler') ? 'You already have Grappler.' : 'Grappler needs Strength or Dexterity 13.';
+    }
+    $raise = [];
+    foreach ($words as $word) {
+        $found = array_values(array_filter(ABILITIES, fn ($a) => str_starts_with($a, $word)));
+        if (count($found) !== 1) {
+            return "There's no ability '$word'.";
+        }
+        $raise[] = $found[0];
+    }
+    $raise = array_values(array_unique($raise));
+    if ($feat === 'grappler') {
+        if ($raise !== ['strength'] && $raise !== ['dexterity']) {
+            return 'Grappler raises Strength or Dexterity: choose one.';
+        }
+        $by = [$raise[0] => 1];
+    } elseif (count($raise) === 1 || count($raise) === 2) {
+        $by = array_fill_keys($raise, 3 - count($raise));
+    } else {
+        return 'Choose one ability for +2 or two for +1 each.';
+    }
+    foreach ($by as $a => $n) {
+        if ($me[$a] + $n > 20) {
+            return ucfirst($a) . " can't go above 20.";
+        }
+    }
+    $con = (int) $me['constitution'];
+    $hp = $me['level'] * (mod($con + ($by['constitution'] ?? 0)) - mod($con));
+    q('UPDATE users SET ' . implode(', ', array_map(fn ($a) => "$a = $a + ?", ABILITIES))
+        . ', max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
+        [...array_map(fn ($a) => $by[$a] ?? 0, ABILITIES), $hp, $hp, $me['id']]);
+    q('INSERT INTO picks (user_id, choice, value) VALUES (?, ?, ?)',
+        [$me['id'], $c['id'], $feat . ' ' . implode(' ', array_map(fn ($a) => substr($a, 0, 3), array_keys($by)))]);
+    return [FEATS[$feat]['name'] . ': ' . and_list(array_map(fn ($a) => ucfirst($a) . ' ' . ($me[$a] + $by[$a]),
+        array_keys($by))) . '.' . ($hp ? " Your HP maximum rises by $hp." : '')];
 }
 
 /**
@@ -2542,6 +2632,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     $primal = $me['class'] === 'druid' && $me['level'] >= 7; // Primal Strike, once a turn
     $cleaved = false;
     $savage = has_feat($me, 'savage') && $me['shape'] === null; // Savage Attacker, once a turn, with a weapon
+    $grab = has_feat($me, 'grappler') && $me['shape'] === null; // Punch and Grab, once a turn
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $i => $w) {
         $off = isset($w['off']);
@@ -2617,6 +2708,13 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             && array_search($foe['size'], SIZES, true) <= array_search('large', SIZES, true) && spend_species($me)) {
             $lines[] = "Hill's Tumble: the {$foe['name']} goes down, Prone.";
             set_condition($foe, 'prone');
+        }
+        // Punch and Grab: an Unarmed Strike of the Attack action (not a Monk's Bonus Action ones) also grapples
+        if ($grab && $w['weapon'] === 'Unarmed Strike' && !isset($w['strike']) && $foe['grappled_by'] !== $me['id']) {
+            $grab = false;
+            $at = count($lines);
+            maneuver($me, $foe, $lines, 'grapple');
+            $lines[$at] = 'Punch and Grab: ' . lcfirst($lines[$at]);
         }
         if (($me['stun'] ?? false) && $w['monk'] && spend_uses($me)) { // Stunning Strike, on my first such hit
             $me['stun'] = false;
@@ -2746,7 +2844,8 @@ function attack_d20(array &$me, array &$foe, bool $adv = false, bool $dis = fals
     $far = $me['far'] ?? false;
     $adv = $adv || ($prone && !$far) || has($foe, 'paralyzed') || has($foe, 'stunned')
         || has($foe, 'blinded') || has($foe, 'reeling') || has($foe, 'outlined') || has($foe, 'restrained')
-        || ($me['class'] === 'ranger' && $me['level'] >= 17 && marking($me)); // Precise Hunter
+        || ($me['class'] === 'ranger' && $me['level'] >= 17 && marking($me)) // Precise Hunter
+        || (($foe['grappled_by'] ?? null) === $me['id'] && has_feat($me, 'grappler')); // Grappler
     if (has($foe, 'reeling')) { // a Stunning Strike it saved against: only the next attack roll
         set_condition($foe, 'reeling', false);
     }
@@ -2953,27 +3052,35 @@ function cmd_maneuver(array $me, string $how, string $target): array
             $lines[] = "The {$foe['name']} is already " . ($how === 'shove' ? 'Prone.' : 'in your grip.');
             return hero_turn($me, $foe, $lines);
         }
-        if (array_search($foe['size'], SIZES, true) > array_search(origin($me)['size'] ?? 'medium', SIZES, true) + 1) {
-            $lines[] = "The {$foe['name']} is too big to " . ($how === 'shove' ? 'shove.' : 'grab.');
-            return hero_turn($me, $foe, $lines);
+        if (maneuver($me, $foe, $lines, $how)) {
+            $me['attacks']--;
         }
-        $dc = 8 + max(mod($me['strength']), $me['arts'] ? mod($me['dexterity']) : -5) + $me['prof_bonus'];
-        $ability = $foe['str_save'] >= $foe['dex_save'] ? 'str' : 'dex';
-        [$save, $saved] = save($foe, $ability, $dc);
-        $roll = ucfirst($ability) . ' save ' . vs($save, $dc);
-        if ($saved) {
-            $lines[] = "The {$foe['name']} " . ($how === 'shove' ? 'stands firm' : 'slips your grip') . " ($roll).";
-        } elseif ($how === 'shove') {
-            $lines[] = "You shove the {$foe['name']} to the ground, Prone ($roll).";
-            set_condition($foe, 'prone');
-        } else {
-            $lines[] = "You grab hold of the {$foe['name']}, Grappled ($roll).";
-            $foe['grappled_by'] = $me['id'];
-            q('UPDATE spawns SET grappled_by = ? WHERE id = ?', [$me['id'], $foe['id']]);
-        }
-        $me['attacks']--;
         return hero_turn($me, $foe, $lines);
     }, ucfirst($how) . ' what?');
+}
+
+/** A shove or grapple's save (see cmd_maneuver()), and what it does. False if the foe is too big to try. */
+function maneuver(array $me, array &$foe, array &$lines, string $how): bool
+{
+    if (array_search($foe['size'], SIZES, true) > array_search(origin($me)['size'] ?? 'medium', SIZES, true) + 1) {
+        $lines[] = "The {$foe['name']} is too big to " . ($how === 'shove' ? 'shove.' : 'grab.');
+        return false;
+    }
+    $dc = 8 + max(mod($me['strength']), $me['arts'] ? mod($me['dexterity']) : -5) + $me['prof_bonus'];
+    $ability = $foe['str_save'] >= $foe['dex_save'] ? 'str' : 'dex';
+    [$save, $saved] = save($foe, $ability, $dc);
+    $roll = ucfirst($ability) . ' save ' . vs($save, $dc);
+    if ($saved) {
+        $lines[] = "The {$foe['name']} " . ($how === 'shove' ? 'stands firm' : 'slips your grip') . " ($roll).";
+    } elseif ($how === 'shove') {
+        $lines[] = "You shove the {$foe['name']} to the ground, Prone ($roll).";
+        set_condition($foe, 'prone');
+    } else {
+        $lines[] = "You grab hold of the {$foe['name']}, Grappled ($roll).";
+        $foe['grappled_by'] = $me['id'];
+        q('UPDATE spawns SET grappled_by = ? WHERE id = ?', [$me['id'], $foe['id']]);
+    }
+    return true;
 }
 
 /**
@@ -5358,7 +5465,11 @@ function hero_sheet(array $me): array
         'xp_from' => $xp[$me['level']],
         'xp_next' => $xp[$me['level'] + 1] ?? null,
         'level_ready' => isset($xp[$me['level'] + 1]) && $me['xp'] >= $xp[$me['level'] + 1], // waits for a rest
-        'owed' => owed_choices($me) !== [],
+        'owed' => match (true) { // what's owed, for the sheet's badge and button
+            ($first = owed_choices($me)[0] ?? null) === null => null,
+            str_starts_with($first['id'], 'feat ') => 'a feat',
+            default => 'skills',
+        },
         'may_choose' => (bool) $me['may_choose'],
         'gold' => $me['gold'],
     ];
@@ -5370,12 +5481,21 @@ function cmd_score(array $me): array
     $skills = array_values(array_intersect(array_keys(SKILLS), proficient_skills($me))); // in SKILLS order
     $picks = picks($me);
     $expert = [...$picks['expertise 1'] ?? [], ...$picks['expertise 2'] ?? []]; // marked *
+    $feats = array_filter($picks, fn ($k) => str_starts_with($k, 'feat '), ARRAY_FILTER_USE_KEY);
+    uksort($feats, 'strnatcmp'); // by level: 'feat 4' before 'feat 12'
+    $feats = array_map(function (array $pick): string {
+        [$feat, $raised] = explode(' ', $pick[0], 2); // 'asi str dex', 'asi con' (+2) or 'grappler dex'
+        $n = $feat === 'asi' && !str_contains($raised, ' ') ? 2 : 1;
+        return FEATS[$feat]['name'] . ' (' . implode(', ', array_map(fn ($a) => ucfirst($a) . " +$n",
+            explode(' ', $raised))) . ')';
+    }, $feats);
     return [
         "{$s['name']}, level {$s['level']} {$s['class']}",
         implode('  ', array_map(fn ($a) => sprintf('%s %d (%+d)', ...$a), $s['abilities'])),
         'Saves  ' . implode('  ', array_map(fn ($a) => sprintf('%s %+d', $a[0], $a[3]), $s['abilities'])),
         'Skills  ' . (implode(', ', array_map(fn ($k) => sprintf('%s %+d', skill_name($k), skill_bonus($me, $k))
             . (in_array($k, $expert, true) ? '*' : ''), $skills)) ?: 'none'),
+        ...($feats === [] ? [] : ['Feats  ' . implode(', ', $feats)]),
         "HP {$s['hp']}/{$s['max_hp']}" . ($s['temp_hp'] ? " +{$s['temp_hp']} temp" : '')
             . "   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
         sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
@@ -5932,6 +6052,20 @@ function panel(array $me): ?array
         return null;
     }
     $c = $owed[0];
+    if (str_starts_with($c['id'], 'feat ')) { // a feat, then the abilities it raises (a 20 can't go higher)
+        $raise = fn (array $abilities): array => array_values(array_map(fn ($a) => $option(strtolower($abbr($a)),
+            ucfirst($a), '', ['tag' => (string) $me[$a]]), array_filter($abilities, fn ($a) => $me[$a] < 20)));
+        $groups = [['pick' => 1, 'options' => array_map(fn ($f) => $option($f, FEATS[$f]['name'], FEATS[$f]['about'],
+            $f === 'asi' ? ['picked' => true] : []), $c['options'])],
+            ['title' => 'One for +2, or two for +1 each', 'for' => 'asi', 'pick' => 2, 'min' => 1,
+                'options' => $raise(ABILITIES)]];
+        if (in_array('grappler', $c['options'], true)) {
+            $groups[] = ['title' => '+1 to', 'for' => 'grappler', 'pick' => 1,
+                'options' => $raise(['strength', 'dexterity'])];
+        }
+        return ['id' => $c['id'], 'title' => $c['title'], 'about' => 'A General feat (SRD 5.2.1 p.87).',
+            'command' => 'choose ', 'groups' => $groups];
+    }
     $s = with_stats($me);
     $about = match (true) {
         str_starts_with($c['id'], 'expertise') => "Choose {$c['pick']}: your Proficiency Bonus counts twice with them.",

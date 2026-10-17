@@ -11,9 +11,6 @@ and roads wait for Aaron's sketch (below).
 
 ### Characters
 
-9. **Ability Score Improvements** at levels 4, 8, 12 and 16 (Fighter also 6 and 14, Rogue 10): +2 to one score or +1
-   to two (20 at most), or the Grappler feat, the SRD's general feats. A choice (`owed_choices()` and the panel). Level 19's Epic Boon
-   waits.
 10. **No class short at levels 1-5.** The four classes without a subclass get the SRD's (Fighter: Champion, Cleric:
     Life Domain, Rogue: Thief, Barbarian: Berserker), plus Action Surge (Fighter 2), the Cleric's Channel Divinity (2)
     and spells of 2nd and 3rd level, the Paladin's Divine Sense and Sacred Weapon (3) and Uncanny Dodge (Rogue 5).
@@ -308,3 +305,13 @@ Any time: **approve account requests** (friends ask on the login page):
   counter, Back or Later, and Confirm, which sends the text a player could type. Character creation's class, scores,
   species and background are on it too. A left rail (ArchaicQuest-style) waits until there's more to keep on screen.
   Heroes from before choose their skills after their next rest; until then only their background's count.
+- 2026-10-17 **Ability Score Improvements** (task 9): a General feat at levels 4, 8, 12 and 16, Fighter also 6 and
+  14, Rogue 10 (`MORE_FEATS`), owed as `feat N` choices in `owed_choices()` and made after a rest, as skills are.
+  Ability Score Improvement is +2 to one score or +1 to two; Grappler (once, needing Str or Dex 13) is +1 Str or Dex,
+  Advantage on attack rolls against a foe you grapple, and Punch and Grab: once a turn, an Unarmed Strike of the
+  Attack action that hits also grapples (`maneuver()`, shared with `grapple`). No score goes above 20. The scores
+  change on `users` as a background's do, the pick is kept as `asi str dex`, `asi con` or `grappler dex`, and a
+  higher Con modifier adds 1 HP a level. `choose str`, `choose str, dex` or `choose grappler dex`; on the panel, a
+  feat and then one ability ticked for +2 or two for +1 (a group's `min`). `score` lists feats, and the sheet's badge
+  names what's owed. Left out: Grappler's Fast Wrestler (a grappled foe never moves with you) and level 19's Epic
+  Boon. Heroes already at level 4 or more choose after their next rest.

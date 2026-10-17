@@ -83,8 +83,8 @@ async function send(cmd, quiet = false) {
  * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, temp_hp: number, ac: number,
  *   prof: number, abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string,
  *   attacks: number, resources: [string, string][], origin: [string, string][], status: string[], rest_secs: number,
- *   xp: number, xp_from: number, xp_next: number | null, level_ready: boolean, owed: boolean, may_choose: boolean,
- *   gold: number }} Hero
+ *   xp: number, xp_from: number, xp_next: number | null, level_ready: boolean, owed: string | null,
+ *   may_choose: boolean, gold: number }} Hero
  */
 
 /** @param {string} id */
@@ -149,12 +149,15 @@ function drawHero(h, map, board = false) {
     const status = byId('status');
     status.replaceChildren(...h.status.map((s) => el('span', 'badge text-bg-warning fw-normal', s)));
     if (h.owed && h.may_choose) {
-        const choose = button('Choose skills', 'choose');
+        const choose = button(`Choose ${h.owed}`, 'choose');
         choose.dataset.bsDismiss = 'offcanvas'; // on phones, close the sheet's drawer so the panel shows
         choose.dataset.bsTarget = '#hero'; // it's .offcanvas-lg, which Bootstrap's closest('.offcanvas') misses
         status.append(choose);
     }
-    else if (h.owed) status.append(el('span', 'badge text-bg-warning fw-normal', 'Skills to choose: short rest'));
+    else if (h.owed) {
+        const owed = h.owed[0].toUpperCase() + h.owed.slice(1);
+        status.append(el('span', 'badge text-bg-warning fw-normal', `${owed} to choose: short rest`));
+    }
     status.hidden = status.childElementCount === 0;
     // A rest finishes on the next command, so send an empty one when it's up (the server applies it then).
     clearTimeout(restTimer);
@@ -321,7 +324,8 @@ actions.addEventListener('click', (e) => {
 /**
  * panel() in game.php: a choice as a form. Confirm sends `command` and the picked keys, the text a player could type.
  * @typedef {{ key: string, label: string, about: string, tag?: string, locked?: boolean, picked?: boolean }} Option
- * @typedef {{ title?: string, for?: string, pick: number, options: Option[] }} Group
+ * @typedef {{ title?: string, for?: string, pick: number, min?: number, options: Option[] }} Group (pick at most,
+ *   min at least: pick if not given)
  * @typedef {{ id: string, title: string, about: string, command: string, groups: Group[],
  *   assign?: { rows: string[], values: number[], picked: number[] }, back?: boolean }} Panel
  */
@@ -437,7 +441,7 @@ function panelCommand() {
         const group = shown.groups[Number(set.querySelector('input')?.name.slice(1))];
         const picked = /** @type {HTMLInputElement[]} */ ([...set.querySelectorAll('input:checked')])
             .filter((i) => !group.options.find((o) => o.key === i.value)?.locked).map((i) => i.value);
-        short += Math.max(0, group.pick - picked.length);
+        short += Math.max(0, (group.min ?? group.pick) - picked.length);
         parts.push(picked.join(group.pick > 1 ? ', ' : ' '));
     }
     return { cmd: shown.command + parts.filter(Boolean).join(' '), error: short ? `Pick ${short} more.` : '' };

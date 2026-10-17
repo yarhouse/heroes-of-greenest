@@ -2473,7 +2473,8 @@ try {
     check(skill_bonus(with_stats(hero('Pixie')), 'stealth') === $dex + 4 && owed_choices(hero('Pixie')) === [],
         'Expertise doubles it, and nothing is owed');
     q('UPDATE users SET level = 6 WHERE id = ?', [$pid]);
-    check(array_column(owed_choices(hero('Pixie')), 'id') === ['expertise 2'], 'Rogue 6 owes a second Expertise');
+    check(array_column(owed_choices(hero('Pixie')), 'id') === ['expertise 2', 'feat 4'],
+        'Rogue 6 owes a second Expertise, then its level 4 feat');
     save_account('Lute', 'correct horse');
     create('Lute', 'bard');
     q("UPDATE users SET level = 2 WHERE name = 'Lute'");
@@ -2569,6 +2570,82 @@ try {
     q("UPDATE users SET fighting = NULL WHERE name = 'Chs'");
     check(panel(hero('Chs'))['id'] === 'class skills' && !isset(panel(hero('Chs'))['back']),
         'a rested hero with a choice gets the panel, without Back');
+
+    // Ability Score Improvements and Grappler (task 9). Asi: Str 15 Dex 14 Con 13 Int 8 Wis 10 Cha 12.
+    save_account('Asi', 'correct horse');
+    create('Asi', 'fighter');
+    $aid = hero('Asi')['id'];
+    $feats = fn (array $me) => array_values(preg_grep('/^feat/', array_column(owed_choices($me), 'id')));
+    check($feats(['level' => 3] + hero('Asi')) === [], 'no feat before level 4');
+    check($feats(['level' => 14] + hero('Asi')) === ['feat 4', 'feat 6', 'feat 8', 'feat 12', 'feat 14'],
+        'a Fighter 14 owes feats at 4, 6, 8, 12 and 14');
+    check($feats(['level' => 10] + hero('Pixie')) === ['feat 4', 'feat 8', 'feat 10'], 'a Rogue 10: 4, 8 and 10');
+    check($feats(['level' => 19] + hero('Lute')) === ['feat 4', 'feat 8', 'feat 12', 'feat 16'],
+        "a Bard 19: 4, 8, 12 and 16 (the Epic Boon waits)");
+    q('UPDATE users SET level = 14 WHERE id = ?', [$aid]);
+    check(says(run_command(hero('Asi'), 'choose str'), 'Rest first'), 'a feat waits for a rest too');
+    q('UPDATE users SET may_choose = TRUE WHERE id = ?', [$aid]);
+    check(owed_choices(hero('Asi'))[0]['options'] === ['asi', 'grappler'], 'Str 13 or more: Grappler is offered');
+    check(says(run_command(hero('Asi'), 'choose'), "choose str, dex"), 'choose shows the feat choice');
+    check(says(run_command(hero('Asi'), 'choose str, dex, con'), 'one ability for +2 or two for +1'),
+        'three abilities are refused');
+    check(says(run_command(hero('Asi'), 'choose grappler int'), 'Grappler raises Strength or Dexterity'),
+        'Grappler raises only Str or Dex');
+    check(says(run_command(hero('Asi'), 'choose bogus'), "There's no ability 'bogus'."), 'an unknown word is refused');
+    $p = panel(hero('Asi'));
+    check($p['id'] === 'feat 4' && $p['command'] === 'choose ' && array_column($p['groups'][0]['options'], 'key')
+        === ['asi', 'grappler'] && $p['groups'][1]['for'] === 'asi' && $p['groups'][1]['pick'] === 2
+        && $p['groups'][1]['min'] === 1 && count($p['groups'][1]['options']) === 6
+        && $p['groups'][2]['for'] === 'grappler' && array_column($p['groups'][2]['options'], 'key') === ['str', 'dex'],
+        'the feat panel: ASI with 1 or 2 of six abilities, or Grappler with Str or Dex');
+    $out = run_command(hero('Asi'), 'choose asi str');
+    check(says($out, 'Ability Score Improvement: Strength 17.') && hero('Asi')['strength'] === 17
+        && picks(hero('Asi'))['feat 4'] === ['asi str'], 'one ability: +2');
+    $was = hero('Asi');
+    $out = run_command(hero('Asi'), 'choose con, wis');
+    $now = hero('Asi');
+    check(says($out, 'Constitution 14 and Wisdom 11') && $now['constitution'] === 14 && $now['wisdom'] === 11
+        && $now['max_hp'] === $was['max_hp'] + 14 && $now['hp'] === $was['hp'] + 14,
+        'two abilities: +1 each; a higher Con modifier adds 1 HP a level');
+    q('UPDATE users SET strength = 20, dexterity = 12 WHERE id = ?', [$aid]);
+    check(says(run_command(hero('Asi'), 'choose grappler str'), "Strength can't go above 20."), 'never above 20');
+    check(!in_array('str', array_column(panel(hero('Asi'))['groups'][1]['options'], 'key'), true),
+        'a 20 is left off the panel');
+    run_command(hero('Asi'), 'choose grappler dex');
+    check(has_feat(hero('Asi'), 'grappler') && hero('Asi')['dexterity'] === 13
+        && owed_choices(hero('Asi'))[0]['options'] === ['asi'], 'Grappler is taken once');
+    q('UPDATE users SET strength = 12 WHERE id = ?', [$aid]);
+    check(array_column(owed_choices(['level' => 4, 'strength' => 8, 'dexterity' => 12] + hero('Lute')), 'options',
+        'id')['feat 4'] === ['asi'],
+        'Str and Dex under 13: no Grappler');
+    run_command(hero('Asi'), 'choose wis');
+    $out = run_command(hero('Asi'), 'choose cha');
+    check(owed_choices(hero('Asi')) === [] && hero('Asi')['may_choose'] === 0, 'all made, may_choose clears');
+    check(says(cmd_score(with_stats(hero('Asi'))), 'Feats  Ability Score Improvement (Str +2), Ability Score '
+        . 'Improvement (Con +1, Wis +1), Grappler (Dex +1)'), 'score lists the feats');
+    check(hero_sheet(with_stats(['level' => 16] + hero('Asi')))['owed'] === 'a feat'
+        && hero_sheet(with_stats(hero('Asi')))['owed'] === null, "the sheet names what's owed");
+
+    // Grappler in a fight. Asi, Fighter 14 with no weapon: three Unarmed Strikes, +8 to hit (Str 16, PB +5), 4
+    // damage; a grapple's DC is 16.
+    q('DELETE FROM objects WHERE user_id = ?', [$aid]);
+    q("UPDATE users SET strength = 16, room_id = 2, x = 3, y = 2, fighting = NULL, hp = max_hp WHERE id = ?", [$aid]);
+    q("UPDATE spawns SET room_id = 2, hp = 60, dead_since = NULL, x = 4, y = 2, placed_at = NOW(), conditions = '',
+       grappled_by = NULL WHERE id = 9999");
+    $a = with_stats(hero('Asi'));
+    $foe = ['grappled_by' => $aid, 'conditions' => ''] + q('SELECT * FROM spawns WHERE id = 9999')->fetch();
+    $dice_queue = [3, 15];
+    check(attack_d20($a, $foe)[0] === 15, 'Attack Advantage against a foe I grapple');
+    $foe['grappled_by'] = null;
+    $dice_queue = [3, 15];
+    check(attack_d20($a, $foe)[0] === 3 && $dice_queue === [15], 'and only against one I grapple');
+    $dice_queue = [15, 1, 10, 2, 4, 12, 6, 9, 2]; // initiative; a hit, its Str save fails; two with Advantage; Slam
+    $out = run_command(hero('Asi'), 'kill dummy');
+    check(says($out, 'Punch and Grab: you grab hold of the Training Dummy, Grappled (Str save 2 vs DC 16).')
+        && count(array_filter($out, fn ($l) => str_contains($l, 'Punch and Grab'))) === 1
+        && says($out, '(20 vs AC 10, with Advantage)') && says($out, '(17 vs AC 10, with Advantage)')
+        && $dice_queue === [], 'Punch and Grab: an Unarmed Strike that hits also grapples, once a turn');
+    leave('Asi');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
