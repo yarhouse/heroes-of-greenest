@@ -586,6 +586,54 @@ try {
     check(says($score, 'Proficiency Bonus +3') && says($score, '+5 to hit, 2d6+2 damage, 2 attacks a round')
         && says($score, 'Second Wind 2/3'), 'level 5: Proficiency Bonus +3, Extra Attack, more Second Wind');
 
+    // Action Surge (Fighter 2) and the Champion (3): Improved Critical and Remarkable Athlete. Testa, level 5: two
+    // Greatsword attacks, +5 to hit, 2d6+2.
+    check(says(run_command(hero('Testb'), 'surge dummy'), 'level 2 or more'), 'Action Surge needs Fighter 2');
+    check(says($score, 'Action Surge 1/1'), 'score: Action Surge');
+    q("UPDATE users SET hp = max_hp, room_id = 2 WHERE name = 'Testa'");
+    q('UPDATE spawns SET hp = 100, dead_since = NULL WHERE id = 9999');
+    // Initiative 3 and 10 with Advantage, +2, vs 5; four attacks hit for 3 + 4 + 2; Slam a natural 1
+    $dice_queue = [3, 10, 5, 12, 3, 4, 12, 3, 4, 12, 3, 4, 12, 3, 4, 1];
+    $out = run_command(hero('Testa'), 'surge dummy');
+    check(says($out, 'Initiative: you 12, it 5') && $dice_queue === [],
+        'Remarkable Athlete: Advantage on Initiative');
+    check(says($out, 'Action Surge! You attack, and attack again.') && count(array_filter($out,
+        fn ($l) => str_contains($l, 'You hit the Training Dummy (17 vs AC 10) for 9'))) === 4
+        && says($out, 'Training Dummy: 64 HP'), 'Action Surge: the Attack action twice, four attacks at level 5');
+    check(says(run_command(hero('Testa'), 'surge'), 'no Action Surge left')
+        && says(run_command(hero('Testa'), 'score'), 'Action Surge 0/1'), 'once a short rest');
+    $dice_queue = [19, 6, 6, 6, 6, 2, 1]; // a 19 crits for 4d6 + 2; a 2 misses (Graze 2); Slam a natural 1
+    $out = run_command(hero('Testa'), 'kill');
+    check(says($out, 'Critical hit! You hit the Training Dummy (24 vs AC 10) for 26 damage.') && $dice_queue === [],
+        'Improved Critical: a 19 is a Critical Hit');
+    q('UPDATE monsters SET ac = 30 WHERE id = 9999');
+    // a 19 hits AC 30 and crits; then a natural 1 (no Graze on a natural 1? it grazes: the modifier only); then I back
+    // off a whole Speed and half again, and the dummy gets no opportunity attack; its turn: it walks up, Slam a 1
+    $dice_queue = [19, 1, 1, 1, 1, 2, 1];
+    $out = run_command(hero('Testa'), 'kite');
+    check(says($out, 'Critical hit! You hit the Training Dummy (24 vs AC 30) for 6 damage.'),
+        'a Critical Hit hits whatever the AC');
+    check(!says($out, 'pull away') && $dice_queue === [],
+        'Remarkable Athlete: after a Critical Hit, backing off draws no opportunity attack');
+    q('UPDATE monsters SET ac = 10 WHERE id = 9999');
+    leave('Testa');
+    q("UPDATE users SET resting = 'short', rest_until = NOW(), room_id = 1 WHERE name = 'Testa'");
+    run_command(hero('Testa'), '');
+    check(hero('Testa')['feature_spent'] === 0, 'a short rest gives back Action Surge');
+    // Out of reach with 10 ft of my move left: the first action is a Dash, the second the attack.
+    q("UPDATE users SET room_id = 2, x = 0, y = 5 WHERE name = 'Testa'");
+    q('UPDATE spawns SET hp = 100 WHERE id = 9999');
+    $dice_queue = [10, 10, 1, 1, 1]; // Initiative; my attacks are natural 1s (Graze 2 each); its Slam a 1
+    run_command(hero('Testa'), 'kill dummy');
+    q("UPDATE users SET x = 0, y = 5, moved = 20 WHERE name = 'Testa'");
+    q('UPDATE spawns SET x = 7, y = 0 WHERE id = 9999');
+    $dice_queue = [1, 1, 1];
+    $out = run_command(hero('Testa'), 'surge dummy');
+    check(says($out, 'You dash in on the Training Dummy.') && says($out, 'Action Surge! You attack.')
+        && count(array_filter($out, fn ($l) => str_contains($l, 'You miss'))) === 2 && $dice_queue === [],
+        'Action Surge out of reach: Dash, then the Attack action');
+    leave('Testa');
+
     // Classes, each against the Training Dummy (AC 10, Slam +3 for 1d4, Dex save +0) in front of the keep.
     q("UPDATE users SET room_id = 2 WHERE name = 'Testc'");
     $score = run_command(hero('Testc'), 'score');
@@ -778,7 +826,7 @@ try {
     // Shove and grapple in place of one attack (Testa: level 5, two attacks, Str +2, PB +3: DC 13).
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
     q("UPDATE users SET room_id = 2, fighting = NULL WHERE name IN ('Testa', 'Testb')");
-    $dice_queue = [10, 1, 5, 3, 15, 3, 4, 12]; // Str save 5 fails; one attack with Advantage; it gets up, misses
+    $dice_queue = [10, 1, 1, 5, 3, 15, 3, 4, 12]; // Str save 5 fails; one attack with Advantage; it gets up, misses
     $out = run_command(hero('Testa'), 'shove dummy');
     check(says($out, 'You shove the Training Dummy to the ground, Prone (Str save 5 vs DC 13).')
         && says($out, '(20 vs AC 10, with Advantage) for 9 damage') && says($out, 'gets back up')
@@ -800,7 +848,7 @@ try {
     q('INSERT INTO objects (item_id, user_id) VALUES (19, ?)', [hero('Testa')['id']]);
     run_command(hero('Testa'), 'equip maul');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
-    $dice_queue = [10, 1, 15, 3, 4, 5, 2, 14, 1, 1, 1]; // a hit, Con save 5 fails; then Advantage
+    $dice_queue = [10, 1, 1, 15, 3, 4, 5, 2, 14, 1, 1, 1]; // a hit, Con save 5 fails; then Advantage
     $out = run_command(hero('Testa'), 'kill dummy');
     check(says($out, 'topples over, Prone (Con save 5 vs DC 13).') && says($out, '(19 vs AC 10, with Advantage)')
         && $dice_queue === [] && str_contains(line(run_command(hero('Testa'), 'i'), 'Maul'), 'two-handed, topple'),
@@ -809,7 +857,7 @@ try {
     q('INSERT INTO objects (item_id, user_id) VALUES (7, ?)', [hero('Testa')['id']]);
     run_command(hero('Testa'), 'equip mace');
     q("UPDATE users SET room_id = 2 WHERE name = 'Testa'");
-    $dice_queue = [10, 1, 15, 3, 1, 2, 12]; // a Mace hit saps it, so its Slam rolls twice and takes the 2
+    $dice_queue = [10, 1, 1, 15, 3, 1, 2, 12]; // a Mace hit saps it, so its Slam rolls twice and takes the 2
     check(says(run_command(hero('Testa'), 'kill dummy'), 'misses you (5 vs AC 17, with Disadvantage)')
         && $dice_queue === [], 'Sap: a hit gives Disadvantage on its next attack');
     $dice_queue = [1, 1, 12];
@@ -823,7 +871,7 @@ try {
     q('INSERT INTO spawns (id, room_id, monster_id, hp) VALUES (9998, 2, 9999, 10)'); // first in the room: the foe
     q("UPDATE users SET room_id = 2, xp = 6500 WHERE name = 'Testa'");
     // A hit for 5; Cleave kills the other dummy (gold 4, no loot); the second attack kills the first.
-    $dice_queue = [10, 1, 15, 3, 14, 3, 4, 2, 15, 6, 4, 2];
+    $dice_queue = [10, 1, 1, 15, 3, 14, 3, 4, 2, 15, 6, 4, 2];
     $out = run_command(hero('Testa'), 'kill dummy');
     check(says($out, 'You cleave into the Training Dummy (19 vs AC 10) for 3 damage.')
         && count(array_filter($out, fn ($l) => str_contains($l, 'dies!'))) === 2 && hero('Testa')['xp'] === 6550
@@ -919,7 +967,7 @@ try {
     check(says(run_command(hero('Teste'), 'cast bless'), 'You cast Bless on you, Testb.')
         && says(run_command(hero('Teste'), 'score'), 'AC 14') && says(run_command(hero('Testb'), 'score'), 'Bless'),
         'Bless reaches another hero here, and a new Concentration spell ends the old one');
-    $dice_queue = [10, 1, 5, 3, 3, 3, 1]; // 5 + 4 misses AC 10, but Bless adds 3
+    $dice_queue = [10, 1, 1, 5, 3, 3, 3, 1]; // 5 + 4 misses AC 10, but Bless adds 3
     check(says(run_command(hero('Testb'), 'kill dummy'), '(12 vs AC 10, +3 Bless) for 8 damage.') && $dice_queue === [],
         'Bless adds 1d4 to attack rolls');
     check(says(run_command(hero('Teste'), 'cast hold dummy'), 'works only on a Humanoid, and the Training Dummy is an '
@@ -2639,7 +2687,7 @@ try {
     $foe['grappled_by'] = null;
     $dice_queue = [3, 15];
     check(attack_d20($a, $foe)[0] === 3 && $dice_queue === [15], 'and only against one I grapple');
-    $dice_queue = [15, 1, 10, 2, 4, 12, 6, 9, 2]; // initiative; a hit, its Str save fails; two with Advantage; Slam
+    $dice_queue = [15, 1, 1, 10, 2, 4, 12, 6, 9, 2]; // initiative; a hit, its Str save fails; two with Advantage; Slam
     $out = run_command(hero('Asi'), 'kill dummy');
     check(says($out, 'Punch and Grab: you grab hold of the Training Dummy, Grappled (Str save 2 vs DC 16).')
         && count(array_filter($out, fn ($l) => str_contains($l, 'Punch and Grab'))) === 1

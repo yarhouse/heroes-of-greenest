@@ -88,8 +88,8 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
  * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
  * Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the Druid's Primal Order is Warden, a
  * Warlock's Eldritch Invocations are Armor of Shadows from level 1 and Agonizing Blast and Eldritch Mind from 2, and
- * the subclasses are the SRD's: Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with Colossus Slayer
- * and Multiattack Defense, Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
+ * the subclasses are the SRD's: Champion, Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with
+ * Colossus Slayer and Multiattack Defense, Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
  * know every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
  * from.
  */
@@ -440,6 +440,8 @@ const COMMANDS = [
     'patient <monster>' => 'Monk 2: attack, and Dodge as your Bonus Action: attacks on you have Disadvantage (1 Focus)',
     'stun <monster>' => 'Monk 5: attack; your first hit tries a Stunning Strike (1 Focus)',
     'second' => 'Fighter: Second Wind, regain 1d10 + your level in HP',
+    'surge <monster>' => 'Fighter 2: Action Surge, two actions this turn: attack twice over, or Dash and attack (once '
+        . 'a short rest)',
     'rage' => 'Barbarian: Rage for the rest of a fight; costs no turn',
     'inspire <hero>' => 'Bard: give a hero here a Bardic Inspiration die for a failed attack or save; costs no turn',
     'wild [beast]' => 'Druid 2: Wild Shape into a beast (wild alone lists them, or leaves the form); costs no turn',
@@ -485,6 +487,7 @@ const COMMANDS = [
 const FEATURES = [
     'breathe' => ['dragonborn', 1],
     'reckless' => ['barbarian', 2], 'rage' => ['barbarian', 1], 'second' => ['fighter', 1],
+    'surge' => ['fighter', 2],
     'flurry' => ['monk', 2], 'patient' => ['monk', 2], 'stun' => ['monk', 5], 'wholeness' => ['monk', 6],
     'inspire' => ['bard', 1], 'wild' => ['druid', 2], 'land' => ['druid', 3], 'cunning' => ['warlock', 2],
     'lay' => ['paladin', 1], 'innate' => ['sorcerer', 1], 'font' => ['sorcerer', 2],
@@ -752,6 +755,7 @@ function run_command(array $me, string $input): array
         $verb === 'kite' => cmd_kite($me, trim($arg)),
         in_array($verb, ['dash', 'disengage', 'dodge'], true) => cmd_action($me, $verb, trim($arg)),
         $verb === 'reckless' => cmd_reckless($me, trim($arg)),
+        $verb === 'surge' => cmd_surge($me, trim($arg)),
         $verb === 'shove' || $verb === 'grapple' => cmd_maneuver($me, $verb, trim($arg)),
         $verb === 'breathe' => cmd_breathe($me, trim($arg)),
         in_array($verb, ['flurry', 'patient', 'stun'], true) => cmd_technique($me, $verb, trim($arg)),
@@ -1598,7 +1602,9 @@ function secret(array $me, array $row, string $what): array
     if ($done && $done['recent']) {
         return ["(Your $skill check fell short today. Try again tomorrow.)"];
     }
-    $total = d20(0, lucky($me)) + skill_bonus($me, $row['skill']);
+    // Remarkable Athlete (Champion 3): Advantage on Athletics checks
+    $athlete = $row['skill'] === 'athletics' && $me['class'] === 'fighter' && $me['level'] >= 3;
+    $total = d20((int) $athlete, lucky($me)) + skill_bonus($me, $row['skill']);
     $passed = $total >= (int) $row['dc'];
     q('REPLACE INTO checks (user_id, what, passed) VALUES (?, ?, ?)', [$me['id'], $what, (int) $passed]);
     return ["($skill check: " . vs($total, (int) $row['dc']) . ($passed ? ', success)' : ', fail)'),
@@ -1846,9 +1852,11 @@ function cmd_kite(array $me, string $arg): array
     }
     return fight($me, implode(' ', $words), function (array &$me, array &$foe, array &$lines) use ($sq): bool {
         $go = function () use (&$me, &$foe, &$lines, $sq): bool { // by reference: it moves me
-            $feet = $me['speed'] - $me['moved'];
-            return $sq === null ? back_off($me, $foe, $feet, $lines, slips($me))
-                : go_to($me, $foe, $sq, $feet, $lines, slips($me));
+            // Remarkable Athlete: after a Critical Hit, half my Speed more, and none of it draws opportunity attacks
+            $athlete = $me['athlete'] ?? false;
+            $feet = $me['speed'] - $me['moved'] + ($athlete ? intdiv($me['speed'], 2) : 0);
+            return $sq === null ? back_off($me, $foe, $feet, $lines, slips($me) || $athlete)
+                : go_to($me, $foe, $sq, $feet, $lines, slips($me) || $athlete);
         };
         $first = $me['ranged'] && $me['pressed'];
         if ($first) {
@@ -2312,6 +2320,11 @@ function close_in(array &$me, array &$foe, int $reach, array &$lines): bool
         return true;
     }
     walk($me, $foe, $there, $me['speed'], $lines, $reach);
+    if (($me['surge'] ?? null) === 'attack' && in_reach($room, my_square($me), $there, $reach)) {
+        $me['surge'] = 'dashed'; // Action Surge: the Dash was one action, the attack is the other
+        $lines[] = "You dash in on the {$foe['name']}.";
+        return true;
+    }
     $off = feet(my_square($me), $there);
     $lines[] = "You run at the {$foe['name']}" . ($off > 5 ? ", $off ft off." : '.');
     return false;
@@ -2446,7 +2459,9 @@ function start_fight(array &$me, array &$foe, array &$lines, string $opening): v
     $joining = $crowd && $foe['init'] !== null;
     $unseen = hidden_from($me, $foe);
     $surprised = $unseen && !$others && !$joining;
-    $mine = d20((int) $unseen, lucky($me)) + mod($me['dexterity']) + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
+    $athlete = $me['class'] === 'fighter' && $me['level'] >= 3; // Remarkable Athlete: Advantage on Initiative
+    $mine = d20((int) ($unseen || $athlete), lucky($me)) + mod($me['dexterity'])
+        + (has_feat($me, 'alert') ? $me['prof_bonus'] : 0);
     $theirs = $joining ? $foe['init'] : d20($surprised ? -1 : 0) + $foe['initiative'];
     $me['foe_first'] = $theirs > $mine; // ties go to the hero
     $me['fighting'] = $foe['id'];
@@ -2649,7 +2664,7 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             isset($w['strike']) => ['Your Unarmed Strike', 'es'],
             default => ['You', ''],
         };
-        if (misses($me, $d20, $total, $foe['ac'], $with)) {
+        if (misses($me, $d20, $total, $foe['ac'], $with, crit_on($me))) {
             $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
             $lines[] = "$you miss$s the {$foe['name']} ($why$with).";
             if ($w['mastery'] === 'graze' && $w['attack_mod'] > 0) { // the modifier only: no Rage, no dice
@@ -2662,7 +2677,9 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             continue;
         }
         // Paralyzed: a hit from within 5 feet is a Critical Hit.
-        $crit = $d20 === 20 || (has($foe, 'paralyzed') && !$me['far']);
+        $crit = $d20 >= crit_on($me) || (has($foe, 'paralyzed') && !$me['far']);
+        // Remarkable Athlete (Champion 3): after a Critical Hit I may move half my Speed without opportunity attacks
+        $me['athlete'] = ($me['athlete'] ?? false) || ($crit && $me['class'] === 'fighter' && $me['level'] >= 3);
         $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
         // The extra attack adds no ability modifier unless it's negative (shortcut: no Two-Weapon Fighting style yet).
         $dice = roll($w['damage'], $crit);
@@ -2805,15 +2822,16 @@ function cleave(array &$me, array $w, array $foe, array &$lines): void
     $aim = has($me, 'reckless') && $w['str_based'];
     [$d20, $edge, $bonus, $with] = attack_d20($me, $other, $aim);
     $total = $d20 + $w['to_hit'] + $bonus;
-    if (misses($me, $d20, $total, $other['ac'], $with)) {
+    if (misses($me, $d20, $total, $other['ac'], $with, crit_on($me))) {
         $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$other['ac']}";
         $lines[] = "You cleave at the {$other['name']} and miss ($why$with).";
         return;
     }
     $rage = $me['raging'] && $w['str_based'] ? $me['rage_damage'] : 0;
-    $dmg = roll($w['damage'], $d20 === 20) + min(0, $w['attack_mod']) + $rage;
+    $crit = $d20 >= crit_on($me);
+    $dmg = roll($w['damage'], $crit) + min(0, $w['attack_mod']) + $rage;
     [$dmg, $note] = typed(max(0, $dmg), $w['damage_type'], $other);
-    $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "You cleave into the {$other['name']} ($total vs AC "
+    $lines[] = ($crit ? 'Critical hit! ' : '') . "You cleave into the {$other['name']} ($total vs AC "
         . "{$other['ac']}$with) for $dmg damage$note.";
     hurt_foe($me, $other, $dmg, $lines);
 }
@@ -2862,16 +2880,17 @@ function attack_d20(array &$me, array &$foe, bool $adv = false, bool $dis = fals
 }
 
 /**
- * True if my attack roll misses AC $ac: a natural 1, or a total under it that isn't a natural 20, once a Human's
- * Heroic Inspiration has rerolled $d20 and inspired() has had its chance to add to $total and the line's note $with.
+ * True if my attack roll misses AC $ac: a natural 1, or a total under it that isn't a Critical Hit (a natural 20, or
+ * $crit or more), once a Human's Heroic Inspiration has rerolled $d20 and inspired() has had its chance to add to
+ * $total and the line's note $with.
  */
-function misses(array &$me, int &$d20, int &$total, int $ac, string &$with): bool
+function misses(array &$me, int &$d20, int &$total, int $ac, string &$with, int $crit = 20): bool
 {
-    if ($d20 !== 20 && ($d20 === 1 || $total < $ac) && $me['species'] === 'human' && spend_species($me)) {
+    if ($d20 < $crit && ($d20 === 1 || $total < $ac) && $me['species'] === 'human' && spend_species($me)) {
         $new = roll('1d20');
         [$total, $with, $d20] = [$total - $d20 + $new, "$with, Heroic Inspiration rerolls a $d20", $new];
     }
-    if ($d20 === 1 || $d20 === 20 || $total >= $ac) {
+    if ($d20 === 1 || $d20 >= $crit || $total >= $ac) {
         return $d20 === 1;
     }
     [$add, $note] = inspired($me, $ac - $total);
@@ -2931,6 +2950,15 @@ function d20(int $edge, bool $lucky = false): int
         -1 => min($die(), $die()),
         default => $die(),
     };
+}
+
+/**
+ * The lowest d20 that scores a Critical Hit with my weapons and Unarmed Strikes (and so hits): 19 with Improved
+ * Critical (Champion 3), 18 with Superior Critical (15).
+ */
+function crit_on(array $me): int
+{
+    return $me['class'] !== 'fighter' || $me['level'] < 3 ? 20 : ($me['level'] >= 15 ? 18 : 19);
 }
 
 /** True if $who (a hero or a monster) has Halfling Luck. */
@@ -3573,6 +3601,35 @@ function cmd_second(array $me): array
         'You catch your second wind and regain ' . ($hp - $me['hp']) . " HP. HP $hp/{$me['max_hp']}, "
             . ($left - 1) . ' Second Wind left.',
     ];
+}
+
+/**
+ * Action Surge (Fighter 2): my turn has a second action, once a short rest (twice from level 17, still once a turn).
+ * Within reach it's the Attack action twice; out of reach the first is a Dash, and the attack follows if that gets
+ * me there. A Dash that falls short spends nothing. Counted in feature_spent.
+ */
+function cmd_surge(array $me, string $target): array
+{
+    if ($me['class'] !== 'fighter' || $me['level'] < 2) {
+        return ['Only Fighters of level 2 or more have Action Surge.'];
+    }
+    if ($me['feature_spent'] >= surges($me)) {
+        return ['You have no Action Surge left. Rest to recover it.'];
+    }
+    $me['surge'] = 'attack';
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        $twice = $me['surge'] === 'attack';
+        q('UPDATE users SET feature_spent = feature_spent + 1 WHERE id = ?', [$me['id']]);
+        $lines[] = 'Action Surge! ' . ($twice ? 'You attack, and attack again.' : 'You attack.');
+        $me['attacks'] *= $twice ? 2 : 1;
+        return hero_turn($me, $foe, $lines);
+    }, 'Surge at what?', weapon_reach($me));
+}
+
+/** How many Action Surges a Fighter has a short rest. */
+function surges(array $me): int
+{
+    return $me['class'] !== 'fighter' || $me['level'] < 2 ? 0 : ($me['level'] >= 17 ? 2 : 1);
 }
 
 /** Rage: a Bonus Action, so it costs no turn. It lasts until the fight ends (the SRD's limit is 10 minutes). */
@@ -4570,6 +4627,9 @@ function finish_rest(array &$me): array
         $all = $me['class'] === 'monk' || ($me['class'] === 'bard' && $me['level'] >= 5);
         $one = in_array($me['class'], ['fighter', 'barbarian', 'druid'], true);
         $me['uses_spent'] = $all ? 0 : max(0, $me['uses_spent'] - ($one ? 1 : 0));
+        if ($me['class'] === 'fighter') { // Action Surge
+            q('UPDATE users SET feature_spent = 0 WHERE id = ?', [$me['id']]);
+        }
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice') . $recovered
             . match (true) {
                 $use && $all => " and regaining your $use.",
@@ -5401,7 +5461,11 @@ function hero_sheet(array $me): array
         'resources' => [
             ['Hit Dice', ($me['level'] - $me['hit_dice_spent']) . "/{$me['level']} d{$c['die']}"],
             ...match ($me['class']) {
-                'fighter' => [['Second Wind', $uses]],
+                'fighter' => [
+                    ['Second Wind', $uses],
+                    ...(surges($me) ? [['Action Surge', max(0, surges($me) - $me['feature_spent']) . '/' . surges($me)]]
+                        : []),
+                ],
                 'barbarian' => [['Rage', $uses]],
                 'rogue' => [['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6']],
                 'cleric' => [['Spell slots', slots_left($me)]],
@@ -6100,7 +6164,8 @@ function actions(array $me): array
     }
     $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
     $mine = array_intersect(
-        ['breathe', 'reckless', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage', 'innate',
+        ['breathe', 'reckless', 'surge', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage',
+            'innate',
             'wholeness', 'lay', 'cast'],
         $mine
     );

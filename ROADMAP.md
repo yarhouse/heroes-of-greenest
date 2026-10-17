@@ -11,10 +11,10 @@ and roads wait for Aaron's sketch (below).
 
 ### Characters
 
-10. **No class short at levels 1-5.** The four classes without a subclass get the SRD's (Fighter: Champion, Cleric:
-    Life Domain, Rogue: Thief, Barbarian: Berserker), plus Action Surge (Fighter 2), the Cleric's Channel Divinity (2)
-    and spells of 2nd and 3rd level, the Paladin's Divine Sense and Sacred Weapon (3) and Uncanny Dodge (Rogue 5).
-    Can ship a class at a time.
+10. **No class short at levels 1-5.** The three classes without a subclass get the SRD's (Cleric: Life Domain, Rogue:
+    Thief, Barbarian: Berserker), plus the Cleric's Channel Divinity (2) and spells of 2nd and 3rd level (Spiritual
+    Weapon, Prayer of Healing, Bestow Curse, Protection from Energy), the Paladin's Divine Sense and Sacred Weapon (3)
+    and Uncanny Dodge (Rogue 5). Can ship a class at a time (the design is in the Decided entry).
 11. **Area spells, aimed before they're cast.** The SRD's areas (Cone, Cube, Cylinder, Emanation, Line, Sphere) hit
     every creature in them on the board: monsters, other heroes and hirelings alike, each saving on its own, and only
     those the point of origin has a line to (`sight()`, total cover blocks). A square counts if its centre is inside
@@ -71,6 +71,20 @@ Any time: **approve account requests** (friends ask on the login page):
    only if it becomes one).
 
 ## Decided
+
+- 2026-10-17 **No class short** (task 10, a class at a time). Design, from Aaron's answers: Action Surge and Channel
+  Divinity count in `users.feature_spent` (no migration); turned undead and Sacred Weapon are no-class `spells` rows
+  leaving condition effects, as Sanctuary does. Barbarian: Berserker's Frenzy on a raging `reckless`. Rogue: Thief's
+  Fast Hands and Second-Story Work only shown (nothing picks locks, climbs or jumps); Uncanny Dodge halves the first
+  hit of each monster turn (Deflect Attacks' shortcut). Paladin 3: two Channel Divinities, `sense` (the Celestials,
+  Fiends and Undead here and next door) and `sacred <monster>`. Cleric: Channel Divinity from 2 (`spark`, `turn`; a
+  turned Undead cowers, as no monster flees yet), Life Domain at 3 (Disciple of Life, its spells, `preserve`), and
+  Spiritual Weapon, Prayer of Healing, Bestow Curse and Protection from Energy.
+  **Fighter (shipped):** `surge <monster>` (2) is two actions: the Attack action twice, or a Dash and then the
+  Attack action when the foe is out of reach (a Dash that falls short spends nothing); once a short rest, twice from
+  17. Champion (3): a 19 is a Critical Hit with weapons and Unarmed Strikes (18 from 15), and like a 20 it hits
+  whatever the AC (the glossary's Critical Hit). Remarkable Athlete: Advantage on Initiative and Athletics checks, and
+  after a Critical Hit a `kite` backs off half my Speed further, none of it drawing opportunity attacks.
 
 - 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
   8-15 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait
