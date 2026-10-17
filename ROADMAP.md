@@ -11,16 +11,8 @@ and roads wait for Aaron's sketch (below).
 
 ### Characters
 
-8. **Choices, starting with skills.** A hero owes a choice when their class, level or a feat grants one: a new hero
-   makes it in character creation, a level-up asks then, and heroes from before are asked once, today's pick (if the
-   game makes one) as the default, so nothing changes under them. An owed choice blocks play until it's made, as
-   `cmd_setup()` does (Aaron's call). Every hero the selftest makes gets all the choices its class and level owe, so
-   no test stalls on a question. The first choices are skills: each class's skill
-   proficiencies (SRD class tables), Skilled's three, Expertise (Rogue 1, Bard 2) and Jack of All Trades (Bard 2).
-   The checks already made (Search, Study and Influence in `inspect` and `ask`, Stealth for `sneak`) use them; today
-   only a background's skills count.
 9. **Ability Score Improvements** at levels 4, 8, 12 and 16 (Fighter also 6 and 14, Rogue 10): +2 to one score or +1
-   to two (20 at most), or the Grappler feat, the SRD's general feats. A choice from task 8. Level 19's Epic Boon
+   to two (20 at most), or the Grappler feat, the SRD's general feats. A choice (`owed_choices()` and the panel). Level 19's Epic Boon
    waits.
 10. **No class short at levels 1-5.** The four classes without a subclass get the SRD's (Fighter: Champion, Cleric:
     Life Domain, Rogue: Thief, Barbarian: Berserker), plus Action Surge (Fighter 2), the Cleric's Channel Divinity (2)
@@ -42,7 +34,7 @@ and roads wait for Aaron's sketch (below).
     Fighting among them), Divine Order, Primal Order, Elemental Fury and the Circle of the Land's land, Eldritch
     Invocations (and those past level 2: Pact of the Blade, Thirsting Blade, Eldritch Smite), Metamagic, Elemental
     Affinity, Weapon Mastery's weapons (today every weapon you wield has its mastery), cantrips known, a Wizard's
-    spellbook and a Druid's Known Forms. Choices from task 8.
+    spellbook and a Druid's Known Forms. Choices (`owed_choices()` and the panel).
 
 ### The town
 
@@ -304,3 +296,15 @@ Any time: **approve account requests** (friends ask on the login page):
   line-height: the body's 1.5 had drawn every glyph a third of a cell below the square it taps. Aaron is trying it on
   his phone. Shortcuts: the `map` command's copy in the log isn't fitted, and a resize doesn't refit until the next
   command.
+- 2026-10-17 **Choices and skills** (task 8): a hero's picks are `picks` rows; `owed_choices()` works out what their
+  class, level and feats still owe: the class's skill proficiencies (SRD class tables; a Bard any 3), Skilled's three
+  (a Human's Versatile), and Expertise (two skills at Rogue 1 and 6, Bard 2 and 9). `skill_bonus()` counts them, twice
+  the Proficiency Bonus with Expertise and half (rounded down) for a Bard's Jack of All Trades from 2, so `inspect`,
+  `ask` and `sneak` use them. Nothing blocks play outside character creation (Aaron's call, replacing "an owed choice
+  blocks play"): levels and choices come when any rest ends, a house rule (SRD 5.2.1 p.23 levels you at once; a short
+  rest is 1 minute). The sheet says "Level up ready: short rest" and "Skills to choose: short rest"; after a rest
+  (`users.may_choose`) `choose <skills>` makes them, and the panel opens by itself. **The panel** (`panel()`, drawn by
+  `play.js` in the log's place, layout A of the mockups): a choice as a form, radios or checkboxes with a line each, a
+  counter, Back or Later, and Confirm, which sends the text a player could type. Character creation's class, scores,
+  species and background are on it too. A left rail (ArchaicQuest-style) waits until there's more to keep on screen.
+  Heroes from before choose their skills after their next rest; until then only their background's count.
