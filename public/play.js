@@ -151,16 +151,34 @@ function drawHero(h, map, board = false) {
     centre(drawMap(byId('map'), map, board));
 }
 
-/** Scrolls a drawn map so @ is in the middle of its view. @param {HTMLElement} box @returns {HTMLElement} */
+/**
+ * Fits a fight's board, then scrolls a drawn map so @ is in the middle of its view.
+ * @param {HTMLElement} box @returns {HTMLElement}
+ */
 function centre(box) {
     const grid = /** @type {HTMLElement | null} */ (box.querySelector('.map-grid'));
     const me = /** @type {HTMLElement | null} */ (box.querySelector('.me'));
+    if (grid?.classList.contains('board')) fit(grid);
     if (grid && me) {
         grid.scrollLeft = me.offsetLeft - (grid.clientWidth - me.offsetWidth) / 2;
         grid.scrollTop = me.offsetTop - (grid.clientHeight - me.offsetHeight) / 2;
     }
     return box;
 }
+/**
+ * Sizes a fight's board to fill its box (up to 32px cells): big squares are easy to tap, and a board never scrolls.
+ * A font pixel stays a whole number of device pixels (see .map-row in style.css). Needs the box laid out, so it's a
+ * no-op in a hidden drawer until it opens.
+ * @param {HTMLElement} grid
+ */
+function fit(grid) {
+    const rows = /** @type {HTMLElement[]} */ ([...grid.children]);
+    for (const row of rows) row.style.fontSize = '';
+    const fits = Math.min(grid.clientWidth / rows[0].children.length, grid.clientHeight / rows.length) / 8;
+    const px = Math.min(4, Math.floor(fits * devicePixelRatio) / devicePixelRatio); // CSS px per font pixel
+    if (px > 0) for (const row of rows) row.style.fontSize = `${px * 9}px`;
+}
+
 // On phones the sheet is a hidden drawer, with no size to scroll by until it opens.
 byId('hero').addEventListener('shown.bs.offcanvas', () => centre(byId('map')));
 
@@ -215,7 +233,7 @@ function drawMap(box, lines, board = false) {
             x > 0 && x < right ? String.fromCharCode(96 + x) : '')));
         rows.unshift(head);
     }
-    const scroller = el('div', 'map-grid');
+    const scroller = el('div', board ? 'map-grid board' : 'map-grid');
     scroller.append(...rows);
     box.replaceChildren(scroller, ...lines.slice(-2).map((line) => el('div', 'map-text', line)));
     return box;

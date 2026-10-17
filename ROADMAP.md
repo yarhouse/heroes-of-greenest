@@ -239,3 +239,10 @@ Any time: **approve account requests** (friends ask on the login page):
   Bonus Actions, potions and orders don't wait for your turn; a hero who flees skips the monsters between them and the
   next hero that round; a pass needs a command from a hero in the fight. Still skipped: cross-room shooting (with no
   ticks, a monster hit from 2 rooms away can't walk to you).
+- 2026-10-16 **A bigger map:** on wide screens the sidebar is 34rem (a 13px log was tried and dropped); on both
+  layouts the sheet's map fills what's left of the column (or phone drawer), centred, at 18px (16px cells, 2 CSS px a
+  font pixel), scrolling when bigger. A fight's board is sized to fill its box instead (`fit()` in `play.js`, up to
+  32px cells, never scrolling), so its squares are big enough to tap on a phone. Map rows now take the cell's
+  line-height: the body's 1.5 had drawn every glyph a third of a cell below the square it taps. Aaron is trying it on
+  his phone. Shortcuts: the `map` command's copy in the log isn't fitted, and a resize doesn't refit until the next
+  command.

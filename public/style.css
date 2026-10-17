@@ -131,10 +131,17 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 .map-text { font-size: 0.8rem; white-space: pre-wrap; } /* a fight's legend can be long */
 /*
  * cmd_map(): square cells 8/9 em, the font's own cell, so wall glyphs join. It's pixel art, so a font pixel must be a
- * whole number of device pixels: 12px here (4 per pixel on 3x phones), 13.5px on wide screens (3 per pixel on 2x).
- * 31 cells just fit the phone drawer and the 25rem sidebar; a wider explored map scrolls.
+ * whole number of device pixels: 12px here (4 per pixel on 3x phones), 13.5px on wide screens (3 per pixel on 2x),
+ * 18px for the sheet's map (2 CSS px per pixel, whole on 1x to 3x). A map wider than its box scrolls; a fight's board
+ * is sized to fill its box instead (fit() in play.js).
  */
-.map-row { font-family: "Dungeon Mode", var(--bs-body-font-family); font-size: 12px; height: calc(8em / 9); }
+/* line-height as the cell, too: the body's 1.5 drew each glyph a third of a cell below the square it taps. */
+.map-row {
+    font-family: "Dungeon Mode", var(--bs-body-font-family);
+    font-size: 12px;
+    height: calc(8em / 9);
+    line-height: calc(8em / 9);
+}
 .map-row span { display: inline-block; width: calc(8em / 9); height: 100%; vertical-align: top; text-align: center; }
 .map-row .w { color: #827050; }
 .map-row .rock { color: #2a2620; }
@@ -150,10 +157,21 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 .map-row .lbl { color: var(--dim); font-family: var(--bs-body-font-family); }
 .map-row [data-cmd] { cursor: pointer; }
 
+/* The sheet's map takes whatever height the column (or drawer) has left, centred while it fits, scrolling when not. */
+#sheet, #map { flex: 1; }
+#sheet .card-body { flex: none; }
+#map { display: flex; flex-direction: column; }
+#map .map-grid { flex: 1; max-height: none; min-height: 12rem; display: flex; flex-direction: column; }
+/* Auto margins rather than justify-content: centre only while it fits, so the overflow stays scrollable. */
+#map .map-grid > * { flex: none; width: max-content; margin-inline: auto; }
+#map .map-grid > :first-child { margin-top: auto; }
+#map .map-grid > :last-child { margin-bottom: auto; }
+#map .map-row { font-size: 18px; }
+
 @media (min-width: 62rem) {
     .play {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 25rem;
+        grid-template-columns: minmax(0, 1fr) 34rem;
         grid-template-rows: 1fr auto auto auto;
         column-gap: 1.5rem;
         max-width: 125rem; /* 2000px */
@@ -161,6 +179,7 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
 
     .map-row { font-size: 13.5px; }
     .map-grid { max-height: calc(21 * 13.5px * 8 / 9); }
+    #hero .offcanvas-body, #sheet, #map { min-height: 0; }
 
     .play > :not(#hero) { grid-column: 1; }
 
