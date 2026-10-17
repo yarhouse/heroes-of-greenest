@@ -2536,6 +2536,14 @@ try {
     $out = run_command(hero('Pixie'), '');
     check(hero('Pixie')['level'] === 6 && hero('Pixie')['may_choose'] === 1 && says($out, "type 'choose'"),
         'a level that owes a choice sets may_choose');
+    $s = hero_sheet(with_stats(hero('Pixie')));
+    check($s['owed'] && $s['may_choose'] && !$s['level_ready'], 'the sheet knows a choice is owed and may be made');
+    q("UPDATE users SET xp = 23000 WHERE name = 'Pixie'");
+    $score = cmd_score(with_stats(hero('Pixie')));
+    check(hero_sheet(with_stats(hero('Pixie')))['level_ready'] && says($score, 'Level up ready: short rest'),
+        'a level waiting shows on the sheet and in score');
+    check(says($score, 'Skills  ') && says($score, 'Stealth +') && says($score, '*'),
+        'score lists skills, Expertise marked');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

@@ -5335,6 +5335,9 @@ function hero_sheet(array $me): array
         'xp' => $me['xp'],
         'xp_from' => $xp[$me['level']],
         'xp_next' => $xp[$me['level'] + 1] ?? null,
+        'level_ready' => isset($xp[$me['level'] + 1]) && $me['xp'] >= $xp[$me['level'] + 1], // waits for a rest
+        'owed' => owed_choices($me) !== [],
+        'may_choose' => (bool) $me['may_choose'],
         'gold' => $me['gold'],
     ];
 }
@@ -5342,18 +5345,26 @@ function hero_sheet(array $me): array
 function cmd_score(array $me): array
 {
     $s = hero_sheet($me);
+    $skills = array_values(array_intersect(array_keys(SKILLS), proficient_skills($me))); // in SKILLS order
+    $picks = picks($me);
+    $expert = [...$picks['expertise 1'] ?? [], ...$picks['expertise 2'] ?? []]; // marked *
     return [
         "{$s['name']}, level {$s['level']} {$s['class']}",
         implode('  ', array_map(fn ($a) => sprintf('%s %d (%+d)', ...$a), $s['abilities'])),
         'Saves  ' . implode('  ', array_map(fn ($a) => sprintf('%s %+d', $a[0], $a[3]), $s['abilities'])),
+        'Skills  ' . (implode(', ', array_map(fn ($k) => sprintf('%s %+d', skill_name($k), skill_bonus($me, $k))
+            . (in_array($k, $expert, true) ? '*' : ''), $skills)) ?: 'none'),
         "HP {$s['hp']}/{$s['max_hp']}" . ($s['temp_hp'] ? " +{$s['temp_hp']} temp" : '')
             . "   AC {$s['ac']}   Proficiency Bonus +{$s['prof']}",
         sprintf('%s %+d to hit, %s damage', $s['weapon'], $s['to_hit'], $s['damage'])
             . ($s['attacks'] > 1 ? ", {$s['attacks']} attacks a round" : ''),
         implode('   ', [...array_map(fn ($r) => implode(' ', $r), $s['resources']), ...$s['status']]),
         ...array_map(fn ($r) => implode(' ', $r), $s['origin']),
-        "XP {$s['xp']}"
-            . ($s['xp_next'] === null ? ' (max level)' : " ({$s['xp_next']} for level " . ($s['level'] + 1) . ')')
+        "XP {$s['xp']}" . match (true) {
+            $s['xp_next'] === null => ' (max level)',
+            $s['level_ready'] => ' (Level up ready: short rest)',
+            default => " ({$s['xp_next']} for level " . ($s['level'] + 1) . ')',
+        }
             . "   Gold {$s['gold']}",
     ];
 }
