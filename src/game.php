@@ -377,6 +377,28 @@ const SKILLS = [
     'sleight of hand' => 'dexterity', 'stealth' => 'dexterity', 'survival' => 'wisdom',
 ];
 
+/** What each skill is for here, one line each, for the choice panel (panel()). */
+const SKILL_ABOUT = [
+    'acrobatics' => 'Keep your footing; tumble and balance.',
+    'animal handling' => 'Calm, read and handle animals.',
+    'arcana' => 'Study spells, magic items and the planes.',
+    'athletics' => 'Climb, jump, swim, shove and grapple.',
+    'deception' => 'Lie convincingly to the townsfolk.',
+    'history' => 'Recall the past of people and places.',
+    'insight' => "Read a townsperson's intent when you ask.",
+    'intimidation' => 'Influence others with threats.',
+    'investigation' => 'Study a clue when you inspect.',
+    'medicine' => 'Tend wounds and spot ailments.',
+    'nature' => 'Know terrain, plants and beasts.',
+    'perception' => 'Search a room; spot what hides.',
+    'performance' => 'Entertain with music, dance or tales.',
+    'persuasion' => 'Influence townsfolk with tact.',
+    'religion' => 'Know gods, rites and holy symbols.',
+    'sleight of hand' => 'Pick pockets and palm small things.',
+    'stealth' => 'Move unseen; sneak past monsters.',
+    'survival' => 'Track, forage and find your way.',
+];
+
 /** Expertise (Rogue p.61, Bard p.30): the class levels that grant 'expertise 1' and 'expertise 2', two skills each. */
 const EXPERTISE = ['rogue' => [1, 6], 'bard' => [2, 9]];
 
@@ -5844,6 +5866,84 @@ function cmd_help(array $me): array
         $lines[] = sprintf('  %-14s %s', $usage, $what);
     }
     return $lines;
+}
+
+/**
+ * The choice I'm making, as data for the play page's panel (play.js draws it; api.php sends it): a creation step with
+ * options, or the first choice I owe once a rest lets me make it. Confirm sends `command` and the picked keys: the
+ * text a player could type, checked as typed. null when there's nothing to pick (and never over a fight).
+ */
+function panel(array $me): ?array
+{
+    $option = fn (string $key, string $label, string $about, array $more = []): array
+        => ['key' => $key, 'label' => $label, 'about' => $about] + $more;
+    $abbr = fn (string $a): string => ucfirst(substr($a, 0, 3));
+    $creating = ['command' => '', 'back' => true];
+    switch ($me['setup']) {
+        case 'class':
+            return ['id' => 'class', 'title' => 'Choose your class', 'about' => 'You can start over until you begin.',
+                'command' => '', 'groups' => [['pick' => 1, 'options' => array_map(fn ($k, $c) => $option($k,
+                    $c['name'], $c['about'], ['tag' => "d{$c['die']}"]), array_keys(CLASSES), CLASSES)]]];
+        case 'abilities':
+            return ['id' => 'abilities', 'title' => 'Ability scores', 'groups' => [],
+                'about' => 'Give each ability one of the scores ' . implode(' ', STANDARD_ARRAY) . '.',
+                'assign' => ['rows' => array_map($abbr, ABILITIES), 'values' => STANDARD_ARRAY,
+                    'picked' => CLASSES[$me['class']]['scores']]] + $creating;
+        case 'species':
+            $groups = [['pick' => 1, 'options' => array_map(fn ($k, $sp) => $option($k, $sp['name'], $sp['about']),
+                array_keys(SPECIES), SPECIES)]];
+            foreach (SPECIES as $k => $sp) {
+                if (isset($sp['kinds'])) {
+                    $groups[] = ['title' => ucfirst($sp['choose']), 'for' => $k, 'pick' => 1, 'options' => array_map(
+                        fn ($kind, $about) => $option($kind, ucfirst($kind), kind_about($about)),
+                        array_keys($sp['kinds']), $sp['kinds'])];
+                }
+            }
+            return ['id' => 'species', 'title' => 'Choose your species', 'about' => '', 'groups' => $groups]
+                + $creating;
+        case 'background':
+            $groups = [['pick' => 1, 'options' => array_map(fn ($k, $b) => $option($k, $b['name'],
+                implode(' ', array_map($abbr, $b['abilities'])) . '; ' . FEATS[$b['feat']]['name'] . ': '
+                . FEATS[$b['feat']]['about']), array_keys(BACKGROUNDS), BACKGROUNDS)]];
+            foreach (BACKGROUNDS as $k => $b) {
+                $best = best_two($me, $b['abilities']);
+                $options = [$option('all', '+1 to each', implode(', ', array_map($abbr, $b['abilities'])))];
+                foreach ($b['abilities'] as $two) {
+                    foreach ($b['abilities'] as $one) {
+                        if ($one !== $two) {
+                            $picked = $best === [$two, $one] ? ['picked' => true] : [];
+                            $options[] = $option(strtolower($abbr($two) . ' ' . $abbr($one)),
+                                "{$abbr($two)} +2, {$abbr($one)} +1", '', $picked);
+                        }
+                    }
+                }
+                $groups[] = ['title' => 'Raise', 'for' => $k, 'pick' => 1, 'options' => $options];
+            }
+            return ['id' => 'background', 'title' => 'Choose your background',
+                'about' => 'It raises three abilities and gives an Origin feat.', 'groups' => $groups] + $creating;
+        case 'confirm':
+        case null:
+            break;
+        default:
+            return null;
+    }
+    $owed = owed_choices($me);
+    if ($owed === [] || $me['fighting'] !== null || ($me['setup'] === null && !$me['may_choose'])) {
+        return null;
+    }
+    $c = $owed[0];
+    $s = with_stats($me);
+    $about = match (true) {
+        str_starts_with($c['id'], 'expertise') => "Choose {$c['pick']}: your Proficiency Bonus counts twice with them.",
+        default => "Choose {$c['pick']}. You add your Proficiency Bonus (+{$s['prof_bonus']}) to checks with them.",
+    };
+    $options = array_map(function (string $k) use ($c, $s, $option, $abbr): array {
+        $locked = in_array($k, $c['locked'], true);
+        return $option($k, skill_name($k), $locked ? 'Yours already.' : SKILL_ABOUT[$k],
+            ['tag' => sprintf('%s %+d', $abbr(SKILLS[$k]), skill_bonus($s, $k))] + ($locked ? ['locked' => true] : []));
+    }, $c['options']);
+    return ['id' => $c['id'], 'title' => $c['title'], 'about' => $about, 'command' => 'choose ',
+        'groups' => [['pick' => $c['pick'], 'options' => $options]]];
 }
 
 /**

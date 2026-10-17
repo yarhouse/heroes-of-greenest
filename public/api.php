@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-// api.php :: runs one player command; replies { lines, actions, commands, heroes, choices?, hero?, map?, board?,
-// logout? }
+// api.php :: runs one player command; replies { lines, actions, commands, heroes, choices?, panel?, hero?, map?,
+// board?, logout? }
 // as JSON.
 
 require __DIR__ . '/../src/boot.php';
@@ -41,6 +41,7 @@ $lines = run_command($me, $cmd);
 $me = q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch(); // the command may have changed the hero
 $heroes = q('SELECT name FROM users WHERE name IS NOT NULL AND id <> ?', [$me['id']])->fetchAll(PDO::FETCH_COLUMN);
 $more = ['actions' => actions($me), 'commands' => my_commands($me), 'heroes' => $heroes]; // play.js picks them out
+$more += array_filter(['panel' => panel($me)]); // the choice I'm making, if any
 if ($me['setup'] !== null) {
     reply(['lines' => $lines, 'choices' => choices($me)] + $more); // no sheet while creating
 }

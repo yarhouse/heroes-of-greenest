@@ -2544,6 +2544,30 @@ try {
         'a level waiting shows on the sheet and in score');
     check(says($score, 'Skills  ') && says($score, 'Stealth +') && says($score, '*'),
         'score lists skills, Expertise marked');
+    save_account('Pan', 'correct horse');
+    run_command(hero('Pan'), 'Pan');
+    check(panel(hero('Pan'))['id'] === 'class' && count(panel(hero('Pan'))['groups'][0]['options']) === 12,
+        'the class panel lists all 12');
+    run_command(hero('Pan'), 'rogue');
+    check(panel(hero('Pan'))['assign']['picked'] === CLASSES['rogue']['scores'], 'the Standard Array panel');
+    run_command(hero('Pan'), 'ok');
+    $p = panel(hero('Pan'));
+    check($p['id'] === 'species' && in_array('dragonborn', array_column($p['groups'], 'for'), true),
+        "species' kinds hang off their species");
+    run_command(hero('Pan'), 'dwarf');
+    $soldier = array_values(array_filter(panel(hero('Pan'))['groups'], fn ($g) => ($g['for'] ?? '') === 'soldier'))[0];
+    check(count($soldier['options']) === 7 && count(array_filter(array_column($soldier['options'], 'picked'))) === 1,
+        'background boosts: all or a pair, the best two picked');
+    run_command(hero('Pan'), 'criminal');
+    $p = panel(hero('Pan'));
+    check($p['id'] === 'class skills' && $p['command'] === 'choose ' && $p['groups'][0]['pick'] === 4
+        && count(array_filter(array_column($p['groups'][0]['options'], 'locked'))) === 2,
+        'the skills panel, background skills locked');
+    q('DELETE FROM picks WHERE user_id = ?', [hero('Chs')['id']]);
+    q("UPDATE users SET may_choose = TRUE, fighting = ? WHERE name = 'Chs'", [$live]);
+    check(panel(hero('Chs')) === null, 'no panel over a fight');
+    q("UPDATE users SET fighting = NULL WHERE name = 'Chs'");
+    check(panel(hero('Chs'))['id'] === 'class skills', 'a rested hero with a choice gets the panel');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
