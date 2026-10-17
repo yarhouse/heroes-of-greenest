@@ -88,7 +88,7 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
  * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
  * Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the Druid's Primal Order is Warden, a
  * Warlock's Eldritch Invocations are Armor of Shadows from level 1 and Agonizing Blast and Eldritch Mind from 2, and
- * the subclasses are the SRD's: Champion, Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with
+ * the subclasses are the SRD's: Berserker, Champion, Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with
  * Colossus Slayer and Multiattack Defense, Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
  * know every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
  * from.
@@ -2647,6 +2647,8 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
     $primal = $me['class'] === 'druid' && $me['level'] >= 7; // Primal Strike, once a turn
     $cleaved = false;
     $savage = has_feat($me, 'savage') && $me['shape'] === null; // Savage Attacker, once a turn, with a weapon
+    // Frenzy (Berserker 3): Reckless Attack while raging, Rage Damage d6s on my first Str-based hit of the turn
+    $frenzy = $me['class'] === 'barbarian' && $me['level'] >= 3 && $me['raging'] && has($me, 'reckless');
     $grab = has_feat($me, 'grappler') && $me['shape'] === null; // Punch and Grab, once a turn
     $helped = $sneak && q('SELECT 1 FROM users WHERE fighting = ? AND id <> ?', [$foe['id'], $me['id']])->fetch();
     foreach ($swings as $i => $w) {
@@ -2692,6 +2694,11 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             $dmg += roll(intdiv($me['level'] + 1, 2) . 'd6', $crit);
             $sneak = false;
         }
+        $frenzied = $frenzy && $w['str_based'];
+        if ($frenzied) {
+            $dmg += roll($me['rage_damage'] . 'd6', $crit);
+            $frenzy = false;
+        }
         $typed = typed(max(0, $dmg), $w['damage_type'], $foe);
         if ($w['weapon'] === 'Unarmed Strike' && $me['class'] === 'monk' && $me['level'] >= 6) { // Empowered Strikes
             $force = typed(max(0, $dmg), 'force', $foe);
@@ -2714,7 +2721,8 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
         }
         [$colossus, $primal] = [$colossus && !$slayer, false];
         $lines[] = ($crit ? 'Critical hit! ' : '') . "$you hit" . ($s === '' ? '' : 's') . " the {$foe['name']} "
-            . "($total vs AC {$foe['ac']}$with) for $dmg damage$note" . ($sneaking ? ', with Sneak Attack.' : '.');
+            . "($total vs AC {$foe['ac']}$with) for $dmg damage$note"
+            . ($sneaking ? ', with Sneak Attack.' : ($frenzied ? ', with Frenzy.' : '.'));
         if (($me['smite'] ?? null) !== null && ($melee || $me['smite']['ranged'])) {
             $dmg += smite($me, $foe, $crit, $lines);
         }

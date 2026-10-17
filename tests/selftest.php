@@ -689,6 +689,22 @@ try {
         'fleeing is my turn, so Reckless ends first');
     check(hero('Testc')['conditions'] === '' && hero('Testc')['fighting'] === null, 'conditions end with the fight');
 
+    // Frenzy (Berserker 3): Reckless Attack while raging adds Rage Damage d6s to the first Str-based hit of the turn.
+    $spent = hero('Testc')['uses_spent'];
+    q("UPDATE users SET level = 3, room_id = 2, hp = max_hp WHERE name = 'Testc'");
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    $dice_queue = [10, 1, 1, 1]; // initiative; a natural 1 (Graze); Slam a natural 1
+    run_command(hero('Testc'), 'kill dummy');
+    $dice_queue = [10, 15, 6, 1, 1]; // without Rage: 15 hits for 6 + 2, no Frenzy; Slam a natural 1 (with Advantage)
+    check(says(run_command(hero('Testc'), 'reckless'), '(19 vs AC 10, with Advantage) for 8 damage.')
+        && $dice_queue === [], 'no Frenzy without Rage');
+    run_command(hero('Testc'), 'rage');
+    $dice_queue = [10, 15, 6, 4, 3, 1, 1]; // 6 + 2 Str + 2 Rage + 4 + 3 Frenzy
+    check(says(run_command(hero('Testc'), 'reckless'), '(19 vs AC 10, with Advantage) for 17 damage, with Frenzy.')
+        && $dice_queue === [], 'Frenzy: Reckless Attack while raging adds 2d6');
+    leave('Testc');
+    q("UPDATE users SET level = 2, uses_spent = ? WHERE name = 'Testc'", [$spent]); // the Rage back
+
     // Damage types (SRD 5.2.1 p.17): Vulnerability doubles, Resistance halves, Immunity takes it all.
     q("UPDATE monsters SET vulnerabilities = 'slashing', extra_damage = '1d4', extra_type = 'poison' WHERE id = 9999");
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
