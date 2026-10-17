@@ -26,7 +26,19 @@ and roads wait for Aaron's sketch (below).
     Life Domain, Rogue: Thief, Barbarian: Berserker), plus Action Surge (Fighter 2), the Cleric's Channel Divinity (2)
     and spells of 2nd and 3rd level, the Paladin's Divine Sense and Sacred Weapon (3) and Uncanny Dodge (Rogue 5).
     Can ship a class at a time.
-11. **Your own picks** where the game picks for you today (the `CLASSES` comment): Fighting Style (Two-Weapon
+11. **Area spells, aimed before they're cast.** The SRD's areas (Cone, Cube, Cylinder, Emanation, Line, Sphere) hit
+    every creature in them on the board: monsters, other heroes and hirelings alike, each saving on its own, and only
+    those the point of origin has a line to (`sight()`, total cover blocks). A square counts if its centre is inside
+    the area. Burning Hands, Thunderwave, Shatter, Fireball and Lightning Bolt become areas (today they hit one foe,
+    and `spells.reach` is only how near it must be); new columns for the shape and its size. Aiming: `cast <spell>
+    <square>` for an area spell only previews it: the board with the area's squares marked (a new glyph, coloured in
+    `MAP_CELLS`) and who it would catch ("Fireball at e5: Kobold 1, Kobold 2 and Ana"), spending nothing. Tapping
+    another square re-aims; `cast` alone, or the same square again, casts it. The aim is the only thing kept between
+    commands (a `users` column), and any other command drops it. Spheres, Cubes and Cylinders aim at a point within
+    range; Cones and Lines start at you, and the square picks the direction; an Emanation around you needs no aim.
+    The server works out the squares, so `play.js` only draws them. Then the SRD spells of levels 1-3 whose only new
+    rule is an area (which ones decided when picked up). Lasting areas and walls are in the backlog.
+12. **Your own picks** where the game picks for you today (the `CLASSES` comment): Fighting Style (Two-Weapon
     Fighting among them), Divine Order, Primal Order, Elemental Fury and the Circle of the Land's land, Eldritch
     Invocations (and those past level 2: Pact of the Blade, Thirsting Blade, Eldritch Smite), Metamagic, Elemental
     Affinity, Weapon Mastery's weapons (today every weapon you wield has its mastery), cantrips known, a Wizard's
@@ -34,18 +46,18 @@ and roads wait for Aaron's sketch (below).
 
 ### The town
 
-12. **Townsfolk who listen.** Townsfolk answer words said in their room (`say`), as Riftshadow's and Luminari's speech
+13. **Townsfolk who listen.** Townsfolk answer words said in their room (`say`), as Riftshadow's and Luminari's speech
     triggers do, beside `ask`. The hooks the town hints at become topics, some behind a check: the dragon mark on
     kobold gear, the Fields of the Dead, Ysolde's interest in the Wood, the keep's bricked-up stair. A few more
     townsfolk in rooms that have none. Their rows hang off room ids, so the redraw (task 2) moves them with their rooms.
-13. **More to inspect, and folk outside town.** `convert-area.php` turns Riftshadow's extra descriptions (`E` blocks,
+14. **More to inspect, and folk outside town.** `convert-area.php` turns Riftshadow's extra descriptions (`E` blocks,
     67 in all) into `features` rows, and the dungeons get a few people to `ask` (a captive, a hermit). Open (Aaron
     to decide): where their rows live, and whether the Delve gets any. `npcs.room_id` is a foreign key to `rooms`.
     The converted areas' rooms have fixed ids but load after `seed.sql`, so their people would need a hand-edited
     file loaded after the areas (say `db/extras.sql`, which could also hold task 6's hand-drawn boards). The Delve's
     rooms are deleted at each rebuild, which a row pointing at one would block, so a Delve NPC would stand in the
     fixed stair room (50000) or be placed by `delve_build()` each week.
-14. **The shops and the Lantern.** Acid, Alchemist's Fire and Holy Water in the shops, thrown in place of an attack (a
+15. **The shops and the Lantern.** Acid, Alchemist's Fire and Holy Water in the shops, thrown in place of an attack (a
     `throw` like `breathe`). More hireling kinds, one line each in `HIRELINGS` (a Scout with a Longbow for an archer,
     a Priest for a real healer, a Tough with a Heavy Crossbow), priced by CR rather than 2 GP a day for all.
 
@@ -72,7 +84,7 @@ Any time: **approve account requests** (friends ask on the login page):
 ## Decided
 
 - 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
-  8-14 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait
+  8-15 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait
   for Aaron's sketch.
 - 2026-10-12 **Host:** DreamHost shared hosting; a managed VPS was ruled out on cost. Hence PHP + MySQL 8, one request per
   command, no ticks.
