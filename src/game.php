@@ -422,6 +422,7 @@ const COMMANDS = [
     'cast <spell>' => "cast a spell, at a monster or a hero if it needs one (cast alone lists them); a Sorcerer may "
         . "put 'heightened' or 'seeking' first",
     'prepare <spells>' => 'after a long rest, choose your spells, with commas (prepare alone lists them)',
+    'choose <skills>' => 'after a rest, make the choices your class and level give you (choose alone lists them)',
     'rest' => 'short rest in a safe place (1 min): spend Hit Dice to heal',
     'sleep' => 'long rest in a safe place (10 min): recover everything',
     'score' => 'your abilities, HP, AC and XP',
@@ -729,6 +730,7 @@ function run_command(array $me, string $input): array
         $verb === 'cunning' => cmd_cunning($me),
         $verb === 'cast' => cmd_cast($me, trim($arg)),
         $verb === 'prepare' => cmd_prepare($me, trim($arg)),
+        $verb === 'choose' => cmd_choose($me, trim($arg)),
         $verb === 'rest' => cmd_rest($me, 'short'),
         $verb === 'sleep' => cmd_rest($me, 'long'),
         $verb === 'score' => cmd_score($me),
@@ -913,8 +915,15 @@ function cmd_setup(array $me, string $input): array
     if ($me['setup'] === 'background') {
         return setup_background($me, $word);
     }
+    if (preg_match('/^choose\b/', $word)) {
+        return cmd_choose($me, trim(substr($input, 6)));
+    }
     if ($word !== 'begin') {
         return setup_summary($me);
+    }
+    $owed = owed_choices($me);
+    if ($owed !== []) {
+        return ['Choose your skills first.', ...choice_lines($owed[0])];
     }
     q('UPDATE users SET setup = NULL WHERE id = ?', [$me['id']]);
     return ["You set out, {$me['name']}. Type 'help' for commands.", '', ...cmd_look($me)];
@@ -988,6 +997,7 @@ function setup_abilities(array $me, string $word): array
         [...$scores, $hp, $hp, $c['gold'], START_ROOM, $me['id']]
     );
     q('DELETE FROM objects WHERE user_id = ?', [$me['id']]);
+    q('DELETE FROM picks WHERE user_id = ?', [$me['id']]);
     q('DELETE FROM effects WHERE user_id = ? OR caster_id = ?', [$me['id'], $me['id']]); // Aid, Hex, Inspiration...
     foreach ($c['kit'] as [$item, $worn]) {
         q('INSERT INTO objects (item_id, user_id, worn) VALUES (?, ?, ?)', [$item, $me['id'], (int) $worn]);
@@ -1087,9 +1097,7 @@ function setup_background(array $me, string $word): array
             }
             $named[] = $a;
         }
-        $rest = array_diff($b['abilities'], $named);
-        usort($rest, fn ($x, $y) => $me[$y] <=> $me[$x]); // the best scores first; ties keep the listed order
-        [$plus2, $plus1] = array_slice([...$named, ...$rest], 0, 2);
+        [$plus2, $plus1] = array_slice([...$named, ...best_two($me, array_diff($b['abilities'], $named))], 0, 2);
         [$boost[$plus2], $boost[$plus1]] = [2, 1];
     }
     foreach ($boost as $a => $n) {
@@ -1110,8 +1118,20 @@ function setup_background(array $me, string $word): array
     ];
 }
 
+/** The two of $abilities with my best scores, best first (ties keep their order): a background's default +2 and +1. */
+function best_two(array $me, array $abilities): array
+{
+    usort($abilities, fn ($x, $y) => $me[$y] <=> $me[$x]);
+    return array_slice($abilities, 0, 2);
+}
+
+/** The confirm step: my choices still owed, if any, else my hero as they'll set out. */
 function setup_summary(array $me): array
 {
+    $owed = owed_choices($me);
+    if ($owed !== []) {
+        return choice_lines($owed[0]);
+    }
     return [
         ...cmd_score(with_stats($me)),
         ...cmd_inventory($me),
@@ -1343,6 +1363,107 @@ function skill_bonus(array $me, string $skill): int
         $me['class'] === 'bard' && $me['level'] >= 2 => intdiv($me['prof_bonus'], 2),
         default => 0,
     };
+}
+
+/** 'a', 'a and b', 'a, b and c' ('or' in place of 'and' if given). */
+function and_list(array $items, string $and = 'and'): string
+{
+    $last = array_pop($items);
+    return $items === [] ? (string) $last : implode(', ', $items) . " $and $last";
+}
+
+/** A SKILLS key as it's written: 'sleight of hand' => 'Sleight of Hand'. */
+function skill_name(string $skill): string
+{
+    return str_replace(' Of ', ' of ', ucwords($skill));
+}
+
+/**
+ * The SKILLS keys named in $text, in order, or a line saying what's wrong. Commas are optional: at each word the
+ * longest run of up to 3 words that is a skill, or the start of only one, is taken ('sleight', 'animal handling').
+ */
+function parse_skills(string $text): array|string
+{
+    $words = preg_split('/[\s,]+/', strtolower($text), -1, PREG_SPLIT_NO_EMPTY);
+    $skills = [];
+    for ($i = 0; $i < count($words);) {
+        for ($n = min(3, count($words) - $i); $n > 0; $n--) {
+            $run = implode(' ', array_slice($words, $i, $n));
+            $found = isset(SKILLS[$run]) ? [$run]
+                : array_values(array_filter(array_keys(SKILLS), fn ($k) => str_starts_with($k, $run)));
+            if (count($found) === 1) {
+                $skills[] = $found[0];
+                $i += $n;
+                continue 2;
+            }
+            if ($n === 1) {
+                return $found === [] ? "There's no skill '$run'." : "'$run' could be " . and_list($found, 'or') . '.';
+            }
+        }
+    }
+    return $skills;
+}
+
+/** An owed choice (see owed_choices()) as text: its skills, mine marked, and how to choose. */
+function choice_lines(array $choice): array
+{
+    $lines = [$choice['title'], "Choose {$choice['pick']}:"];
+    foreach ($choice['options'] as $skill) {
+        $lines[] = sprintf('  %-16s %s', skill_name($skill), ucfirst(substr(SKILLS[$skill], 0, 3))
+            . (in_array($skill, $choice['locked'], true) ? ' (yours)' : ''));
+    }
+    return [...$lines, "Type 'choose' and the skills, with commas."];
+}
+
+/**
+ * choose [skills]: makes the first choice I owe (see owed_choices()), or shows it. Outside character creation only
+ * after a rest (may_choose), and never in a fight.
+ */
+function cmd_choose(array $me, string $arg): array
+{
+    $owed = owed_choices($me);
+    if ($me['fighting'] !== null) {
+        return ['Not in the middle of a fight.'];
+    }
+    if ($owed === []) {
+        return ['You have nothing to choose.'];
+    }
+    if ($me['setup'] === null && !$me['may_choose']) {
+        return ['Rest first (a short rest takes 1 minute).'];
+    }
+    $c = $owed[0];
+    if ($arg === '') {
+        return choice_lines($c);
+    }
+    $skills = parse_skills($arg);
+    if (is_string($skills)) {
+        return [$skills];
+    }
+    $skills = array_values(array_unique($skills));
+    if (count($skills) !== $c['pick']) {
+        return ["Choose exactly {$c['pick']}."];
+    }
+    foreach ($skills as $skill) {
+        if (in_array($skill, $c['locked'], true)) {
+            return ['You already have ' . skill_name($skill) . '.'];
+        }
+        if (!in_array($skill, $c['options'], true)) {
+            return [skill_name($skill) . " isn't one of them."];
+        }
+    }
+    foreach ($skills as $skill) {
+        q('INSERT INTO picks (user_id, choice, value) VALUES (?, ?, ?)', [$me['id'], $c['id'], $skill]);
+    }
+    $lines = ['You choose ' . and_list(array_map('skill_name', $skills)) . '.'];
+    $next = owed_choices($me);
+    if ($next !== []) {
+        return [...$lines, '', ...choice_lines($next[0])];
+    }
+    if ($me['setup'] !== null) {
+        return [...$lines, '', ...setup_summary(q('SELECT * FROM users WHERE id = ?', [$me['id']])->fetch())];
+    }
+    q('UPDATE users SET may_choose = FALSE WHERE id = ?', [$me['id']]);
+    return $lines;
 }
 
 /**

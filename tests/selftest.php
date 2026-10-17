@@ -25,8 +25,8 @@ function says(array $lines, string $text): bool
 }
 /**
  * Takes a new hero through character creation: a name (the account's, if it has none yet), class, ability scores
- * ('ok' for the suggested ones), species and background, begin. With no species the hero skips both, like one made
- * before there were any, so the class's own numbers hold.
+ * ('ok' for the suggested ones), species and background, the first skills of each choice it owes, begin. With no
+ * species the hero skips species and background, like one made before there were any, so the class's own numbers hold.
  */
 function create(string $name, string $class, string $scores = 'ok', string $species = '', string $bg = ''): array
 {
@@ -40,6 +40,10 @@ function create(string $name, string $class, string $scores = 'ok', string $spec
     } else {
         run_command(hero($name), $species);
         run_command(hero($name), $bg);
+    }
+    while ($o = owed_choices(hero($name))) { // the first skills each choice lists
+        $free = array_values(array_diff($o[0]['options'], $o[0]['locked']));
+        run_command(hero($name), 'choose ' . implode(', ', array_slice($free, 0, $o[0]['pick'])));
     }
     return run_command(hero($name), 'begin');
 }
@@ -168,7 +172,12 @@ try {
     run_command(hero('Testc'), 'half');
     check(says(run_command(hero('Testc'), 'criminal int int'), 'two different'), 'a background ability once');
     $out = run_command(hero('Testc'), 'crim');
-    check(says($out, 'You were a Criminal: Dex +2, Con +1, and Alert.') && says($out, 'Testc, level 1 Halfling Rogue')
+    check(says($out, 'You were a Criminal: Dex +2, Con +1, and Alert.') && says($out, 'Rogue skills'),
+        'a background, then the class skills to choose');
+    check(says(run_command(hero('Testc'), 'choose acrobatics, insight, perception, investigation'), 'Expertise'),
+        'then a Rogue 1 picks Expertise');
+    $out = run_command(hero('Testc'), 'choose stealth, perception');
+    check(says($out, 'Testc, level 1 Halfling Rogue')
         && says($out, 'Str 8 (-1)  Dex 17 (+3)  Con 15 (+2)') && says($out, 'HP 10/10   AC 14')
         && says($out, 'Shortsword +5 to hit, 1d6+3 damage') && says($out, 'Species Halfling: Speed 30 ft, Brave')
         && says($out, 'Background Criminal: Alert; Sleight of Hand, Stealth') && says($out, 'Dagger')
@@ -2469,6 +2478,43 @@ try {
     q('DELETE FROM picks WHERE user_id = ?', [hero('Vow')['id']]);
     $o = owed_choices(hero('Vow'));
     check($o[0]['pick'] === 2 && $o[0]['locked'] === ['insight', 'religion'], 'Cleric + Acolyte still picks 2');
+    save_account('Chs', 'correct horse');
+    create('Chs', 'fighter');
+    check(hero('Chs')['setup'] === null && count(picks(hero('Chs'))['class skills'] ?? []) === 2,
+        'create() makes every owed choice');
+    q('DELETE FROM picks WHERE user_id = ?', [hero('Chs')['id']]);
+    check(says(run_command(hero('Chs'), 'choose athletics, perception'), 'Rest first (a short rest takes 1 minute).'),
+        'outside creation, choosing waits for a rest');
+    check(!says(run_command(hero('Chs'), 'look'), 'Choose'), 'and nothing blocks play meanwhile');
+    q("UPDATE users SET may_choose = TRUE WHERE name = 'Chs'");
+    check(says(run_command(hero('Chs'), 'choose athletics'), 'Choose exactly 2.'), 'a wrong count is refused');
+    check(says(run_command(hero('Chs'), 'choose athletics, arcana'), "Arcana isn't one of them."),
+        'a skill off the list is refused');
+    check(says(run_command(hero('Chs'), 'choose in, athletics'),
+        "'in' could be insight, intimidation or investigation."), 'an ambiguous prefix is refused');
+    $out = run_command(hero('Chs'), 'choose Animal Handling,ATHLETICS');
+    check(says($out, 'You choose Animal Handling and Athletics.') && hero('Chs')['may_choose'] === 0,
+        'case, commas and two-word names parse; may_choose clears when nothing is left');
+    check(says(run_command(hero('Chs'), 'choose animal handling, athletics'), 'You have nothing to choose.')
+        && count(picks(hero('Chs'))['class skills']) === 2, 'a second Confirm changes nothing');
+    check(parse_skills('sleight stealth') === ['sleight of hand', 'stealth'], 'prefixes parse');
+    $live = (int) q('SELECT id FROM spawns WHERE dead_since IS NULL LIMIT 1')->fetchColumn();
+    q("UPDATE users SET may_choose = TRUE, fighting = ? WHERE name = 'Chs'", [$live]);
+    check(says(cmd_choose(with_stats(hero('Chs')), ''), 'Not in the middle of a fight.'), 'no choosing mid-fight');
+    q("UPDATE users SET fighting = NULL, may_choose = FALSE WHERE name = 'Chs'");
+    save_account('Newb', 'correct horse');
+    foreach (['Newb', 'rogue', 'ok', 'dwarf', 'criminal'] as $step) {
+        $out = run_command(hero('Newb'), $step);
+    }
+    check(says($out, 'Rogue skills') && says($out, '(yours)'), 'creation asks for skills, background ones marked');
+    check(says(run_command(hero('Newb'), 'begin'), 'Choose your skills first.'), 'begin waits for them');
+    check(says(run_command(hero('Newb'), 'choose stealth, acrobatics, insight, perception'),
+        'You already have Stealth.'), 'a locked skill is refused');
+    run_command(hero('Newb'), 'choose acrobatics, insight, perception, investigation');
+    foreach (['back', 'rogue', 'ok'] as $step) {
+        run_command(hero('Newb'), $step);
+    }
+    check(picks(hero('Newb')) === [], 'back clears picks');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
