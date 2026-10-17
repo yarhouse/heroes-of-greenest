@@ -40,6 +40,24 @@ $e = fn (string $s): string => htmlspecialchars($s, ENT_QUOTES);
 <?php if ($me) : ?>
 <main class="play">
     <div id="log" role="log" aria-live="polite"></div>
+    <!-- A choice as a form (panel() in game.php): takes the log's place while open. play.js fills it. -->
+    <section id="panel" class="card" aria-labelledby="panel-title" hidden>
+        <header class="card-header d-flex align-items-baseline justify-content-between gap-2">
+            <h2 id="panel-title" class="h5 m-0" tabindex="-1"></h2>
+            <span id="panel-count" class="small" aria-live="polite"></span>
+        </header>
+        <div class="card-body">
+            <p id="panel-about" class="small text-body-secondary"></p>
+            <div id="panel-body"></div>
+        </div>
+        <footer class="card-footer">
+            <p id="panel-error" class="small m-0 w-100" role="alert"></p>
+            <code id="panel-cmd"></code>
+            <button id="panel-back" type="button" class="btn btn-sm">Back</button>
+            <button id="panel-later" type="button" class="btn btn-sm">Later</button>
+            <button id="panel-ok" type="button" class="btn btn-sm">Confirm</button>
+        </footer>
+    </section>
     <div id="actions" role="toolbar" aria-label="Quick commands"></div>
     <ul id="hints" role="listbox" aria-label="Matching commands" hidden></ul>
     <form id="prompt" autocomplete="off">

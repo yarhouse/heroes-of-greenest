@@ -5943,7 +5943,7 @@ function panel(array $me): ?array
             ['tag' => sprintf('%s %+d', $abbr(SKILLS[$k]), skill_bonus($s, $k))] + ($locked ? ['locked' => true] : []));
     }, $c['options']);
     return ['id' => $c['id'], 'title' => $c['title'], 'about' => $about, 'command' => 'choose ',
-        'groups' => [['pick' => $c['pick'], 'options' => $options]]];
+        'groups' => [['pick' => $c['pick'], 'options' => $options]]] + ($me['setup'] !== null ? ['back' => true] : []);
 }
 
 /**

@@ -8,6 +8,7 @@ const hints = /** @type {HTMLUListElement} */ (document.getElementById('hints'))
 const sheet = /** @type {HTMLElement} */ (document.getElementById('sheet'));
 const heroToggle = /** @type {HTMLButtonElement} */ (document.getElementById('hero-toggle'));
 const actions = /** @type {HTMLElement} */ (document.getElementById('actions'));
+const panel = /** @type {HTMLElement} */ (document.getElementById('panel'));
 /** @type {Record<string, string>} usage => what it does, from my_commands() in game.php */
 let commands = JSON.parse(input.dataset.commands ?? '{}');
 /** @type {string[]} actions() in game.php: the buttons while nothing that has choices() is typed */
@@ -46,7 +47,7 @@ async function send(cmd, quiet = false) {
         });
         /** @type {{ lines?: string[], actions?: string[], commands?: Record<string, string>,
          *   choices?: Record<string, [string, string][]>, hero?: Hero, map?: string[], board?: boolean,
-         *   heroes?: string[], logout?: boolean }} */
+         *   heroes?: string[], panel?: Panel, logout?: boolean }} */
         const data = await res.json();
         if (data.heroes) heroNames = data.heroes.length ? new RegExp(`\\b(${data.heroes.join('|')})\\b`) : null;
         const lines = data.lines ?? [];
@@ -66,6 +67,7 @@ async function send(cmd, quiet = false) {
         drawActions();
         sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
         if (data.hero) drawHero(data.hero, data.map ?? [], data.board);
+        if (!quiet) showPanel(data.panel, cmd, lines); // a listen leaves the panel as it is
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
         if (!quiet) print('The connection falters. Try again.', 'error');
@@ -77,8 +79,8 @@ async function send(cmd, quiet = false) {
  * @typedef {{ name: string, level: number, class: string, hp: number, max_hp: number, temp_hp: number, ac: number,
  *   prof: number, abilities: [string, number, number, number][], weapon: string, to_hit: number, damage: string,
  *   attacks: number, resources: [string, string][], origin: [string, string][], status: string[], rest_secs: number,
- *   xp: number, xp_from: number,
- *   xp_next: number | null, gold: number }} Hero
+ *   xp: number, xp_from: number, xp_next: number | null, level_ready: boolean, owed: boolean, may_choose: boolean,
+ *   gold: number }} Hero
  */
 
 /** @param {string} id */
@@ -142,11 +144,14 @@ function drawHero(h, map, board = false) {
     }));
     const status = byId('status');
     status.replaceChildren(...h.status.map((s) => el('span', 'badge text-bg-warning fw-normal', s)));
-    status.hidden = h.status.length === 0;
+    if (h.owed && h.may_choose) status.append(button('Choose skills', 'choose'));
+    else if (h.owed) status.append(el('span', 'badge text-bg-warning fw-normal', 'Skills to choose: short rest'));
+    status.hidden = status.childElementCount === 0;
     // A rest finishes on the next command, so send an empty one when it's up (the server applies it then).
     clearTimeout(restTimer);
     if (h.rest_secs > 0) restTimer = setTimeout(() => (queue = queue.then(() => send(''))), h.rest_secs * 1000 + 1000);
-    byId('xp-text').textContent = h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
+    byId('xp-text').textContent = h.level_ready ? 'Level up ready: short rest'
+        : h.xp_next === null ? `${h.xp} (max level)` : `${h.xp}/${h.xp_next}`;
     bar('xp-bar', h.xp - h.xp_from, (h.xp_next ?? h.xp) - h.xp_from, 'bg-warning');
     centre(drawMap(byId('map'), map, board));
 }
@@ -247,6 +252,8 @@ document.addEventListener('click', (e) => {
 
 /** Echoes a command and queues it, whether typed or a button. @param {string} cmd */
 function run(cmd) {
+    // Doing something else puts an open choice aside (outside creation) until 'choose' or the sheet's button.
+    if (shown && !panel.hidden && !/^(choose|back)\b/.test(cmd)) closePanel(!creating(shown));
     // shown on hover, or on tap via .show (see style.css)
     print('> ' + cmd, 'echo').dataset.time = new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
     history.push(cmd);
@@ -255,6 +262,10 @@ function run(cmd) {
 }
 
 log.addEventListener('click', (e) => /** @type {HTMLElement} */ (e.target).closest('.echo')?.classList.toggle('show'));
+byId('status').addEventListener('click', (e) => {
+    const cmd = /** @type {HTMLElement} */ (e.target).closest('button')?.dataset.cmd;
+    if (cmd) run(cmd);
+});
 
 form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -296,6 +307,174 @@ actions.addEventListener('click', (e) => {
     showHints();
     if (cmd.endsWith(' ')) input.focus();
     else if (cmd) run(cmd); // no focus, so a phone keyboard stays down
+});
+
+/**
+ * panel() in game.php: a choice as a form. Confirm sends `command` and the picked keys, the text a player could type.
+ * @typedef {{ key: string, label: string, about: string, tag?: string, locked?: boolean, picked?: boolean }} Option
+ * @typedef {{ title?: string, for?: string, pick: number, options: Option[] }} Group
+ * @typedef {{ id: string, title: string, about: string, command: string, groups: Group[],
+ *   assign?: { rows: string[], values: number[], picked: number[] }, back?: boolean }} Panel
+ */
+/** @type {Panel | null} the panel drawn, open or put aside */
+let shown = null;
+/** @type {Set<string>} choices put aside with Later or another command, until 'choose' asks again */
+const dismissed = new Set();
+/** @param {Panel} p creation steps can't be put aside: they come back with every reply */
+const creating = (p) => p.command === '' || p.back === true;
+
+/**
+ * After a reply: opens its panel, keeps one already open (a refused pick says why), or closes one it no longer has.
+ * @param {Panel | undefined} p @param {string} cmd what was sent @param {string[]} lines the reply
+ */
+function showPanel(p, cmd, lines) {
+    if (!p) {
+        if (shown && !panel.hidden) closePanel(false);
+        shown = null;
+        return;
+    }
+    const asked = /^choose\b/.test(cmd);
+    if (asked) dismissed.delete(p.id);
+    if (!creating(p) && dismissed.has(p.id)) return;
+    if (shown?.id === p.id && !panel.hidden) {
+        byId('panel-error').textContent = cmd.startsWith(p.command) && p.command ? lines.join(' ') : '';
+        return;
+    }
+    drawPanel(p);
+}
+
+/** @param {Panel} p */
+function drawPanel(p) {
+    shown = p;
+    byId('panel-title').textContent = p.title;
+    byId('panel-about').textContent = p.about;
+    byId('panel-about').hidden = !p.about;
+    byId('panel-error').textContent = '';
+    byId('panel-back').hidden = !p.back;
+    byId('panel-later').hidden = creating(p);
+    const body = byId('panel-body');
+    if (p.assign) {
+        const grid = el('div', 'assign');
+        p.assign.rows.forEach((row, i) => {
+            const label = el('label', 'small text-body-secondary', row);
+            const select = /** @type {HTMLSelectElement} */ (el('select', 'form-select form-select-sm'));
+            select.append(...(p.assign?.values ?? []).map((v) => new Option(String(v), String(v))));
+            select.value = String(p.assign?.picked[i]);
+            label.append(select);
+            grid.append(label);
+        });
+        const suggested = button('Suggested', '');
+        suggested.addEventListener('click', () => {
+            grid.querySelectorAll('select').forEach((s, i) => (s.value = String(p.assign?.picked[i])));
+            update();
+        });
+        body.replaceChildren(grid, suggested);
+    } else {
+        body.replaceChildren(...p.groups.map((g, gi) => {
+            const set = el('fieldset', '');
+            set.dataset.for = g.for ?? '';
+            if (g.title) set.append(el('legend', '', g.title));
+            set.append(...g.options.map((o) => {
+                const row = el('label', 'opt');
+                const input = /** @type {HTMLInputElement} */ (el('input', 'form-check-input'));
+                input.type = g.pick === 1 ? 'radio' : 'checkbox';
+                input.name = `g${gi}`;
+                input.value = o.key;
+                input.checked = Boolean(o.locked || o.picked);
+                input.disabled = Boolean(o.locked);
+                const text = el('span', '', o.label);
+                if (o.about) text.append(el('small', 'text-body-secondary', o.about));
+                row.append(input, text, ...(o.tag ? [el('span', 'badge', o.tag)] : []));
+                return row;
+            }));
+            return set;
+        }));
+    }
+    log.hidden = actions.hidden = true;
+    panel.hidden = false;
+    panel.scrollTop = 0;
+    update();
+    byId('panel-title').focus();
+}
+
+/** @param {boolean} dismiss put it aside until 'choose' */
+function closePanel(dismiss) {
+    if (dismiss && shown) dismissed.add(shown.id);
+    panel.hidden = true;
+    log.hidden = actions.hidden = false;
+    log.scrollTop = log.scrollHeight;
+}
+
+/** The fieldsets showing now: a group `for` an option shows while that option of the first group is picked. */
+function visibleSets() {
+    const sets = /** @type {HTMLFieldSetElement[]} */ ([...byId('panel-body').querySelectorAll('fieldset')]);
+    const first = /** @type {HTMLInputElement | null} */ (sets[0]?.querySelector('input:checked'));
+    for (const set of sets) set.hidden = set.dataset.for !== '' && set.dataset.for !== first?.value;
+    return sets.filter((set) => !set.hidden);
+}
+
+/** What Confirm would send, or why it can't yet. @returns {{ cmd: string, error: string }} */
+function panelCommand() {
+    if (!shown) return { cmd: '', error: '' };
+    if (shown.assign) {
+        const values = [...byId('panel-body').querySelectorAll('select')].map((s) => s.value);
+        return { cmd: shown.command + values.join(' '), error: new Set(values).size < 6 ? 'Use each score once.' : '' };
+    }
+    const parts = [];
+    let short = 0;
+    for (const set of visibleSets()) {
+        const group = shown.groups[Number(set.querySelector('input')?.name.slice(1))];
+        const picked = /** @type {HTMLInputElement[]} */ ([...set.querySelectorAll('input:checked')])
+            .filter((i) => !group.options.find((o) => o.key === i.value)?.locked).map((i) => i.value);
+        short += Math.max(0, group.pick - picked.length);
+        parts.push(picked.join(group.pick > 1 ? ', ' : ' '));
+    }
+    return { cmd: shown.command + parts.filter(Boolean).join(' '), error: short ? `Pick ${short} more.` : '' };
+}
+
+/** Counter, limits, the command preview and duplicate scores, after any change. */
+function update() {
+    if (!shown) return;
+    const body = byId('panel-body');
+    let count = '';
+    for (const set of visibleSets()) {
+        const group = shown.groups[Number(set.querySelector('input')?.name.slice(1))];
+        if (group.pick < 2) continue;
+        const locked = new Set(group.options.filter((o) => o.locked).map((o) => o.key));
+        const boxes = /** @type {HTMLInputElement[]} */ ([...set.querySelectorAll('input')])
+            .filter((b) => !locked.has(b.value));
+        const picked = boxes.filter((b) => b.checked).length;
+        for (const b of boxes) b.disabled = !b.checked && picked >= group.pick; // at the limit, the rest wait
+        count = `${picked} of ${group.pick}`;
+    }
+    byId('panel-count').textContent = count;
+    const selects = [...body.querySelectorAll('select')];
+    for (const s of selects) s.classList.toggle('is-invalid', selects.filter((t) => t.value === s.value).length > 1);
+    byId('panel-cmd').textContent = '> ' + panelCommand().cmd;
+}
+
+panel.addEventListener('change', () => {
+    byId('panel-error').textContent = '';
+    update();
+});
+byId('panel-ok').addEventListener('click', () => {
+    const { cmd, error } = panelCommand();
+    byId('panel-error').textContent = error;
+    if (!error) run(cmd.trim());
+});
+byId('panel-back').addEventListener('click', () => run('back'));
+byId('panel-later').addEventListener('click', () => {
+    closePanel(true);
+    input.focus();
+});
+panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !/** @type {HTMLElement} */ (e.target).closest('button')) {
+        e.preventDefault();
+        byId('panel-ok').click();
+    } else if (e.key === 'Escape' && shown && !creating(shown)) {
+        closePanel(true);
+        input.focus();
+    }
 });
 
 /** Usages whose command word starts with what's typed. Only while typing the first word. */

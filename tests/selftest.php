@@ -2561,13 +2561,14 @@ try {
     run_command(hero('Pan'), 'criminal');
     $p = panel(hero('Pan'));
     check($p['id'] === 'class skills' && $p['command'] === 'choose ' && $p['groups'][0]['pick'] === 4
-        && count(array_filter(array_column($p['groups'][0]['options'], 'locked'))) === 2,
-        'the skills panel, background skills locked');
+        && count(array_filter(array_column($p['groups'][0]['options'], 'locked'))) === 2 && ($p['back'] ?? false),
+        'the skills panel, background skills locked, Back while creating');
     q('DELETE FROM picks WHERE user_id = ?', [hero('Chs')['id']]);
     q("UPDATE users SET may_choose = TRUE, fighting = ? WHERE name = 'Chs'", [$live]);
     check(panel(hero('Chs')) === null, 'no panel over a fight');
     q("UPDATE users SET fighting = NULL WHERE name = 'Chs'");
-    check(panel(hero('Chs'))['id'] === 'class skills', 'a rested hero with a choice gets the panel');
+    check(panel(hero('Chs'))['id'] === 'class skills' && !isset(panel(hero('Chs'))['back']),
+        'a rested hero with a choice gets the panel, without Back');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];

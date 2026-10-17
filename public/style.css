@@ -117,6 +117,41 @@ body { font-variant-ligatures: none; } /* game text, not code: "->" stays two ch
     --bs-btn-active-border-color: var(--accent);
 }
 
+/* A choice as a form (#panel, panel() in game.php): in the log's place while open, its footer always in view. */
+#panel { --bs-card-bg: var(--panel); flex: 1; min-height: 0; overflow-y: auto; }
+#panel-title { color: var(--accent); }
+#panel-title:focus { outline: none; } /* focused for screen readers, not a control */
+#panel-count { color: var(--accent); }
+#panel fieldset + fieldset { margin-top: 0.75rem; }
+#panel legend { font-size: 0.875rem; color: var(--dim); margin-bottom: 0.25rem; }
+#panel .opt { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.375rem 0.25rem; margin: 0;
+    border-top: 1px solid var(--line); cursor: pointer; }
+#panel .opt:first-of-type { border-top: 0; }
+#panel .opt .form-check-input { flex: none; margin: 0.3rem 0 0; float: none; }
+#panel .opt small { display: block; }
+#panel .opt:has(input:disabled:not(:checked)) { opacity: 0.5; cursor: default; } /* the limit is reached */
+#panel .assign + .btn { margin-top: 0.75rem; }
+#panel .opt .badge { margin-left: auto; color: var(--dim); border: 1px solid var(--line); font-weight: normal; }
+#panel .form-check-input { background-color: var(--bg); border-color: var(--dim); }
+#panel .form-check-input:checked { background-color: var(--accent); border-color: var(--accent); }
+#panel .assign { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.5rem; }
+#panel .form-select { background-color: var(--bg); color: var(--fg); }
+#panel .card-footer { position: sticky; bottom: 0; background: var(--panel); display: flex; flex-wrap: wrap;
+    align-items: center; gap: 0.5rem; }
+#panel-error { color: var(--error); }
+#panel-error:empty { display: none; }
+#panel-cmd { color: var(--dim); margin-right: auto; overflow-wrap: anywhere; }
+#panel .btn, #status .btn {
+    --bs-btn-color: var(--accent);
+    --bs-btn-border-color: var(--line);
+    --bs-btn-hover-color: var(--accent);
+    --bs-btn-hover-border-color: var(--accent);
+    --bs-btn-active-color: var(--accent);
+    --bs-btn-active-border-color: var(--accent);
+}
+#panel #panel-ok { --bs-btn-bg: var(--accent); --bs-btn-color: var(--bg); --bs-btn-hover-bg: var(--fg);
+    --bs-btn-hover-color: var(--bg); --bs-btn-active-bg: var(--fg); --bs-btn-active-color: var(--bg); }
+
 /* The hero sheet (#hero): a drawer on phones (Bootstrap offcanvas-lg), a column beside the log from 992px. */
 #sheet { --bs-card-bg: var(--panel); }
 #hero-name { color: var(--accent); }
