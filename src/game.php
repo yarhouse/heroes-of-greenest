@@ -449,6 +449,10 @@ const COMMANDS = [
     'land <monster>' => "Druid 3: Land's Aid, a Con save or 2d6 Necrotic, and you regain 2d6 HP (1 Wild Shape)",
     'cunning' => 'Warlock 2: Magical Cunning, half your Pact Magic slots back, once a long rest (not in a fight)',
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
+    'sense' => 'Paladin 3: Divine Sense, the Celestials, Fiends and Undead here and next door (1 Channel Divinity); '
+        . 'costs no turn',
+    'sacred <monster>' => 'Paladin 3: attack with Sacred Weapon, +Cha to hit and Radiant damage for 10 minutes (1 '
+        . 'Channel Divinity)',
     'wholeness' => 'Monk 6: Wholeness of Body, regain a Martial Arts die + Wis in HP; costs no turn',
     'innate' => 'Sorcerer: Innate Sorcery for the fight, +1 spell save DC and Advantage on spell attacks; no turn',
     'font <level>' => "Sorcerer 2: Sorcery Points into a spell slot; 'font points <level>' turns a slot into points",
@@ -491,7 +495,8 @@ const FEATURES = [
     'surge' => ['fighter', 2],
     'flurry' => ['monk', 2], 'patient' => ['monk', 2], 'stun' => ['monk', 5], 'wholeness' => ['monk', 6],
     'inspire' => ['bard', 1], 'wild' => ['druid', 2], 'land' => ['druid', 3], 'cunning' => ['warlock', 2],
-    'lay' => ['paladin', 1], 'innate' => ['sorcerer', 1], 'font' => ['sorcerer', 2],
+    'lay' => ['paladin', 1], 'sense' => ['paladin', 3], 'sacred' => ['paladin', 3], 'innate' => ['sorcerer', 1],
+    'font' => ['sorcerer', 2],
 ];
 
 /** COMMANDS without other classes' features, or spells for a class that has none: what help and Tab offer. */
@@ -660,6 +665,7 @@ function with_stats(array $me): array
         $me[substr($a, 0, 3) . '_save'] = mod($me[$a]) + ($proficient ? $lv['prof_bonus'] : 0) + $aura;
     }
     $me += gear($me) + ['effects' => effects_on('user_id', (int) $me['id'])];
+    sacred_weapon($me);
     // Unarmored Movement (Monk 2: +10 ft, 5 more every 4 levels) and Fast Movement (Barbarian 5, not in Heavy armor)
     $me['speed'] += match (true) {
         $class === 'monk' && $me['level'] >= 2 && !$me['armored'] && $me['shield_ac'] === 0
@@ -767,6 +773,8 @@ function run_command(array $me, string $input): array
         $verb === 'second' => cmd_second($me),
         $verb === 'rage' => cmd_rage($me),
         $verb === 'lay' => cmd_lay($me, trim($arg)),
+        $verb === 'sense' => cmd_sense($me),
+        $verb === 'sacred' => cmd_sacred($me, trim($arg)),
         $verb === 'inspire' => cmd_inspire($me, trim($arg)),
         $verb === 'wild' => cmd_wild($me, trim($arg)),
         $verb === 'land' => cmd_land($me, trim($arg)),
@@ -799,7 +807,7 @@ function run_command(array $me, string $input): array
     // What I do in a fight outside my turn's action (a Bonus Action, a potion, an order), everyone here sees too.
     // shortcut: these don't wait for my turn.
     if (($was ?? $me['fighting']) !== null && in_array($verb, ['second', 'rage', 'wholeness', 'innate', 'font', 'lay',
-        'inspire', 'wild', 'drink', 'order', 'cunning'], true)) {
+        'inspire', 'wild', 'drink', 'order', 'cunning', 'sense'], true)) {
         $mine = $out;
         $out = [];
         told($me, $mine, $out);
@@ -2701,6 +2709,10 @@ function hero_turn(array &$me, array &$foe, array &$lines): bool
             $frenzy = false;
         }
         $typed = typed(max(0, $dmg), $w['damage_type'], $foe);
+        if (($me['sacred'] ?? false) && !$off && !isset($w['strike'])) { // Sacred Weapon: Radiant if that hurts more
+            $radiant = typed(max(0, $dmg), 'radiant', $foe);
+            $typed = $radiant[0] > $typed[0] ? [$radiant[0], $radiant[1] . ' (radiant)'] : $typed;
+        }
         if ($w['weapon'] === 'Unarmed Strike' && $me['class'] === 'monk' && $me['level'] >= 6) { // Empowered Strikes
             $force = typed(max(0, $dmg), 'force', $foe);
             $typed = $force[0] > $typed[0] ? [$force[0], $force[1] . ' (force)'] : $typed;
@@ -3674,6 +3686,106 @@ function cmd_rage(array $me): array
     ];
 }
 
+/** How many Channel Divinities I have a long rest (one comes back on a short rest), counted in feature_spent. */
+function channels(array $me): int
+{
+    return match ($me['class']) {
+        'cleric' => $me['level'] >= 18 ? 4 : ($me['level'] >= 6 ? 3 : ($me['level'] >= 2 ? 2 : 0)),
+        'paladin' => $me['level'] >= 11 ? 3 : ($me['level'] >= 3 ? 2 : 0),
+        default => 0,
+    };
+}
+
+/** Spends one of my Channel Divinities, or returns false if none is left. */
+function spend_channel(array &$me): bool
+{
+    if ($me['feature_spent'] >= channels($me)) {
+        return false;
+    }
+    $me['feature_spent']++;
+    q('UPDATE users SET feature_spent = feature_spent + 1 WHERE id = ?', [$me['id']]);
+    return true;
+}
+
+/**
+ * Divine Sense (Paladin 3, a Channel Divinity): a Bonus Action that names every Celestial, Fiend and Undead here and
+ * in the rooms next to this one, and consecrated ground (the temple). shortcut: with no ticks it's a look now, not 10
+ * minutes of knowing.
+ */
+function cmd_sense(array $me): array
+{
+    if ($me['class'] !== 'paladin' || $me['level'] < 3) {
+        return ['Only Paladins of level 3 or more have Divine Sense.'];
+    }
+    if ($me['feature_spent'] >= channels($me)) {
+        return ['You have no Channel Divinity left. Rest to recover it.'];
+    }
+    if (!spend_bonus($me)) {
+        return [BONUS_USED];
+    }
+    spend_channel($me);
+    $rooms = ['here' => (int) $me['room_id']];
+    foreach (q('SELECT dir, to_room FROM exits WHERE room_id = ?', [$me['room_id']])->fetchAll() as $e) {
+        $where = match ($e['dir']) { 'up' => 'above', 'down' => 'below', default => "to the {$e['dir']}" };
+        $rooms[$where] = $e['to_room'];
+    }
+    $found = [];
+    $holy = '';
+    foreach ($rooms as $where => $id) {
+        foreach (room_monsters((int) $id) as $m) {
+            if (in_array($m['type'], ['celestial', 'fiend', 'undead'], true)) {
+                $found[] = lcfirst(a_an($m['name'])) . ' (' . ucfirst($m['type']) . ") $where";
+            }
+        }
+        $holy = (int) $id === TEMPLE ? " Chauntea's temple $where is consecrated ground." : $holy;
+    }
+    $left = channels($me) - $me['feature_spent'];
+    return [($found ? 'Divine Sense: ' . and_list($found) . '.' : 'Divine Sense: no Celestial, Fiend or Undead within '
+        . '60 feet.') . $holy . " $left Channel Divinity left."];
+}
+
+/**
+ * Sacred Weapon (Oath of Devotion 3, a Channel Divinity), with the Attack action: for 10 minutes (and the fight) the
+ * melee weapon in my hand adds my Cha to hit (sacred_weapon()) and deals Radiant when that hurts more (hero_turn()).
+ * Using it again starts it over. shortcut: it follows whatever melee weapon I wield, not the one I lit.
+ */
+function cmd_sacred(array $me, string $target): array
+{
+    if ($me['class'] !== 'paladin' || $me['level'] < 3) {
+        return ['Only Paladins of level 3 or more have Sacred Weapon.'];
+    }
+    if ($me['weapon'] === 'Unarmed Strike' || $me['ranged']) {
+        return ['Sacred Weapon needs a melee weapon in your hand.'];
+    }
+    if ($me['feature_spent'] >= channels($me)) {
+        return ['You have no Channel Divinity left. Rest to recover it.'];
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        spend_channel($me);
+        q("DELETE FROM effects WHERE user_id = ? AND effect = 'condition' AND value = 'sacred'", [$me['id']]);
+        q(
+            "INSERT INTO effects (user_id, caster_id, spell_id, effect, value, concentration, during, until)
+             VALUES (?, ?, (SELECT id FROM spells WHERE name = 'Sacred Weapon'), 'condition', 'sacred', FALSE, ?,
+             NOW() + INTERVAL 10 MINUTE)",
+            [$me['id'], $me['id'], $foe['id']]
+        );
+        $me['effects'] = effects_on('user_id', (int) $me['id']);
+        sacred_weapon($me);
+        $lines[] = "Your {$me['weapon']} blazes with holy light: +" . max(1, mod($me['charisma'])) . ' to hit, and '
+            . 'Radiant damage when that hurts more, for 10 minutes.';
+        return hero_turn($me, $foe, $lines);
+    }, 'Kill what?', weapon_reach($me));
+}
+
+/** Sacred Weapon on me: +Cha (at least +1) to hit with the melee weapon in my hand, once. */
+function sacred_weapon(array &$me): void
+{
+    if (!($me['sacred'] ?? false) && has($me, 'sacred') && $me['weapon'] !== 'Unarmed Strike' && !$me['ranged']) {
+        $me['sacred'] = true;
+        $me['to_hit'] += max(1, mod($me['charisma']));
+    }
+}
+
 /** Spends $n of my uses (Focus Points, Sorcery Points), or returns false if too few are left. */
 function spend_uses(array &$me, int $n = 1): bool
 {
@@ -4638,14 +4750,14 @@ function finish_rest(array &$me): array
             $me['class'] === 'sorcerer' && $me['level'] >= 5 => sorcerous_restoration($me),
             default => '',
         };
+        // Action Surge comes back, and one Channel Divinity
+        q("UPDATE users SET feature_spent = IF(class = 'fighter' OR feature_spent = 0, 0, feature_spent - 1)
+           WHERE id = ? AND class IN ('fighter', 'cleric', 'paladin')", [$me['id']]);
         // One Second Wind, Rage or Wild Shape comes back, every Focus Point, from Bard 5 every Bardic Inspiration (Font
         // of Inspiration), and nothing else.
         $all = $me['class'] === 'monk' || ($me['class'] === 'bard' && $me['level'] >= 5);
         $one = in_array($me['class'], ['fighter', 'barbarian', 'druid'], true);
         $me['uses_spent'] = $all ? 0 : max(0, $me['uses_spent'] - ($one ? 1 : 0));
-        if ($me['class'] === 'fighter') { // Action Surge
-            q('UPDATE users SET feature_spent = 0 WHERE id = ?', [$me['id']]);
-        }
         $line = "You finish a short rest, spending $spent Hit " . ($spent === 1 ? 'Die' : 'Dice') . $recovered
             . match (true) {
                 $use && $all => " and regaining your $use.",
@@ -5489,7 +5601,12 @@ function hero_sheet(array $me): array
                 ],
                 'cleric' => [['Spell slots', slots_left($me)]],
                 'monk' => [['Martial Arts', "d{$me['martial_arts']}"], ...($me['uses'] ? [['Focus', $uses]] : [])],
-                'paladin' => [['Lay On Hands', $uses], ['Spell slots', slots_left($me)]],
+                'paladin' => [
+                    ['Lay On Hands', $uses],
+                    ...(channels($me) ? [['Channel Divinity', max(0, channels($me) - $me['feature_spent']) . '/'
+                        . channels($me)]] : []),
+                    ['Spell slots', slots_left($me)],
+                ],
                 'ranger' => [['Favored Enemy', $uses], ['Spell slots', slots_left($me)]],
                 'wizard' => [['Spell slots', slots_left($me)]],
                 'bard' => [['Bardic Inspiration', "$uses d{$me['bardic']}"], ['Spell slots', slots_left($me)]],
@@ -6183,8 +6300,8 @@ function actions(array $me): array
     }
     $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
     $mine = array_intersect(
-        ['breathe', 'reckless', 'surge', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second', 'rage',
-            'innate',
+        ['breathe', 'reckless', 'surge', 'sacred', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second',
+            'rage', 'innate',
             'wholeness', 'lay', 'cast'],
         $mine
     );

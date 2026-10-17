@@ -12,8 +12,8 @@ and roads wait for Aaron's sketch (below).
 ### Characters
 
 10. **No class short at levels 1-5.** The Cleric gets the SRD's subclass, Life Domain, plus its Channel Divinity (2)
-    and spells of 2nd and 3rd level (Spiritual Weapon, Prayer of Healing, Bestow Curse, Protection from Energy), and
-    the Paladin Divine Sense and Sacred Weapon (3). Can ship a class at a time (the design is in the Decided entry).
+    and spells of 2nd and 3rd level (Spiritual Weapon, Prayer of Healing, Bestow Curse, Protection from Energy). Can
+    ship a class at a time (the design is in the Decided entry).
 11. **Area spells, aimed before they're cast.** The SRD's areas (Cone, Cube, Cylinder, Emanation, Line, Sphere) hit
     every creature in them on the board: monsters, other heroes and hirelings alike, each saving on its own, and only
     those the point of origin has a line to (`sight()`, total cover blocks). A square counts if its centre is inside
@@ -73,8 +73,7 @@ Any time: **approve account requests** (friends ask on the login page):
 
 - 2026-10-17 **No class short** (task 10, a class at a time). Design, from Aaron's answers: Action Surge and Channel
   Divinity count in `users.feature_spent` (no migration); turned undead and Sacred Weapon are no-class `spells` rows
-  leaving condition effects, as Sanctuary does. Paladin 3: two Channel Divinities, `sense` (the Celestials,
-  Fiends and Undead here and next door) and `sacred <monster>`. Cleric: Channel Divinity from 2 (`spark`, `turn`; a
+  leaving condition effects, as Sanctuary does. Cleric: Channel Divinity from 2 (`spark`, `turn`; a
   turned Undead cowers, as no monster flees yet), Life Domain at 3 (Disciple of Life, its spells, `preserve`), and
   Spiritual Weapon, Prayer of Healing, Bestow Curse and Protection from Energy.
   **Fighter (shipped):** `surge <monster>` (2) is two actions: the Attack action twice, or a Dash and then the
@@ -87,6 +86,11 @@ Any time: **approve account requests** (friends ask on the login page):
   **Rogue (shipped):** Thief (3): Fast Hands and Second-Story Work are only shown, under `score` (nothing in the game
   picks locks, climbs or jumps, and a potion is already a Bonus Action). Uncanny Dodge (5) is automatic: it halves
   the first hit of each monster turn, rounding down (Deflect Attacks' shortcut: once a turn of theirs, not a round).
+  **Paladin (shipped):** two Channel Divinities from level 3 (`channels()`, 3 from 11), one back on a short rest.
+  `sense`, Divine Sense: a Bonus Action naming the Celestials, Fiends and Undead here and in the rooms next door, and
+  the temple's consecrated ground (no ticks, so a look, not 10 minutes of knowing). `sacred <monster>`, Sacred Weapon
+  (Devotion) with the Attack action: +Cha (at least 1) to hit with the melee weapon in hand, and Radiant when that
+  beats the foe's resistances, for 10 minutes and the fight (spells row 47); it follows whatever melee weapon I wield.
 
 - 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
   8-15 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait

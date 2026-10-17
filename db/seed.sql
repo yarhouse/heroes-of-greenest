@@ -451,7 +451,11 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 -- The acolyte hireling's Divine Aid (see divine_aid()), no class's spell: a foe makes a Wis save to attack the hero.
 (46, 'Sanctuary', 1, '', 'bonus', 'buff', FALSE, NULL, NULL, NULL, 'wis', FALSE,
     'ally', 1, 0, NULL, 'condition', 'sanctuary', FALSE, FALSE, 1,
-    'a foe makes a Wis save to attack you, until you attack or cast a spell')
+    'a foe makes a Wis save to attack you, until you attack or cast a spell'),
+-- A Paladin's Channel Divinity (see cmd_sacred()), no class's spell: +Cha to hit with a melee weapon, and Radiant.
+(47, 'Sacred Weapon', 0, '', 'action', 'buff', FALSE, NULL, NULL, 'radiant', NULL, FALSE,
+    'self', 1, 0, NULL, 'condition', 'sacred', FALSE, FALSE, 10,
+    'your melee weapon adds your Cha to hit and can deal Radiant damage')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,

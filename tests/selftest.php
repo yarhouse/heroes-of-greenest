@@ -1270,6 +1270,37 @@ try {
     check(hero('Testg')['uses_spent'] === 0 && hero('Testg')['once_used'] === 0,
         'a long rest refills it and the free Divine Smite');
 
+    // Channel Divinity (Paladin 3): Divine Sense, and Sacred Weapon (Oath of Devotion). Testg: Str +2, Cha +2, PB +2.
+    q("UPDATE users SET level = 3, hp = max_hp, room_id = 1 WHERE name = 'Testg'");
+    q('UPDATE spawns SET hp = 200, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Testg'), 'score'), 'Channel Divinity 2/2'), 'Paladin 3: two Channel Divinities');
+    $type = q('SELECT type FROM monsters WHERE id = 9999')->fetchColumn();
+    q("UPDATE monsters SET type = 'undead' WHERE id = 9999");
+    check(says(run_command(hero('Testg'), 'sense'), 'a Training Dummy (Undead) to the north')
+        && says(run_command(hero('Testg'), 'score'), 'Channel Divinity 1/2'),
+        'Divine Sense: the Undead next door, for a Channel Divinity');
+    q('UPDATE monsters SET type = ? WHERE id = 9999', [$type]);
+    q("UPDATE users SET room_id = 5, feature_spent = 0 WHERE name = 'Testg'");
+    check(says(run_command(hero('Testg'), 'sense'), "Chauntea's temple to the east is consecrated ground."),
+        'Divine Sense: consecrated ground');
+    q("UPDATE users SET room_id = 2, feature_spent = 2 WHERE name = 'Testg'");
+    check(says(run_command(hero('Testg'), 'sacred dummy'), 'no Channel Divinity left'), 'two a rest');
+    q("UPDATE users SET feature_spent = 1 WHERE name = 'Testg'");
+    q("UPDATE monsters SET resistances = 'slashing' WHERE id = 9999");
+    $dice_queue = [10, 1, 12, 5, 1, 1]; // initiative; 12 + 4 + 2 Cha hits for 5 + 2 Radiant; Sap: Slam 1 and 1
+    $out = run_command(hero('Testg'), 'sacred dummy');
+    check(says($out, 'Your Longsword blazes with holy light: +2 to hit')
+        && says($out, '(18 vs AC 10) for 7 damage (radiant).') && $dice_queue === [],
+        'Sacred Weapon: +Cha to hit, and Radiant when the foe resists the weapon');
+    check(says($score = run_command(hero('Testg'), 'score'), 'Longsword +6 to hit') && says($score, 'Sacred Weapon')
+        && says($score, 'Channel Divinity 0/2'), 'it lasts: score shows it');
+    q("UPDATE monsters SET resistances = '' WHERE id = 9999");
+    leave('Testg');
+    q("UPDATE users SET resting = 'short', rest_until = NOW() WHERE name = 'Testg'");
+    run_command(hero('Testg'), 'score');
+    check(hero('Testg')['feature_spent'] === 1, 'a short rest gives back one Channel Divinity');
+    q('DELETE FROM effects');
+
     // Ranger (Testh: Dex 15, Wis 14: spell save DC 12). The dummy: AC 10, Str save +0.
     q('DELETE FROM effects');
     q('UPDATE spawns SET hp = 200, max_hp = 200, dead_since = NULL WHERE id = 9999');
