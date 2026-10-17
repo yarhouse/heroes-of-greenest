@@ -5,11 +5,57 @@ history). Ideas go in `BACKLOG.md` and move here once chosen. This repo copy is 
 
 ## Next
 
-Two goals, in any order: **the town redrawn** from Aaron's sketch and feedback, and **travel** over distances as
-ordinary rooms until something attacks. (The third, **encounters on a battle map**, shipped as tasks 4 to 7: see
-Decided.) The tasks below are in a sensible order, and each ships alone.
+**Characters and the town**, now that fights are done: the heroes Aaron's players already have get the choices and
+features they're owed, and the town gets more to say and sell. Take the top task; each ships alone. The town redraw
+and roads wait for Aaron's sketch (below).
 
-### Travel and the town
+### Characters
+
+8. **Choices, starting with skills.** A hero owes a choice when their class, level or a feat grants one: a new hero
+   makes it in character creation, a level-up asks then, and heroes from before are asked once, today's pick (if the
+   game makes one) as the default, so nothing changes under them. An owed choice blocks play until it's made, as
+   `cmd_setup()` does (Aaron's call). Every hero the selftest makes gets all the choices its class and level owe, so
+   no test stalls on a question. The first choices are skills: each class's skill
+   proficiencies (SRD class tables), Skilled's three, Expertise (Rogue 1, Bard 2) and Jack of All Trades (Bard 2).
+   The checks already made (Search, Study and Influence in `inspect` and `ask`, Stealth for `sneak`) use them; today
+   only a background's skills count.
+9. **Ability Score Improvements** at levels 4, 8, 12 and 16 (Fighter also 6 and 14, Rogue 10): +2 to one score or +1
+   to two (20 at most), or the Grappler feat, the SRD's general feats. A choice from task 8. Level 19's Epic Boon
+   waits.
+10. **No class short at levels 1-5.** The four classes without a subclass get the SRD's (Fighter: Champion, Cleric:
+    Life Domain, Rogue: Thief, Barbarian: Berserker), plus Action Surge (Fighter 2), the Cleric's Channel Divinity (2)
+    and spells of 2nd and 3rd level, the Paladin's Divine Sense and Sacred Weapon (3) and Uncanny Dodge (Rogue 5).
+    Can ship a class at a time.
+11. **Your own picks** where the game picks for you today (the `CLASSES` comment): Fighting Style (Two-Weapon
+    Fighting among them), Divine Order, Primal Order, Elemental Fury and the Circle of the Land's land, Eldritch
+    Invocations (and those past level 2: Pact of the Blade, Thirsting Blade, Eldritch Smite), Metamagic, Elemental
+    Affinity, Weapon Mastery's weapons (today every weapon you wield has its mastery), cantrips known, a Wizard's
+    spellbook and a Druid's Known Forms. Choices from task 8.
+
+### The town
+
+12. **Townsfolk who listen.** Townsfolk answer words said in their room (`say`), as Riftshadow's and Luminari's speech
+    triggers do, beside `ask`. The hooks the town hints at become topics, some behind a check: the dragon mark on
+    kobold gear, the Fields of the Dead, Ysolde's interest in the Wood, the keep's bricked-up stair. A few more
+    townsfolk in rooms that have none. Their rows hang off room ids, so the redraw (task 2) moves them with their rooms.
+13. **More to inspect, and folk outside town.** `convert-area.php` turns Riftshadow's extra descriptions (`E` blocks,
+    67 in all) into `features` rows, and the dungeons get a few people to `ask` (a captive, a hermit). Open (Aaron
+    to decide): where their rows live, and whether the Delve gets any. `npcs.room_id` is a foreign key to `rooms`.
+    The converted areas' rooms have fixed ids but load after `seed.sql`, so their people would need a hand-edited
+    file loaded after the areas (say `db/extras.sql`, which could also hold task 6's hand-drawn boards). The Delve's
+    rooms are deleted at each rebuild, which a row pointing at one would block, so a Delve NPC would stand in the
+    fixed stair room (50000) or be placed by `delve_build()` each week.
+14. **The shops and the Lantern.** Acid, Alchemist's Fire and Holy Water in the shops, thrown in place of an attack (a
+    `throw` like `breathe`). More hireling kinds, one line each in `HIRELINGS` (a Scout with a Longbow for an archer,
+    a Priest for a real healer, a Tough with a Heavy Crossbow), priced by CR rather than 2 GP a day for all.
+
+Any time: **autocomplete command arguments** in `play.js` (after `kill `, the monsters in the room; items for `get`,
+`drop`, `equip`, `drink`; today only command names, from `COMMANDS`).
+
+Any time: **approve account requests** (friends ask on the login page):
+`ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
+
+### Waiting on Aaron's sketch
 
 2. **Redraw the town** from Aaron's sketch and feedback: rooms, exits, features, townsfolk and topics in `seed.sql`,
    ids 1-99. Keep the ids the code and data name, or move them together: `START_ROOM` (1), `LANTERN`, `TEMPLE`, the
@@ -23,11 +69,11 @@ Decided.) The tasks below are in a sensible order, and each ships alone.
    (through `roll()`, a table per zone), and how long a road can be before walking it is a chore (a speedwalk command
    only if it becomes one).
 
-Any time: **approve account requests** (friends ask on the login page):
-`ssh $DEPLOY_HOST "/usr/local/php84/bin/php $DEPLOY_DIR/bin/requests.php"`, then `... requests.php approve <Account>`.
-
 ## Decided
 
+- 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
+  8-14 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait
+  for Aaron's sketch.
 - 2026-10-12 **Host:** DreamHost shared hosting; a managed VPS was ruled out on cost. Hence PHP + MySQL 8, one request per
   command, no ticks.
 - 2026-10-12 **Sources:** Riftshadow is content only (`.are` files converted to SQL). Dragon Knight's rules and data are
