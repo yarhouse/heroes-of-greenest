@@ -1,7 +1,7 @@
 -- schema.sql :: all tables. DESTRUCTIVE: drops existing tables. Load seed.sql after this.
 SET NAMES utf8mb4;
 -- Dropping migrations tells bin/migrate.php this database matches this file, so it marks every migration done.
-DROP TABLE IF EXISTS migrations, visited, bulletins, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
+DROP TABLE IF EXISTS migrations, picks, visited, bulletins, requests, checks, topics, npcs, features, effects, spells, delve, objects, events, users, items, levels, spawns,
     monsters, exits, rooms;
 
 CREATE TABLE rooms (
@@ -206,6 +206,7 @@ CREATE TABLE users (
     init TINYINT NULL, -- my Initiative in this fight
     prepared VARCHAR(255) NOT NULL DEFAULT '', -- spell ids, e.g. '5,2'; empty means the class's defaults
     may_prepare BOOLEAN NOT NULL DEFAULT TRUE, -- a long rest lets me change them
+    may_choose BOOLEAN NOT NULL DEFAULT FALSE, -- a rest lets me make the choices I owe (picks)
     gold INT UNSIGNED NOT NULL DEFAULT 0,
     fighting INT UNSIGNED NULL,
     foe_first BOOLEAN NOT NULL DEFAULT FALSE, -- the monster won initiative, so it acts first each round
@@ -394,5 +395,15 @@ CREATE TABLE checks (
     passed BOOLEAN NOT NULL,
     at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, what),
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- The skills and other picks a hero's class, level and feats grant (owed_choices() in game.php): 'class skills',
+-- 'skilled', 'expertise 1', 'expertise 2', each value a SKILLS key.
+CREATE TABLE picks (
+    user_id INT UNSIGNED NOT NULL,
+    choice VARCHAR(20) NOT NULL,
+    value VARCHAR(20) NOT NULL,
+    PRIMARY KEY (user_id, choice, value),
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

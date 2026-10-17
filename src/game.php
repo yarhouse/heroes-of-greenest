@@ -81,7 +81,8 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
  * The classes a hero can choose, from SRD 5.2.1 (Barbarian p.28, Bard p.30, Cleric p.36, Druid p.41, Fighter p.47, Monk
  * p.49, Paladin p.52, Ranger p.56, Rogue p.61, Sorcerer p.64, Warlock p.70, Wizard p.77): Hit Die, level 1 HP and
  * fixed HP per level (both before the Con modifier), the Standard Array by Class (p.21) in Str Dex Con Int Wis Cha
- * order, saving throw proficiencies, Weapon Mastery, a caster's spellcasting ability and slot table (full, half or
+ * order, saving throw proficiencies, Weapon Mastery, skill proficiencies to choose (how many, of which skills; null is
+ * any), a caster's spellcasting ability and slot table (full, half or
  * pact), prepared spells by level, the ones a new hero starts with and the ones always prepared (name => from level),
  * armor training, and starting equipment A as [item id, worn]. Kits leave out ammunition, packs, tools and focuses.
  * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
@@ -96,6 +97,10 @@ const CLASSES = [
     'fighter' => [
         'name' => 'Fighter', 'die' => 10, 'hp' => 10, 'per_level' => 6, 'scores' => [15, 14, 13, 8, 10, 12],
         'saves' => ['strength', 'constitution'], 'mastery' => true,
+        'skills' => [2, [
+            'acrobatics', 'animal handling', 'athletics', 'history', 'insight', 'intimidation', 'perception',
+            'persuasion', 'survival',
+        ]],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 4,
         'kit' => [ // Chain Mail, Greatsword, Flail, 8 Javelins
             [40, true], [15, true], [12, false], [5, false], [5, false], [5, false], [5, false], [5, false], [5, false],
@@ -106,6 +111,7 @@ const CLASSES = [
     'barbarian' => [
         'name' => 'Barbarian', 'die' => 12, 'hp' => 12, 'per_level' => 7, 'scores' => [15, 13, 14, 10, 12, 8],
         'saves' => ['strength', 'constitution'], 'mastery' => true,
+        'skills' => [2, ['animal handling', 'athletics', 'intimidation', 'nature', 'perception', 'survival']],
         'armor' => ['light', 'medium', 'shield'], 'gold' => 15,
         'kit' => [[14, true], [4, false], [4, false], [4, false], [4, false]], // Greataxe, 4 Handaxes
         'about' => 'd12 HP, tough even unarmored. Rage to hit harder and shrug off weapon blows.',
@@ -113,6 +119,10 @@ const CLASSES = [
     'rogue' => [
         'name' => 'Rogue', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 14, 10, 8],
         'saves' => ['dexterity', 'intelligence'], 'mastery' => true,
+        'skills' => [4, [
+            'acrobatics', 'athletics', 'deception', 'insight', 'intimidation', 'investigation', 'perception',
+            'persuasion', 'sleight of hand', 'stealth',
+        ]],
         'armor' => ['light'], 'gold' => 8,
         'kit' => [[32, true], [24, true], [2, false], [2, false], [72, false]], // Leather Armor, Shortsword, 2 Daggers,
         // Shortbow
@@ -123,6 +133,7 @@ const CLASSES = [
         'saves' => ['wisdom', 'charisma'], 'casting' => 'wisdom', 'slots' => 'slots',
         'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22], // by level
         'spells' => ['Bless', 'Cure Wounds', 'Guiding Bolt', 'Shield of Faith'], // the SRD's suggested first four
+        'skills' => [2, ['history', 'insight', 'medicine', 'persuasion', 'religion']],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
         'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
         'about' => 'd8 HP, armor and shield. Spells that burn foes and heal you.',
@@ -130,6 +141,7 @@ const CLASSES = [
     'monk' => [
         'name' => 'Monk', 'die' => 8, 'hp' => 8, 'per_level' => 5, 'scores' => [12, 15, 13, 10, 14, 8],
         'saves' => ['strength', 'dexterity'],
+        'skills' => [2, ['acrobatics', 'athletics', 'history', 'insight', 'religion', 'stealth']],
         'armor' => [], 'gold' => 11,
         'kit' => [[10, true], [2, false], [2, false], [2, false], [2, false], [2, false]], // Spear, 5 Daggers
         'about' => 'd8 HP, no armor. Fast fists and Focus: Flurry of Blows, Patient Defense, Stunning Strike.',
@@ -140,6 +152,7 @@ const CLASSES = [
         'prepared' => [2, 3, 4, 5, 6, 6, 7, 7, 9, 9, 10, 10, 11, 11, 12, 12, 14, 14, 15, 15],
         'spells' => ['Divine Favor', 'Cure Wounds'], // the SRD suggests Heroism and Searing Smite, not modeled
         'always' => ['Divine Smite' => 2, 'Shield of Faith' => 3, 'Aid' => 5], // Paladin's Smite, Oath of Devotion
+        'skills' => [2, ['athletics', 'insight', 'intimidation', 'medicine', 'persuasion', 'religion']],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 9,
         'kit' => [ // Chain Mail, Shield, Longsword, 6 Javelins
             [40, true], [50, true], [18, true], [5, false], [5, false], [5, false], [5, false], [5, false], [5, false],
@@ -152,6 +165,9 @@ const CLASSES = [
         'prepared' => [2, 3, 4, 5, 6, 6, 7, 7, 9, 9, 10, 10, 11, 11, 12, 12, 14, 14, 15, 15],
         'spells' => ['Cure Wounds', 'Ensnaring Strike'], // the SRD's suggested two
         'always' => ["Hunter's Mark" => 1], // Favored Enemy
+        'skills' => [3, [
+            'animal handling', 'athletics', 'insight', 'investigation', 'nature', 'perception', 'stealth', 'survival',
+        ]],
         'armor' => ['light', 'medium', 'shield'], 'gold' => 7,
         'kit' => [[33, true], [23, true], [24, false], [77, false]], // Studded Leather, Scimitar, Shortsword, Longbow
         'about' => "d10 HP, light or medium armor. Bow or blades, Hunter's Mark and nature's spells.",
@@ -161,6 +177,7 @@ const CLASSES = [
         'saves' => ['intelligence', 'wisdom'], 'casting' => 'intelligence', 'slots' => 'slots',
         'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 18, 19, 21, 22, 23, 24, 25],
         'spells' => ['Mage Armor', 'Magic Missile', 'Burning Hands', 'Thunderwave'],
+        'skills' => [2, ['arcana', 'history', 'insight', 'investigation', 'medicine', 'nature', 'religion']],
         'armor' => [], 'gold' => 5,
         'kit' => [[8, true], [2, false], [2, false]], // Quarterstaff, 2 Daggers
         'about' => 'd6 HP, no armor. Fire Bolt, Magic Missile, Fireball: the most spells of all.',
@@ -171,6 +188,7 @@ const CLASSES = [
         'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
         'spells' => ['Bane', 'Dissonant Whispers', 'Faerie Fire', 'Healing Word'], // the SRD suggests Charm Person and
         // Color Spray, not modeled
+        'skills' => [3, null], // any 3 (a constant can't call array_keys(SKILLS))
         'armor' => ['light'], 'gold' => 19,
         'kit' => [[32, true], [2, true], [2, false]], // Leather Armor, 2 Daggers
         'about' => 'd8 HP, light armor. Inspire other heroes, cut foes down with words, heal and hex.',
@@ -181,6 +199,9 @@ const CLASSES = [
         'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
         'spells' => ['Cure Wounds', 'Entangle', 'Faerie Fire', 'Thunderwave'], // the SRD suggests Animal Friendship
         'always' => ['Burning Hands' => 3, 'Fire Bolt' => 3, 'Fireball' => 5], // Circle of the Land Spells (Arid)
+        'skills' => [2, [
+            'animal handling', 'arcana', 'insight', 'medicine', 'nature', 'perception', 'religion', 'survival',
+        ]],
         'armor' => ['light', 'medium', 'shield'], 'gold' => 9,
         'kit' => [[32, true], [50, true], [9, true], [8, false]], // Leather Armor, Shield, Sickle, Quarterstaff
         'about' => 'd8 HP, light armor and shield. Nature spells, and Wild Shape into beasts.',
@@ -193,6 +214,7 @@ const CLASSES = [
         'always' => [ // Armor of Shadows, then Fiend Spells (Suggestion and Stinking Cloud aren't modeled)
             'Mage Armor' => 1, 'Burning Hands' => 3, 'Command' => 3, 'Scorching Ray' => 3, 'Fireball' => 5,
         ],
+        'skills' => [2, ['arcana', 'deception', 'history', 'intimidation', 'investigation', 'nature', 'religion']],
         'armor' => ['light'], 'gold' => 15,
         'kit' => [[32, true], [9, true], [2, false], [2, false]], // Leather Armor, Sickle, 2 Daggers
         'about' => 'd8 HP, light armor. Eldritch Blast and Hex; few spell slots, back on every short rest.',
@@ -203,6 +225,7 @@ const CLASSES = [
         'prepared' => [2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
         'spells' => ['Burning Hands', 'Magic Missile'], // the SRD suggests Detect Magic, not modeled
         'always' => ['Command' => 3], // Draconic Spells (shortcut: the others aren't modeled)
+        'skills' => [2, ['arcana', 'deception', 'insight', 'intimidation', 'persuasion', 'religion']],
         'armor' => [], 'gold' => 28,
         'kit' => [[10, true], [2, false], [2, false]], // Spear, 2 Daggers
         'about' => 'd6 HP, no armor. Innate magic: arcane spells, bent with Sorcery Points and Metamagic.',
@@ -314,13 +337,13 @@ const SPECIES = [
 /**
  * Origin feats (SRD 5.2.1 p.87). Alert adds PB to Initiative (its swap is left out: no allies share initiative).
  * Magic Initiate's spells are the game's choice, of the ones it has: its cantrips and level 1 spell (cast free once a
- * long rest, or with slots) use origin_ability(). Skilled is only shown.
+ * long rest, or with slots) use origin_ability().
  */
 const FEATS = [
     'alert' => ['name' => 'Alert', 'about' => 'add your Proficiency Bonus to Initiative'],
     'savage' => ['name' => 'Savage Attacker',
         'about' => "once a turn, roll a weapon hit's damage twice, keep the best"],
-    'skilled' => ['name' => 'Skilled', 'about' => 'three more skills (not chosen yet, so not used)'],
+    'skilled' => ['name' => 'Skilled', 'about' => 'three more skills of your choice'],
     'cleric' => ['name' => 'Magic Initiate (Cleric)', 'spells' => ['Sacred Flame', 'Cure Wounds'],
         'about' => 'Sacred Flame, and Cure Wounds free once a long rest'],
     'wizard' => ['name' => 'Magic Initiate (Wizard)', 'spells' => ['Fire Bolt', 'Ray of Frost', 'Magic Missile'],
@@ -342,7 +365,10 @@ const BACKGROUNDS = [
         'skills' => 'Athletics, Intimidation'],
 ];
 
-/** The skills (SRD 5.2.1 p.9), => the ability each check uses. A background's skills add my Proficiency Bonus. */
+/**
+ * The skills (SRD 5.2.1 p.9), => the ability each check uses. My background's, my class's and Skilled's add my
+ * Proficiency Bonus (see skill_bonus()).
+ */
 const SKILLS = [
     'acrobatics' => 'dexterity', 'animal handling' => 'wisdom', 'arcana' => 'intelligence', 'athletics' => 'strength',
     'deception' => 'charisma', 'history' => 'intelligence', 'insight' => 'wisdom', 'intimidation' => 'charisma',
@@ -350,6 +376,9 @@ const SKILLS = [
     'performance' => 'charisma', 'persuasion' => 'charisma', 'religion' => 'intelligence',
     'sleight of hand' => 'dexterity', 'stealth' => 'dexterity', 'survival' => 'wisdom',
 ];
+
+/** Expertise (Rogue p.61, Bard p.30): the class levels that grant 'expertise 1' and 'expertise 2', two skills each. */
+const EXPERTISE = ['rogue' => [1, 6], 'bard' => [2, 9]];
 
 /** Every command, as usage => what it does. Drives help and the play page's autocomplete. */
 const COMMANDS = [
@@ -1238,11 +1267,82 @@ function bulletins(array $me): array
         $posts);
 }
 
-/** My bonus to a check with a SKILLS skill: its ability's modifier, plus my Proficiency Bonus if I'm proficient. */
+/** My picks (see owed_choices()), as choice id => the values picked. */
+function picks(array $me): array
+{
+    $picks = [];
+    foreach (q('SELECT choice, value FROM picks WHERE user_id = ?', [$me['id']])->fetchAll() as $p) {
+        $picks[$p['choice']][] = $p['value'];
+    }
+    return $picks;
+}
+
+/** The skills I'm proficient in: my background's, and those I picked for my class and with Skilled. */
+function proficient_skills(array $me): array
+{
+    $picks = picks($me);
+    $background = BACKGROUNDS[$me['background'] ?? '']['skills'] ?? '';
+    return array_values(array_unique([
+        ...array_filter(array_map('trim', explode(',', strtolower($background)))),
+        ...$picks['class skills'] ?? [],
+        ...$picks['skilled'] ?? [],
+    ]));
+}
+
+/**
+ * The choices my class, level and feats give me that I haven't made yet, in the order they're made: my class's
+ * skills, Skilled's three, then each Expertise. Each is [id, title, pick (how many more), options (every skill it
+ * lists, in SKILLS order), locked (the listed ones I already have)]. Nothing before I have a class.
+ */
+function owed_choices(array $me): array
+{
+    if (($me['setup'] ?? null) !== null && in_array($me['setup'], ['name', 'class'], true)) {
+        return [];
+    }
+    $c = CLASSES[$me['class']];
+    $picks = picks($me);
+    $mine = proficient_skills($me);
+    $all = array_keys(SKILLS);
+    [$count, $list] = $c['skills'];
+    $expert = array_merge(...array_values(array_intersect_key($picks, ['expertise 1' => 1, 'expertise 2' => 1])));
+    $wanted = [['class skills', "{$c['name']} skills", $count, $list ?? $all]];
+    if (has_feat($me, 'skilled')) {
+        $wanted[] = ['skilled', 'Skilled', 3, $all];
+    }
+    foreach (EXPERTISE[$me['class']] ?? [] as $i => $level) {
+        if ($me['level'] >= $level) {
+            $wanted[] = ['expertise ' . ($i + 1), 'Expertise', 2, $mine];
+        }
+    }
+    $owed = [];
+    foreach ($wanted as [$id, $title, $n, $options]) {
+        $options = array_values(array_intersect($all, $options));
+        $have = $picks[$id] ?? [];
+        $locked = array_values(array_diff(array_intersect($options, str_starts_with($id, 'expertise') ? $expert : $mine),
+            $have));
+        $pick = min($n - count($have), count($options) - count($locked) - count($have));
+        if ($pick > 0) {
+            $owed[] = ['id' => $id, 'title' => $title, 'pick' => $pick, 'options' => $options, 'locked' => $locked];
+        }
+    }
+    return $owed;
+}
+
+/**
+ * My bonus to a check with a SKILLS skill: its ability's modifier, plus my Proficiency Bonus if I'm proficient (twice
+ * it with Expertise), or half of it rounded down with a Bard's Jack of All Trades (level 2).
+ */
 function skill_bonus(array $me, string $skill): int
 {
-    $mine = array_map('trim', explode(',', strtolower(BACKGROUNDS[$me['background'] ?? '']['skills'] ?? '')));
-    return mod((int) $me[SKILLS[$skill]]) + (in_array($skill, $mine, true) ? $me['prof_bonus'] : 0);
+    $picks = picks($me);
+    $bonus = mod((int) $me[SKILLS[$skill]]);
+    $expert = in_array($skill, [...$picks['expertise 1'] ?? [], ...$picks['expertise 2'] ?? []], true);
+    return $bonus + match (true) {
+        $expert => 2 * $me['prof_bonus'],
+        in_array($skill, proficient_skills($me), true) => $me['prof_bonus'],
+        $me['class'] === 'bard' && $me['level'] >= 2 => intdiv($me['prof_bonus'], 2),
+        default => 0,
+    };
 }
 
 /**

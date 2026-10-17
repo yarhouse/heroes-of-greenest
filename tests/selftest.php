@@ -2429,6 +2429,47 @@ try {
         "an away hero Dodges; XP and gold are split among the heroes in the fight");
     q('UPDATE monsters SET speed = 30 WHERE id = 9999');
 
+    // Choices and skills.
+    save_account('Pixie', 'correct horse');
+    create('Pixie', 'rogue', 'ok', 'human skilled', 'criminal');  // Criminal: Sleight of Hand, Stealth
+    $pid = hero('Pixie')['id'];
+    q('DELETE FROM picks WHERE user_id = ?', [$pid]);  // create() has made them; these checks make them by hand
+    $o = owed_choices(hero('Pixie'));
+    check(array_column($o, 'id') === ['class skills', 'skilled', 'expertise 1'] && $o[0]['pick'] === 4
+        && $o[0]['locked'] === ['sleight of hand', 'stealth'] && count($o[0]['options']) === 10,
+        'a Rogue owes 4 class skills, Skilled and Expertise; background skills locked');
+    foreach (['acrobatics', 'insight', 'perception', 'investigation'] as $s) {
+        q("INSERT INTO picks VALUES (?, 'class skills', ?)", [$pid, $s]);
+    }
+    $o = owed_choices(hero('Pixie'));
+    check($o[0]['id'] === 'skilled' && in_array('perception', $o[0]['locked'], true), 'Skilled locks what I have');
+    foreach (['athletics', 'history', 'nature'] as $s) {
+        q("INSERT INTO picks VALUES (?, 'skilled', ?)", [$pid, $s]);
+    }
+    $o = owed_choices(hero('Pixie'));
+    check($o[0]['id'] === 'expertise 1' && count($o[0]['options']) === 9 && !in_array('arcana', $o[0]['options'], true),
+        'Expertise offers only skills I am proficient in');
+    $p = with_stats(hero('Pixie'));
+    $dex = mod($p['dexterity']);
+    check(skill_bonus($p, 'stealth') === $dex + 2 && skill_bonus($p, 'acrobatics') === $dex + 2,
+        'proficient: + Proficiency Bonus');
+    check(skill_bonus($p, 'arcana') === mod($p['intelligence']), 'not proficient: the modifier alone');
+    q("INSERT INTO picks VALUES (?, 'expertise 1', 'stealth'), (?, 'expertise 1', 'perception')", [$pid, $pid]);
+    check(skill_bonus(with_stats(hero('Pixie')), 'stealth') === $dex + 4 && owed_choices(hero('Pixie')) === [],
+        'Expertise doubles it, and nothing is owed');
+    q('UPDATE users SET level = 6 WHERE id = ?', [$pid]);
+    check(array_column(owed_choices(hero('Pixie')), 'id') === ['expertise 2'], 'Rogue 6 owes a second Expertise');
+    save_account('Lute', 'correct horse');
+    create('Lute', 'bard');
+    q("UPDATE users SET level = 2 WHERE name = 'Lute'");
+    $b = with_stats(hero('Lute'));
+    check(skill_bonus($b, 'survival') === mod($b['wisdom']) + 1, 'Jack of All Trades: half the bonus, rounded down');
+    save_account('Vow', 'correct horse');
+    create('Vow', 'cleric', 'ok', 'human alert', 'acolyte');  // Acolyte: Insight, Religion
+    q('DELETE FROM picks WHERE user_id = ?', [hero('Vow')['id']]);
+    $o = owed_choices(hero('Vow'));
+    check($o[0]['pick'] === 2 && $o[0]['locked'] === ['insight', 'religion'], 'Cleric + Acolyte still picks 2');
+
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
     foreach ([1, 2, 3, 202642, 202701] as $seed) {
