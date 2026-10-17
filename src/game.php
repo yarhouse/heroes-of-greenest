@@ -88,8 +88,9 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
  * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
  * Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the Druid's Primal Order is Warden, a
  * Warlock's Eldritch Invocations are Armor of Shadows from level 1 and Agonizing Blast and Eldritch Mind from 2, and
- * the subclasses are the SRD's: Berserker, Champion, Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with
- * Colossus Slayer and Multiattack Defense, Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
+ * the subclasses are the SRD's: Berserker, Champion, Thief (Fast Hands and Second-Story Work only shown), Lore, Land
+ * (Arid) with Primal Strike, Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Draconic Sorcery
+ * with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
  * know every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
  * from.
  */
@@ -3366,6 +3367,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
     $held = $grappled && $foe['grappled_by'] !== $me['id'];
     $deflect = $me['class'] === 'monk' && $me['level'] >= 3; // my Reaction, once a turn of theirs
     $cutting = $me['class'] === 'bard' && $me['level'] >= 3; // Cutting Words, my Reaction too
+    $uncanny = $me['class'] === 'rogue' && $me['level'] >= 5; // Uncanny Dodge, my Reaction too
     $giant = $me['species'] === 'goliath' && in_array($me['lineage'], ['stone', 'storm'], true);
     $hit_me = false; // Multiattack Defense (Ranger 7): after one hit, its other attacks this turn have Disadvantage
     for ($i = 0; $i < ($n ?? $foe['attacks']); $i++) {
@@ -3407,6 +3409,11 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
             $deflected = min($dmg, roll('1d10') + mod($me['dexterity']) + $me['level']);
             $dmg -= $deflected;
         }
+        $dodged = 0; // Uncanny Dodge: half the hit's damage (rounded down) is all I take
+        if ($uncanny && $dmg > 0) {
+            [$uncanny, $dodged] = [false, $dmg - intdiv($dmg, 2)];
+            $dmg -= $dodged;
+        }
         $endured = 0; // Stone's Endurance
         if ($giant && $dmg > 0 && $me['lineage'] === 'stone' && spend_species($me)) {
             [$giant, $endured] = [false, min($dmg, max(0, roll('1d12') + mod($me['constitution'])))];
@@ -3422,6 +3429,7 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "$its hits you ($total vs AC {$ac}$with) for $dmg "
             . "damage$note" . ($soaked ? " ($soaked to temporary HP)" : '')
             . ($deflected ? ", $deflected deflected" : '')
+            . ($dodged ? ", $dodged dodged (Uncanny Dodge)" : '')
             . ($endured ? ", $endured shrugged off (Stone's Endurance)" : '') . '.';
         if ($deflected && $dmg === 0 && spend_uses($me) && redirect($me, $foe, $lines)) {
             q('UPDATE users SET hp = ? WHERE id = ?', [$me['hp'], $me['id']]);
@@ -5475,7 +5483,10 @@ function hero_sheet(array $me): array
                         : []),
                 ],
                 'barbarian' => [['Rage', $uses]],
-                'rogue' => [['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6']],
+                'rogue' => [
+                    ['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6'],
+                    ...($me['level'] >= 3 ? [['Thief:', 'Fast Hands, Second-Story Work']] : []), // only shown
+                ],
                 'cleric' => [['Spell slots', slots_left($me)]],
                 'monk' => [['Martial Arts', "d{$me['martial_arts']}"], ...($me['uses'] ? [['Focus', $uses]] : [])],
                 'paladin' => [['Lay On Hands', $uses], ['Spell slots', slots_left($me)]],

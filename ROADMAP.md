@@ -11,10 +11,9 @@ and roads wait for Aaron's sketch (below).
 
 ### Characters
 
-10. **No class short at levels 1-5.** The two classes without a subclass get the SRD's (Cleric: Life Domain, Rogue:
-    Thief), plus the Cleric's Channel Divinity (2) and spells of 2nd and 3rd level (Spiritual
-    Weapon, Prayer of Healing, Bestow Curse, Protection from Energy), the Paladin's Divine Sense and Sacred Weapon (3)
-    and Uncanny Dodge (Rogue 5). Can ship a class at a time (the design is in the Decided entry).
+10. **No class short at levels 1-5.** The Cleric gets the SRD's subclass, Life Domain, plus its Channel Divinity (2)
+    and spells of 2nd and 3rd level (Spiritual Weapon, Prayer of Healing, Bestow Curse, Protection from Energy), and
+    the Paladin Divine Sense and Sacred Weapon (3). Can ship a class at a time (the design is in the Decided entry).
 11. **Area spells, aimed before they're cast.** The SRD's areas (Cone, Cube, Cylinder, Emanation, Line, Sphere) hit
     every creature in them on the board: monsters, other heroes and hirelings alike, each saving on its own, and only
     those the point of origin has a line to (`sight()`, total cover blocks). A square counts if its centre is inside
@@ -74,9 +73,7 @@ Any time: **approve account requests** (friends ask on the login page):
 
 - 2026-10-17 **No class short** (task 10, a class at a time). Design, from Aaron's answers: Action Surge and Channel
   Divinity count in `users.feature_spent` (no migration); turned undead and Sacred Weapon are no-class `spells` rows
-  leaving condition effects, as Sanctuary does. Rogue: Thief's
-  Fast Hands and Second-Story Work only shown (nothing picks locks, climbs or jumps); Uncanny Dodge halves the first
-  hit of each monster turn (Deflect Attacks' shortcut). Paladin 3: two Channel Divinities, `sense` (the Celestials,
+  leaving condition effects, as Sanctuary does. Paladin 3: two Channel Divinities, `sense` (the Celestials,
   Fiends and Undead here and next door) and `sacred <monster>`. Cleric: Channel Divinity from 2 (`spark`, `turn`; a
   turned Undead cowers, as no monster flees yet), Life Domain at 3 (Disciple of Life, its spells, `preserve`), and
   Spiritual Weapon, Prayer of Healing, Bestow Curse and Protection from Energy.
@@ -87,6 +84,9 @@ Any time: **approve account requests** (friends ask on the login page):
   after a Critical Hit a `kite` backs off half my Speed further, none of it drawing opportunity attacks.
   **Barbarian (shipped):** Berserker's Frenzy (3): a `reckless` attack while raging adds Rage Damage d6s to the first
   Str-based hit of the turn.
+  **Rogue (shipped):** Thief (3): Fast Hands and Second-Story Work are only shown, under `score` (nothing in the game
+  picks locks, climbs or jumps, and a potion is already a Bonus Action). Uncanny Dodge (5) is automatic: it halves
+  the first hit of each monster turn, rounding down (Deflect Attacks' shortcut: once a turn of theirs, not a round).
 
 - 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
   8-15 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait

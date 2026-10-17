@@ -753,6 +753,17 @@ try {
     $dice_queue = [1];
     check(says(run_command(hero('Testd'), 'flee'), 'You flee south') && $dice_queue === [1],
         'Cunning Action: from level 2 a Rogue always gets away');
+    // Thief (Rogue 3), and Uncanny Dodge (5): my Reaction halves the first hit of each monster turn.
+    q("UPDATE users SET level = 5, room_id = 2, hp = max_hp WHERE name = 'Testd'");
+    check(says(run_command(hero('Testd'), 'score'), 'Sneak Attack 3d6   Thief: Fast Hands, Second-Story Work'),
+        'Thief: its features are shown');
+    q('UPDATE spawns SET hp = 30, dead_since = NULL WHERE id = 9999');
+    $dice_queue = [10, 1, 1, 1, 15, 3]; // initiative; Steady Aim's two natural 1s; Slam hits for 3, I take 1
+    $out = run_command(hero('Testd'), 'kill dummy');
+    check(says($out, 'hits you (18 vs AC 13) for 1 damage, 2 dodged (Uncanny Dodge).') && $dice_queue === [],
+        'Uncanny Dodge halves a hit, rounding down');
+    $dice_queue = [1];
+    run_command(hero('Testd'), 'flee');
     $dice_queue = [];
 
     // Ranged weapons: from 25 ft away no Disadvantage, then Disadvantage with the foe next to you.
