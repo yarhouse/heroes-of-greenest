@@ -67,7 +67,11 @@ async function send(cmd, quiet = false) {
         drawActions();
         sheet.hidden = heroToggle.hidden = !data.hero; // no sheet while creating a hero
         if (data.hero) drawHero(data.hero, data.map ?? [], data.board);
-        if (!quiet) showPanel(data.panel, cmd, lines); // a listen leaves the panel as it is
+        if (!quiet) showPanel(data.panel, cmd, lines);
+        // A listen can finish a rest before the page's own timer does: open a choice it brings, once.
+        else if (data.panel && panel.hidden && shown?.id !== data.panel.id && !dismissed.has(data.panel.id)) {
+            drawPanel(data.panel);
+        }
         if (data.logout) setTimeout(() => location.reload(), 800);
     } catch {
         if (!quiet) print('The connection falters. Try again.', 'error');
@@ -144,7 +148,12 @@ function drawHero(h, map, board = false) {
     }));
     const status = byId('status');
     status.replaceChildren(...h.status.map((s) => el('span', 'badge text-bg-warning fw-normal', s)));
-    if (h.owed && h.may_choose) status.append(button('Choose skills', 'choose'));
+    if (h.owed && h.may_choose) {
+        const choose = button('Choose skills', 'choose');
+        choose.dataset.bsDismiss = 'offcanvas'; // on phones, close the sheet's drawer so the panel shows
+        choose.dataset.bsTarget = '#hero'; // it's .offcanvas-lg, which Bootstrap's closest('.offcanvas') misses
+        status.append(choose);
+    }
     else if (h.owed) status.append(el('span', 'badge text-bg-warning fw-normal', 'Skills to choose: short rest'));
     status.hidden = status.childElementCount === 0;
     // A rest finishes on the next command, so send an empty one when it's up (the server applies it then).
@@ -336,11 +345,13 @@ function showPanel(p, cmd, lines) {
     const asked = /^choose\b/.test(cmd);
     if (asked) dismissed.delete(p.id);
     if (!creating(p) && dismissed.has(p.id)) return;
-    if (shown?.id === p.id && !panel.hidden) {
+    const again = shown?.id === p.id; // the same step back: what was sent was refused
+    if (again && !panel.hidden) {
         byId('panel-error').textContent = cmd.startsWith(p.command) && p.command ? lines.join(' ') : '';
         return;
     }
     drawPanel(p);
+    if (again && creating(p)) byId('panel-error').textContent = lines.join(' '); // the log is hidden: say why here
 }
 
 /** @param {Panel} p */
