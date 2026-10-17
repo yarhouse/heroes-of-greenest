@@ -3096,29 +3096,34 @@ function win(array &$me, array $foe, array &$lines): void
 }
 
 /**
- * $who gains $xp XP and $gold gold, and maybe a level (fixed HP). $who's XP and level are read fresh, as another
- * hero's kill may have just added to them.
+ * $who gains $xp XP and $gold gold. The level waits for a rest (level_up()). $who's XP is read fresh, as another hero's
+ * kill may have just added to it.
  */
 function award(array &$who, int $xp, int $gold, array &$lines, string $before = ''): void
 {
-    $was = q('SELECT xp, level FROM users WHERE id = ?', [$who['id']])->fetch();
-    $total = $was['xp'] + $xp;
-    // Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
-    $level = max($was['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$total])->fetchColumn());
-    $gain = ($level - $was['level']) * (CLASSES[$who['class']]['per_level'] + mod($who['constitution'])); // fixed HP
-    $tough = $who['species'] === 'dwarf' ? $level - $was['level'] : 0; // Dwarven Toughness: with_stats() adds the max
-    q(
-        'UPDATE users SET xp = ?, gold = gold + ?, level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
-        [$total, $gold, $level, $gain, $gain + $tough, $who['id']]
-    );
-    $gain += $tough;
+    q('UPDATE users SET xp = xp + ?, gold = gold + ? WHERE id = ?', [$xp, $gold, $who['id']]);
     $lines[] = "{$before}You gain $xp XP and $gold gold.";
-    if ($level > $was['level']) {
-        $lines[] = "You reach level $level! +$gain max HP.";
+    $who['xp'] = (int) q('SELECT xp FROM users WHERE id = ?', [$who['id']])->fetchColumn();
+}
+
+/**
+ * The levels my XP has reached, all at once (fixed HP per level), when a rest ends. My XP and level are read fresh.
+ * Never lower: a level set by hand (bin scripts, tests) can be ahead of the XP.
+ */
+function level_up(array &$me, array &$lines): void
+{
+    $was = q('SELECT xp, level FROM users WHERE id = ?', [$me['id']])->fetch();
+    $level = max($was['level'], (int) q('SELECT MAX(level) FROM levels WHERE xp <= ?', [$was['xp']])->fetchColumn());
+    if ($level === $was['level']) {
+        return;
     }
-    // A Cleave can kill a second foe in the same turn, so later writes must start from these.
-    [$who['xp'], $who['level'], $who['max_hp'], $who['hp']] = [$total, $level, $who['max_hp'] + $gain,
-        $who['hp'] + $gain];
+    $gain = ($level - $was['level']) * (CLASSES[$me['class']]['per_level'] + mod($me['constitution'])); // fixed HP
+    $tough = $me['species'] === 'dwarf' ? $level - $was['level'] : 0; // Dwarven Toughness: with_stats() adds the max
+    q('UPDATE users SET level = ?, max_hp = max_hp + ?, hp = hp + ? WHERE id = ?',
+        [$level, $gain, $gain + $tough, $me['id']]);
+    $gain += $tough;
+    $lines[] = "You reach level $level! +$gain max HP.";
+    [$me['level'], $me['max_hp'], $me['hp']] = [$level, $me['max_hp'] + $gain, $me['hp'] + $gain];
 }
 
 /**
@@ -4454,7 +4459,14 @@ function finish_rest(array &$me): array
         $me['hireling']['hp'] = $h['max_hp'];
         q('UPDATE users SET hireling_hp = ? WHERE id = ?', [$h['max_hp'], $me['id']]);
     }
-    return [$line . " HP {$me['hp']}/{$me['max_hp']}.", ...($healed ? ["Your {$h['name']} rests too: full HP."] : [])];
+    $lines = [$line . " HP {$me['hp']}/{$me['max_hp']}.", ...($healed ? ["Your {$h['name']} rests too: full HP."] : [])];
+    level_up($me, $lines); // a house rule: the SRD levels you at once, here at the end of a rest
+    if (owed_choices($me) !== []) {
+        q('UPDATE users SET may_choose = TRUE WHERE id = ?', [$me['id']]);
+        $me['may_choose'] = 1;
+        $lines[] = "You have choices to make: type 'choose'.";
+    }
+    return $lines;
 }
 
 /**

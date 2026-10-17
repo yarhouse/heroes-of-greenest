@@ -565,8 +565,14 @@ try {
     check(says($out, 'The Training Dummy dies! You gain 12 XP and 2 gold.') && $t['xp'] === 302
         && $t['gold'] === 52 && hero('Testb')['gold'] === $gold + 2,
         "a kill pays the stat block's XP and gold by CR, split among the heroes in the fight");
-    check(says($out, 'You reach level 2! +7 max HP.') && $t['level'] === 2 && $t['max_hp'] === 18 && $t['hp'] === 10,
-        'enough XP levels up: 6 + Con modifier HP');
+    check(!says($out, 'You reach level') && $t['level'] === 1, 'XP alone does not level you');
+    $spent = hero('Testa')['uses_spent'];
+    q("UPDATE users SET hp = max_hp, resting = 'short', rest_until = NOW() WHERE name = 'Testa'");
+    $out = run_command(hero('Testa'), '');
+    q("UPDATE users SET uses_spent = ? WHERE name = 'Testa'", [$spent]); // the rest gave a Second Wind back
+    $t = hero('Testa');
+    check(says($out, 'You reach level 2! +7 max HP.') && $t['level'] === 2 && $t['max_hp'] === 18,
+        'a rest brings the level: 6 + Con modifier HP');
     check(hero('Testb')['fighting'] === null, 'a kill ends the fight for everyone in it');
     check($dice_queue === [], 'every queued die was used');
     check(!says(run_command(hero('Testa'), 'look'), 'Training Dummy'), 'dead monsters are gone');
@@ -2515,6 +2521,21 @@ try {
         run_command(hero('Newb'), $step);
     }
     check(picks(hero('Newb')) === [], 'back clears picks');
+    q("UPDATE users SET xp = 950, level = 1, hp = max_hp, room_id = 1, resting = 'short',
+       rest_until = NOW() + INTERVAL 1 MINUTE WHERE name = 'Chs'");
+    run_command(hero('Chs'), 'north'); // leaving cancels the rest
+    check(hero('Chs')['level'] === 1, 'a cancelled rest brings no level');
+    q("UPDATE users SET room_id = 1, resting = 'short', rest_until = NOW() WHERE name = 'Chs'");
+    $out = run_command(hero('Chs'), '');
+    check(hero('Chs')['level'] === 3 && says($out, 'You reach level 3!'), 'two levels on one rest');
+    q("UPDATE users SET level = 7, hp = max_hp, resting = 'short', rest_until = NOW() WHERE name = 'Chs'");
+    run_command(hero('Chs'), '');
+    check(hero('Chs')['level'] === 7, 'a level set by hand never drops');
+    q("UPDATE users SET level = 5, xp = 14000, hp = max_hp, resting = 'short', rest_until = NOW()
+       WHERE name = 'Pixie'");
+    $out = run_command(hero('Pixie'), '');
+    check(hero('Pixie')['level'] === 6 && hero('Pixie')['may_choose'] === 1 && says($out, "type 'choose'"),
+        'a level that owes a choice sets may_choose');
 
     // The Delve (src/delve.php): generated from a weekly seed below the Mill Cellar.
     $back = ['north' => 'south', 'south' => 'north', 'east' => 'west', 'west' => 'east'];
