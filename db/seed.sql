@@ -455,7 +455,23 @@ INSERT INTO spells (id, name, level, classes, casting, kind, ranged, dice, upcas
 -- A Paladin's Channel Divinity (see cmd_sacred()), no class's spell: +Cha to hit with a melee weapon, and Radiant.
 (47, 'Sacred Weapon', 0, '', 'action', 'buff', FALSE, NULL, NULL, 'radiant', NULL, FALSE,
     'self', 1, 0, NULL, 'condition', 'sacred', FALSE, FALSE, 10,
-    'your melee weapon adds your Cha to hit and can deal Radiant damage')
+    'your melee weapon adds your Cha to hit and can deal Radiant damage'),
+-- A Cleric's Channel Divinity (see cmd_turn()), no class's spell: a turned Undead can't act until it takes damage.
+(48, 'Turn Undead', 0, '', 'action', 'buff', FALSE, NULL, NULL, NULL, 'wis', FALSE,
+    'foe', 1, 0, 'undead', 'condition', 'turned', FALSE, FALSE, 1,
+    'Wis save or an Undead cowers, until it takes damage'),
+(49, 'Spiritual Weapon', 2, 'cleric', 'bonus', 'attack', FALSE, '1d8', '1d8', 'force', NULL, FALSE,
+    'foe', 1, 0, NULL, 'weapon', '1d8', FALSE, TRUE, 1,
+    'a floating weapon: 1d8 + your modifier Force now, and each turn as your Bonus Action'),
+(50, 'Prayer of Healing', 2, 'cleric,paladin', 'action', 'heal', FALSE, '2d8', '1d8', NULL, NULL, FALSE,
+    'allies', 5, 0, NULL, NULL, NULL, FALSE, FALSE, NULL,
+    'you and four heroes here regain 2d8; it takes 10 minutes, so not in a fight'),
+(51, 'Bestow Curse', 3, 'bard,cleric,wizard', 'action', 'save', FALSE, NULL, NULL, 'necrotic', 'wis', FALSE,
+    'foe', 1, 0, NULL, 'damage', '1d8', FALSE, TRUE, 1,
+    'Wis save or your attack hits on it deal an extra 1d8 Necrotic'),
+(52, 'Protection from Energy', 3, 'cleric,druid,ranger,sorcerer,wizard', 'action', 'buff', FALSE, NULL, NULL, NULL,
+    NULL, FALSE, 'ally', 1, 0, NULL, 'resist', NULL, FALSE, TRUE, 60,
+    'you or a hero here resist acid, cold, fire, lightning or thunder for an hour')
 AS new
 ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classes, casting = new.casting,
     kind = new.kind, ranged = new.ranged, dice = new.dice, upcast = new.upcast, damage_type = new.damage_type,
@@ -466,7 +482,8 @@ ON DUPLICATE KEY UPDATE name = new.name, level = new.level, classes = new.classe
 -- of a Self spell (p.107+). NULL for spells on heroes, and for smites, which ride a weapon.
 UPDATE spells s JOIN (SELECT 'Sacred Flame' AS name, 60 AS reach UNION ALL SELECT 'Guiding Bolt', 120
     UNION ALL SELECT 'Hold Person', 60 UNION ALL SELECT 'Bane', 30 UNION ALL SELECT 'Command', 60
-    UNION ALL SELECT 'Inflict Wounds', 5 UNION ALL SELECT 'Blindness/Deafness', 120 UNION ALL SELECT 'Entangle', 90
+    UNION ALL SELECT 'Inflict Wounds', 5 UNION ALL SELECT 'Spiritual Weapon', 60 UNION ALL SELECT 'Bestow Curse', 5
+    UNION ALL SELECT 'Blindness/Deafness', 120 UNION ALL SELECT 'Entangle', 90
     UNION ALL SELECT 'Fire Bolt', 120 UNION ALL SELECT 'Ray of Frost', 60 UNION ALL SELECT 'Shocking Grasp', 5
     UNION ALL SELECT 'Chill Touch', 5 UNION ALL SELECT 'Acid Splash', 60 UNION ALL SELECT 'Poison Spray', 30
     UNION ALL SELECT 'Magic Missile', 120 UNION ALL SELECT 'Burning Hands', 15 UNION ALL SELECT 'Thunderwave', 15

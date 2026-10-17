@@ -954,9 +954,9 @@ try {
         'Healing Word: 2d4 + Wis, and it costs no turn');
     check(says(run_command(hero('Teste'), 'cast guiding'), 'no spell slots left'), 'no slots, no spell');
     q("UPDATE users SET level = 3, hp = 1, slots_spent = '4' WHERE name = 'Teste'");
-    $dice_queue = [1, 1, 1, 1, 1]; // a level 2 slot: 4d8 + Wis; Slam misses
+    $dice_queue = [1, 1, 1, 1, 1]; // a level 2 slot: 4d8 + Wis + Disciple of Life's 2 + 2; Slam misses
     $out = run_command(hero('Teste'), 'cast cure');
-    check(says($out, 'You cast Cure Wounds (level 2) and regain 6 HP. HP 7/9. Slots 0/4 1/2.')
+    check(says($out, 'You cast Cure Wounds (level 2) and regain 8 HP. HP 9/9. Slots 0/4 1/2.')
         && says($out, 'Slam misses'), 'Cure Wounds takes your turn; with the low slots spent, a higher one heals more');
     q("UPDATE users SET level = 5 WHERE name = 'Teste'");
     q('UPDATE spawns SET hp = 30 WHERE id = 9999');
@@ -966,8 +966,9 @@ try {
     q("UPDATE users SET level = 3 WHERE name = 'Teste'");
     q("INSERT INTO spells (id, name, level, classes, casting, kind, dice, upcast, damage_type, save, half, about)
         VALUES (9999, 'Test Burst', 1, 'cleric', 'action', 'save', '2d6', '1d6', 'fire', 'dex', TRUE, 'a test')");
-    check(says(run_command(hero('Teste'), 'prepare guiding, cure, healing, bless, test burst'), 'You prepare'),
-        'a higher level allows more, added between rests');
+    check(says(run_command(hero('Teste'), 'prepare cure'), "can't prepare 'cure'")
+        && says(run_command(hero('Teste'), 'prepare guiding, healing, test burst'), 'You prepare'),
+        "a higher level allows more, added between rests; the Life Domain's are always prepared");
     $dice_queue = [15, 2, 3, 4, 1]; // a made save; a level 2 slot adds 1d6, so half of 9
     check(says(run_command(hero('Teste'), 'cast test b'), 'makes its Dex save (15 vs DC 12) against your Test Burst '
         . '(level 2) and takes 4 damage.') && $dice_queue === [], 'upcast dice, and half damage on a made save');
@@ -986,7 +987,7 @@ try {
     q("UPDATE users SET room_id = 2, fighting = NULL, hp = max_hp, level = 3, advantage = FALSE
        WHERE name IN ('Teste', 'Testb')");
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
-    check(says(run_command(hero('Teste'), 'prepare shield, bless, hold, cure'), 'You prepare'),
+    check(says(run_command(hero('Teste'), 'prepare shield, hold'), 'You prepare'),
         'a long rest lets you swap prepared spells');
     check(says(run_command(hero('Teste'), 'cast shield'), 'You cast Shield of Faith on you. Slots 3/4 2/2.')
         && says($score = run_command(hero('Teste'), 'score'), 'AC 16')
@@ -1041,13 +1042,13 @@ try {
     q("UPDATE monsters SET type = 'aberration' WHERE id = 9999");
     leave('Testb');
 
-    // Step 3 spells (Teste at level 5: Wis +2, PB +3, DC 13; nine prepared).
+    // Step 3 spells (Teste at level 5: Wis +2, PB +3, DC 13; nine prepared, and the Life Domain Spells).
     q("UPDATE users SET room_id = 2, fighting = NULL, level = 5, slots_spent = '', may_prepare = TRUE, hp = 5
        WHERE name = 'Teste'");
     q("UPDATE users SET room_id = 2, fighting = NULL, hp = 5 WHERE name = 'Testb'");
     q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
-    check(says(run_command(hero('Teste'), 'prepare bane, command, inflict, aid, blindness, mass healing, spirit, '
-        . 'healing word, cure'), 'You prepare'), 'level 5: nine prepared spells');
+    check(says(run_command(hero('Teste'), 'prepare bane, command, inflict, blindness, spirit g, healing word'),
+        'You prepare'), 'level 5: prepared spells besides the Life Domain Spells (Aid, Mass Healing Word...)');
     check(says(run_command(hero('Teste'), 'cast cure nobody'), "There's no hero called 'nobody' here."),
         'a heal names a hero who is here');
     $dice_queue = [3, 4];
@@ -1079,10 +1080,100 @@ try {
     $dice_queue = [1, 1, 1];
     check(says(run_command(hero('Teste'), 'kill'), 'Slam misses') && $dice_queue === [], 'only the one turn');
     $dice_queue = [1, 5, 1, 2, 3]; // the Slam misses; then the spirits: Wis save 5 fails, 3d8
-    check(says(run_command(hero('Teste'), 'cast spirit'), 'Your Spirit Guardians sear the Training Dummy (Wis save 5 '
+    check(says(run_command(hero('Teste'), 'cast spirit g'), 'Your Spirit Guardians sear the Training Dummy (Wis save 5 '
         . 'vs DC 13) for 6 damage.') && $dice_queue === [], 'Spirit Guardians hurt the foe after each of its turns');
     leave('Teste');
     check($dice_queue === [], 'every queued die was used by the classes');
+
+    // Channel Divinity (Cleric 2) and the Life Domain (3). Teste, level 5: Wis +2, DC 13, spell attack +5, Mace +5.
+    q('DELETE FROM effects');
+    q("UPDATE users SET room_id = 2, fighting = NULL, hp = max_hp, x = NULL, y = NULL
+       WHERE name IN ('Teste', 'Testb')");
+    q('UPDATE spawns SET hp = 60, dead_since = NULL WHERE id = 9999');
+    check(says(run_command(hero('Teste'), 'score'), 'Channel Divinity 2/2'), 'Cleric: two Channel Divinities');
+    $dice_queue = [10, 1, 5, 6, 1]; // initiative; Con save 5 fails: 6 + 2 Radiant; Slam a 1
+    $out = run_command(hero('Teste'), 'spark dummy');
+    check(says($out, 'Divine Spark: the Training Dummy fails its Con save (5 vs DC 13) and takes 8 damage (radiant).')
+        && $dice_queue === [], 'Divine Spark: 1d8 + Wis Radiant on a failed Con save');
+    q("UPDATE monsters SET resistances = 'radiant' WHERE id = 9999");
+    $dice_queue = [15, 6, 1]; // a made save: half of 8, Necrotic as it resists Radiant; Slam a 1
+    $out = run_command(hero('Teste'), 'spark');
+    check(says($out, 'makes its Con save (15 vs DC 13) and takes 4 damage (necrotic).') && $dice_queue === [],
+        'half on a made save, and Necrotic when Radiant would be resisted');
+    q("UPDATE monsters SET resistances = '' WHERE id = 9999");
+    check(says(run_command(hero('Teste'), 'spark testb'), 'no Channel Divinity left'), 'two a rest');
+    q("UPDATE users SET feature_spent = 1 WHERE name = 'Teste'");
+    q("UPDATE users SET hp = 1 WHERE name = 'Testb'");
+    $dice_queue = [4, 1]; // 4 + 2; Slam a 1
+    $out = run_command(hero('Teste'), 'spark testb');
+    check(says($out, 'Divine Spark: Testb regains 6 HP.') && says($out, 'Slam') && hero('Testb')['hp'] === 7,
+        'Divine Spark heals another hero, and takes my turn in a fight');
+
+    // Turn Undead, and Sear Undead (Cleric 5).
+    $type = q('SELECT type FROM monsters WHERE id = 9999')->fetchColumn();
+    q("UPDATE monsters SET type = 'undead' WHERE id = 9999");
+    q("UPDATE users SET feature_spent = 0 WHERE name = 'Teste'");
+    $dice_queue = [3, 4, 4]; // Wis save 3 fails; 2d8 Radiant; Turned, it cowers on its turn
+    $out = run_command(hero('Teste'), 'turn');
+    check(says($out, 'Holy light sears the Training Dummy (Wis save 3 vs DC 13) for 8 damage.')
+        && says($out, "The Training Dummy is Turned: it cowers, and can't act until it takes damage.")
+        && says($out, 'The Training Dummy is Turned, and cowers.') && $dice_queue === [],
+        'Turn Undead: a failed Wis save and it cowers; Sear Undead burns it first');
+    $dice_queue = [15, 4, 1]; // the Mace hits for 4 + 2; no longer Turned, its Slam a 1
+    $out = run_command(hero('Teste'), 'kill');
+    check(says($out, 'The Training Dummy is no longer Turned.') && says($out, 'Slam misses') && $dice_queue === [],
+        'damage ends it');
+    q('UPDATE monsters SET type = ? WHERE id = 9999', [$type]);
+    check(says(run_command(hero('Teste'), 'turn'), 'no Undead here'), 'Turn Undead needs Undead');
+
+    // Preserve Life: 5 x level HP among the Bloodied, none past half its HP maximum.
+    q("UPDATE users SET hp = 1 WHERE name IN ('Teste', 'Testb')");
+    $e = with_stats(hero('Teste'));
+    $b = with_stats(hero('Testb'));
+    $dice_queue = [1]; // Slam a 1
+    $out = run_command(hero('Teste'), 'preserve');
+    check(says($out, 'Preserve Life: ') && hero('Teste')['hp'] === intdiv($e['max_hp'], 2)
+        && hero('Testb')['hp'] === intdiv($b['max_hp'], 2) && $dice_queue === [],
+        'Preserve Life: each Bloodied hero up to half HP');
+    q("UPDATE users SET feature_spent = 0 WHERE name = 'Teste'");
+    check(says(run_command(hero('Teste'), 'preserve'), 'Nobody here is Bloodied'), 'none past half');
+
+    // The new spells: Spiritual Weapon, Bestow Curse, Prayer of Healing, Protection from Energy.
+    q("UPDATE users SET may_prepare = TRUE, slots_spent = '' WHERE name = 'Teste'");
+    check(says(run_command(hero('Teste'), 'prepare spiritual, prayer, bestow, protection, spirit g, healing word'),
+        'You prepare'), 'the new spells can be prepared');
+    $dice_queue = [12, 3]; // a melee spell attack 17 hits for 3 + 2 Force; a Bonus Action, so no turn
+    $out = run_command(hero('Teste'), 'cast spiritual');
+    check(says($out, 'Your Spiritual Weapon hits the Training Dummy (17 vs AC 10) for 5 damage.')
+        && !says($out, 'Slam') && $dice_queue === [], 'Spiritual Weapon: it strikes at once, as a Bonus Action');
+    $dice_queue = [1, 1]; // my turn: the Bonus Action is spent, so the Mace misses alone; Slam a 1
+    check(!says(run_command(hero('Teste'), 'kill'), 'Spiritual Weapon') && $dice_queue === [],
+        'cast before my turn, it counts as that turn\'s Bonus Action');
+    $dice_queue = [1, 12, 3, 1]; // the Mace misses; the weapon strikes again; Slam a 1
+    $out = run_command(hero('Teste'), 'kill');
+    check(says($out, 'Your Spiritual Weapon hits the Training Dummy (17 vs AC 10) for 5 damage.')
+        && $dice_queue === [], 'and again on each of my turns');
+    $dice_queue = [2, 1]; // Wis save 2 fails; Slam a 1
+    $out = run_command(hero('Teste'), 'cast bestow');
+    check(says($out, 'fails its Wis save (2 vs DC 13) against your Bestow Curse')
+        && !says($out, 'Spiritual Weapon hits') && $dice_queue === [],
+        'Bestow Curse, a new Concentration that ends Spiritual Weapon');
+    $dice_queue = [15, 4, 5, 1]; // the Mace hits for 4 + 2, and 5 Necrotic; Slam a 1
+    check(says(run_command(hero('Teste'), 'kill'), 'for 11 damage (+5 Bestow Curse).') && $dice_queue === [],
+        'Bestow Curse: my hits on it deal 1d8 Necrotic more');
+    check(says(run_command(hero('Teste'), 'cast prayer'), 'not in the middle of a fight'),
+        'Prayer of Healing takes 10 minutes');
+    leave('Teste');
+    q("UPDATE users SET room_id = 12, fighting = NULL, hp = 1 WHERE name IN ('Teste', 'Testb')");
+    $dice_queue = [1, 1]; // 2d8 and Disciple of Life's 2 + 2, no modifier
+    check(says(run_command(hero('Teste'), 'cast prayer'), 'You cast Prayer of Healing: you regain 6 HP, Testb regains '
+        . '6 HP.') && $dice_queue === [], 'Prayer of Healing: 2d8 for me and four heroes here');
+    check(says(run_command(hero('Teste'), 'cast protection testb'), 'Protection from what?'),
+        'Protection from Energy needs a damage type');
+    check(says(run_command(hero('Teste'), 'cast protection from energy fire testb'), 'You cast Protection from Energy '
+        . 'on Testb.') && str_contains(with_stats(hero('Testb'))['resistances'], 'fire'),
+        'Protection from Energy: Resistance to the type named');
+    q('DELETE FROM effects');
 
     // Monk (Testf: Str 12, Dex 15, Con 13, Wis 14; Focus save DC 8 + Wis + PB). The dummy: AC 10, saves +0.
     q('DELETE FROM effects');

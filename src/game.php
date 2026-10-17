@@ -88,9 +88,9 @@ const METAMAGIC = ['heightened' => 2, 'seeking' => 1];
  * Weapon training is trained()'s. The choices the game makes for you: the Fighter's and Paladin's Fighting Style is
  * Defense, the Ranger's Archery, the Cleric's Divine Order is Protector, the Druid's Primal Order is Warden, a
  * Warlock's Eldritch Invocations are Armor of Shadows from level 1 and Agonizing Blast and Eldritch Mind from 2, and
- * the subclasses are the SRD's: Berserker, Champion, Thief (Fast Hands and Second-Story Work only shown), Lore, Land
- * (Arid) with Primal Strike, Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense, Draconic Sorcery
- * with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
+ * the subclasses are the SRD's: Berserker, Champion, Thief (Fast Hands and Second-Story Work only shown), Life,
+ * Lore, Land (Arid) with Primal Strike, Open Hand, Devotion, Hunter with Colossus Slayer and Multiattack Defense,
+ * Draconic Sorcery with Fire for its Elemental Affinity, Fiend, Evoker. shortcut: casters
  * know every cantrip of their class, and a Wizard's spellbook holds every Wizard spell, until there are more to choose
  * from.
  */
@@ -134,6 +134,9 @@ const CLASSES = [
         'saves' => ['wisdom', 'charisma'], 'casting' => 'wisdom', 'slots' => 'slots',
         'prepared' => [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22], // by level
         'spells' => ['Bless', 'Cure Wounds', 'Guiding Bolt', 'Shield of Faith'], // the SRD's suggested first four
+        // Life Domain Spells (Lesser Restoration and Revivify aren't modeled: heroes have nothing to restore, and 0 HP
+        // wakes you in town)
+        'always' => ['Aid' => 3, 'Bless' => 3, 'Cure Wounds' => 3, 'Mass Healing Word' => 5],
         'skills' => [2, ['history', 'insight', 'medicine', 'persuasion', 'religion']],
         'armor' => ['light', 'medium', 'heavy', 'shield'], 'gold' => 7,
         'kit' => [[35, true], [50, true], [7, true]], // Chain Shirt, Shield, Mace
@@ -449,6 +452,12 @@ const COMMANDS = [
     'land <monster>' => "Druid 3: Land's Aid, a Con save or 2d6 Necrotic, and you regain 2d6 HP (1 Wild Shape)",
     'cunning' => 'Warlock 2: Magical Cunning, half your Pact Magic slots back, once a long rest (not in a fight)',
     'lay [hero]' => 'Paladin: Lay On Hands, heal yourself or a hero here from your pool; costs no turn',
+    'spark <monster|hero>' => 'Cleric 2: Divine Spark, 1d8 + Wis: a Con save or that much Radiant or Necrotic to a '
+        . 'monster, or healing for another hero here (1 Channel Divinity)',
+    'turn' => 'Cleric 2: Turn Undead, a Wis save or each Undead in your fight within 30 ft cowers until hurt (1 '
+        . 'Channel Divinity)',
+    'preserve' => 'Cleric 3: Preserve Life, 5 HP a level shared among Bloodied heroes here, none past half its HP (1 '
+        . 'Channel Divinity)',
     'sense' => 'Paladin 3: Divine Sense, the Celestials, Fiends and Undead here and next door (1 Channel Divinity); '
         . 'costs no turn',
     'sacred <monster>' => 'Paladin 3: attack with Sacred Weapon, +Cha to hit and Radiant damage for 10 minutes (1 '
@@ -495,6 +504,7 @@ const FEATURES = [
     'surge' => ['fighter', 2],
     'flurry' => ['monk', 2], 'patient' => ['monk', 2], 'stun' => ['monk', 5], 'wholeness' => ['monk', 6],
     'inspire' => ['bard', 1], 'wild' => ['druid', 2], 'land' => ['druid', 3], 'cunning' => ['warlock', 2],
+    'spark' => ['cleric', 2], 'turn' => ['cleric', 2], 'preserve' => ['cleric', 3],
     'lay' => ['paladin', 1], 'sense' => ['paladin', 3], 'sacred' => ['paladin', 3], 'innate' => ['sorcerer', 1],
     'font' => ['sorcerer', 2],
 ];
@@ -685,6 +695,7 @@ function with_stats(array $me): array
         }
     }
     foreach ($me['effects'] as $e) {
+        $me['resistances'] .= $e['effect'] === 'resist' ? ",{$e['value']}" : ''; // Protection from Energy
         $me['ac'] += $e['effect'] === 'ac' ? (int) $e['value'] : 0; // Shield of Faith
         $me['max_hp'] += $e['effect'] === 'max_hp' ? (int) $e['value'] : 0; // Aid
     }
@@ -774,6 +785,9 @@ function run_command(array $me, string $input): array
         $verb === 'rage' => cmd_rage($me),
         $verb === 'lay' => cmd_lay($me, trim($arg)),
         $verb === 'sense' => cmd_sense($me),
+        $verb === 'spark' => cmd_spark($me, trim($arg)),
+        $verb === 'turn' => cmd_turn($me),
+        $verb === 'preserve' => cmd_preserve($me),
         $verb === 'sacred' => cmd_sacred($me, trim($arg)),
         $verb === 'inspire' => cmd_inspire($me, trim($arg)),
         $verb === 'wild' => cmd_wild($me, trim($arg)),
@@ -2027,6 +2041,9 @@ function fight(
             $foe['ac'] -= $cover;
         }
         $over = refocus($me, $foe);
+        if (!$over && spiritual($me, $foe, $lines)) { // my Spiritual Weapon, as my Bonus Action
+            $over = refocus($me, $foe);
+        }
         if (!$over && $me['hireling'] !== null) {
             hireling_turn($me, $foe, $lines);
             $over = refocus($me, $foe);
@@ -3208,6 +3225,11 @@ function hurt_foe(array &$me, array &$foe, int $dmg, array &$lines): bool
     q('UPDATE spawns SET hp = hp - ? WHERE id = ?', [$dmg, $foe['id']]);
     $foe['hp'] -= $dmg;
     if ($foe['hp'] > 0) {
+        if ($dmg > 0 && has($foe, 'turned')) { // Turn Undead ends when it takes damage
+            q("DELETE FROM effects WHERE spawn_id = ? AND effect = 'condition' AND value = 'turned'", [$foe['id']]);
+            $foe['effects'] = effects_on('spawn_id', $foe['id']);
+            $lines[] = "The {$foe['name']} is no longer Turned.";
+        }
         return false;
     }
     // The kill goes to whoever marks it dead first, in case two heroes land the last blow at once.
@@ -3325,12 +3347,14 @@ function monster_turn(array &$me, array &$foe, array &$lines, ?int $n = null): b
         $lines[] = "The {$foe['name']} gets back up.";
         $speed = intdiv($speed, 2); // standing up costs half its Speed
     }
-    if (has($foe, 'paralyzed') || has($foe, 'stunned') || has($foe, 'incapacitated')) { // no turn, no Reaction
-        if ($n !== null) {
+    if (has($foe, 'paralyzed') || has($foe, 'stunned') || has($foe, 'incapacitated') || has($foe, 'turned')) {
+        if ($n !== null) { // no turn, no Reaction
             return false;
         }
         $why = has($foe, 'paralyzed') ? 'Paralyzed' : (has($foe, 'stunned') ? 'Stunned' : 'halted');
-        $lines[] = "The {$foe['name']} is $why and can't act.";
+        // shortcut: a turned Undead cowers where it is (it should flee), as no monster flees yet
+        $lines[] = has($foe, 'turned') ? "The {$foe['name']} is Turned, and cowers." : "The {$foe['name']} is $why and "
+            . "can't act.";
         foreach ($foe['effects'] as $i => $e) { // Command lasts that one turn
             if ($e['value'] === 'incapacitated') {
                 q('DELETE FROM effects WHERE id = ?', [$e['id']]);
@@ -3684,6 +3708,199 @@ function cmd_rage(array $me): array
         "You fly into a Rage! +{$me['rage_damage']} damage with Strength attacks and Resistance to Bludgeoning, "
             . 'Piercing and Slashing damage until the fight ends. ' . ($left - 1) . ' Rage left.',
     ];
+}
+
+/**
+ * My Spiritual Weapon strikes $foe, if I have one, as my Bonus Action ($paid: already spent, by casting it): a melee
+ * spell attack for its dice + my spellcasting modifier in Force. Returns true if that killed it. shortcut: the force
+ * isn't on the board, and reaches whatever I fight.
+ */
+function spiritual(array &$me, array &$foe, array &$lines, bool $paid = false): bool
+{
+    $e = array_values(array_filter($me['effects'], fn ($e) => $e['effect'] === 'weapon'))[0] ?? null;
+    if ($e === null || (!$paid && !spend_bonus($me))) {
+        return false;
+    }
+    $mod = mod($me[CLASSES[$me['class']]['casting'] ?? 'wisdom']);
+    [$d20, , $bonus, $with] = attack_d20($me, $foe);
+    $total = $d20 + $me['prof_bonus'] + $mod + $bonus;
+    if (misses($me, $d20, $total, $foe['ac'], $with)) {
+        $why = $d20 === 1 ? 'natural 1' : "$total vs AC {$foe['ac']}";
+        $lines[] = "Your Spiritual Weapon misses the {$foe['name']} ($why$with).";
+        return false;
+    }
+    [$dmg, $note] = typed(max(0, roll($e['value'], $d20 === 20) + $mod), 'force', $foe);
+    foreach (extra_damage($me, $foe, true, $d20 === 20, [], false) as [$more, $more_note]) { // Hex, Bestow Curse
+        $dmg += $more;
+        $note .= $more_note;
+    }
+    $lines[] = ($d20 === 20 ? 'Critical hit! ' : '') . "Your Spiritual Weapon hits the {$foe['name']} ($total vs AC "
+        . "{$foe['ac']}$with) for $dmg damage$note.";
+    return hurt_foe($me, $foe, $dmg, $lines);
+}
+
+/**
+ * Divine Spark (Cleric 2, a Channel Divinity), a Magic action: 1d8 + Wis (another d8 at 7, 13 and 18) healing for
+ * another hero here, or a Con save against my spell save DC for that much Radiant or Necrotic (whichever hurts more)
+ * to a monster within 30 ft, half on a success.
+ */
+function cmd_spark(array $me, string $target): array
+{
+    if ($me['class'] !== 'cleric' || $me['level'] < 2) {
+        return ['Only Clerics of level 2 or more have Divine Spark.'];
+    }
+    if ($me['feature_spent'] >= channels($me)) {
+        return ['You have no Channel Divinity left. Rest to recover it.'];
+    }
+    $dice = (1 + (int) ($me['level'] >= 7) + (int) ($me['level'] >= 13) + (int) ($me['level'] >= 18)) . 'd8';
+    $wis = mod($me['wisdom']);
+    $hero = $target === '' ? null : (array_values(array_filter(
+        q('SELECT * FROM users WHERE room_id = ? AND id <> ? AND setup IS NULL', [$me['room_id'], $me['id']])
+            ->fetchAll(),
+        fn ($o) => names($target, $o['name'])
+    ))[0] ?? null);
+    if ($hero !== null) {
+        $heal = function (array &$me) use ($hero, $dice, $wis): string {
+            spend_channel($me);
+            $h = with_stats($hero);
+            $hp = min($h['max_hp'], $h['hp'] + max(0, roll($dice) + $wis));
+            q('UPDATE users SET hp = ? WHERE id = ?', [$hp, $h['id']]);
+            return "Divine Spark: {$h['name']} regains " . ($hp - $h['hp']) . " HP.";
+        };
+        if ($me['fighting'] === null) {
+            return [$heal($me)];
+        }
+        return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($heal): bool {
+            $lines[] = $heal($me);
+            return false;
+        }, 'Spark at what?', PHP_INT_MAX, false);
+    }
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines) use ($dice, $wis): bool {
+        spend_channel($me);
+        $dc = spell_dc($me);
+        [$save, $saved] = save($foe, 'con', $dc);
+        $dmg = max(0, roll($dice) + $wis);
+        $dmg = $saved ? intdiv($dmg, 2) : $dmg;
+        [$radiant, $necrotic] = [typed($dmg, 'radiant', $foe), typed($dmg, 'necrotic', $foe)];
+        [$dmg, $note] = $necrotic[0] > $radiant[0] ? [$necrotic[0], $necrotic[1] . ' (necrotic)']
+            : [$radiant[0], $radiant[1] . ' (radiant)'];
+        $lines[] = "Divine Spark: the {$foe['name']} " . ($saved ? 'makes' : 'fails') . ' its Con save ('
+            . vs($save, $dc) . ") and takes $dmg damage$note.";
+        return hurt_foe($me, $foe, $dmg, $lines);
+    }, 'Spark at what?', 30);
+}
+
+/**
+ * Turn Undead (Cleric 2, a Channel Divinity), a Magic action: each Undead in my fight within 30 ft that I can see makes
+ * a Wis save against my spell save DC or is Turned for a minute (it can't act, see monster_turn()) until it takes
+ * damage (hurt_foe()). Sear Undead (5): one that fails first takes Wis d8s Radiant (at least 1d8), which doesn't end
+ * it. With no fight under way it opens one with the nearest Undead.
+ */
+function cmd_turn(array $me): array
+{
+    if ($me['class'] !== 'cleric' || $me['level'] < 2) {
+        return ['Only Clerics of level 2 or more can Turn Undead.'];
+    }
+    if ($me['feature_spent'] >= channels($me)) {
+        return ['You have no Channel Divinity left. Rest to recover it.'];
+    }
+    $undead = array_values(array_filter(room_monsters((int) $me['room_id']), fn ($m) => $m['type'] === 'undead'));
+    if (!$undead) {
+        return ['There are no Undead here to turn.'];
+    }
+    $target = $me['fighting'] === null ? $undead[0]['name'] : '';
+    return fight($me, $target, function (array &$me, array &$foe, array &$lines): bool {
+        spend_channel($me);
+        $dc = spell_dc($me);
+        $wis = mod($me['wisdom']);
+        $lines[] = 'You present your holy symbol and censure the Undead!';
+        $room = (int) $me['room_id'];
+        $none = true;
+        foreach (fight_monsters($me) as $m) {
+            if ($m['type'] !== 'undead' || feet(my_square($me), [$m['x'], $m['y']]) > 30
+                || sight($room, my_square($me), [$m['x'], $m['y']]) === null) {
+                continue;
+            }
+            $none = false;
+            $mine = $m['id'] === $foe['id'];
+            $m = $mine ? $foe : named($me, $m);
+            [$save, $saved] = save($m, 'wis', $dc);
+            $roll = 'Wis save ' . vs($save, $dc);
+            if ($saved) {
+                $lines[] = "The {$m['name']} stands its ground ($roll).";
+                continue;
+            }
+            if ($me['level'] >= 5) { // Sear Undead, before it's Turned, so its damage doesn't end it
+                [$dmg, $note] = typed(roll(max(1, $wis) . 'd8'), 'radiant', $m);
+                $lines[] = "Holy light sears the {$m['name']} ($roll) for $dmg damage$note.";
+                $dead = hurt_foe($me, $m, $dmg, $lines);
+                $foe = $mine ? $m : $foe;
+                if ($dead) {
+                    continue;
+                }
+            }
+            q(
+                "INSERT INTO effects (spawn_id, caster_id, spell_id, effect, value, concentration, during, until)
+                 VALUES (?, ?, (SELECT id FROM spells WHERE name = 'Turn Undead'), 'condition', 'turned', FALSE, ?,
+                 NOW() + INTERVAL 1 MINUTE)",
+                [$m['id'], $me['id'], $foe['id']]
+            );
+            $lines[] = "The {$m['name']} is Turned" . ($me['level'] >= 5 ? '' : " ($roll)")
+                . ': it cowers, and can\'t act until it takes damage.';
+            if ($mine) {
+                $foe['effects'] = effects_on('spawn_id', $foe['id']);
+            }
+        }
+        if ($none) {
+            $lines[] = 'No Undead within 30 feet that you can see heeds you.';
+        }
+        return false;
+    }, 'Turn what?', PHP_INT_MAX);
+}
+
+/**
+ * Preserve Life (Life Domain 3, a Channel Divinity), a Magic action: 5 HP a Cleric level shared among the Bloodied
+ * heroes here (at half HP or less, me among them), lowest first, none past half its HP maximum.
+ */
+function cmd_preserve(array $me): array
+{
+    if ($me['class'] !== 'cleric' || $me['level'] < 3) {
+        return ['Only Clerics of level 3 or more have Preserve Life.'];
+    }
+    if ($me['feature_spent'] >= channels($me)) {
+        return ['You have no Channel Divinity left. Rest to recover it.'];
+    }
+    $others = q('SELECT * FROM users WHERE room_id = ? AND id <> ? AND setup IS NULL', [$me['room_id'], $me['id']])
+        ->fetchAll();
+    // Bloodied is half HP or less; one at exactly half (rounded down) has nothing to gain
+    $bloodied = array_filter([$me, ...array_map('with_stats', $others)], fn ($h) => $h['hp'] < intdiv($h['max_hp'], 2));
+    if (!$bloodied) {
+        return ['Nobody here is Bloodied (at half HP or less).'];
+    }
+    usort($bloodied, fn ($a, $b) => $a['hp'] <=> $b['hp']);
+    $heal = function (array &$me) use ($bloodied): string {
+        spend_channel($me);
+        $pool = 5 * $me['level'];
+        $parts = [];
+        foreach ($bloodied as $h) {
+            $add = min($pool, intdiv($h['max_hp'], 2) - $h['hp']);
+            if ($add <= 0) {
+                break;
+            }
+            $pool -= $add;
+            q('UPDATE users SET hp = hp + ? WHERE id = ?', [$add, $h['id']]);
+            $me['hp'] += $h['id'] === $me['id'] ? $add : 0;
+            $parts[] = ($h['id'] === $me['id'] ? 'you regain' : "{$h['name']} regains") . " $add HP";
+        }
+        return 'Preserve Life: ' . and_list($parts) . '.';
+    };
+    if ($me['fighting'] === null) {
+        return [$heal($me)];
+    }
+    return fight($me, '', function (array &$me, array &$foe, array &$lines) use ($heal): bool {
+        $lines[] = $heal($me);
+        return false;
+    }, 'Preserve whom?', PHP_INT_MAX, false);
 }
 
 /** How many Channel Divinities I have a long rest (one comes back on a short rest), counted in feature_spent. */
@@ -4242,9 +4459,9 @@ function primal_type(array $foe): string
  * Damage my effects and features add to a weapon hit on $foe, each [damage, note]: Divine Favor's and Hunter's Mark's
  * dice (a d10 for a level 20 Ranger's Foe Slayer), from Paladin level 11 Radiant Strikes' 1d8 Radiant on a $melee
  * hit, and $more as [dice, damage type, name] (Colossus Slayer, Primal Strike, a Beast form's second damage). Twice
- * the dice on a $crit. A spell attack (not a $weapon) gets Hunter's Mark and Hex but not Divine Favor. Either gets a
- * Fire or Frost Goliath's Giant Ancestry, a use spent. shortcut: Hunter's Mark and Hex mark whatever I fight, and
- * moving them costs no Bonus Action.
+ * the dice on a $crit. My Bestow Curse on $foe adds its 1d8 Necrotic. A spell attack (not a $weapon) gets Hunter's
+ * Mark and Hex but not Divine Favor. Either gets a Fire or Frost Goliath's Giant Ancestry, a use spent. shortcut:
+ * Hunter's Mark and Hex mark whatever I fight, and moving them costs no Bonus Action.
  */
 function extra_damage(array &$me, array $foe, bool $melee, bool $crit, array $more = [], bool $weapon = true): array
 {
@@ -4254,6 +4471,11 @@ function extra_damage(array &$me, array $foe, bool $melee, bool $crit, array $mo
     }
     $extra = array_map(fn ($e) => [$e['value'], $e['damage_type'], $e['spell']], array_filter($me['effects'],
         fn ($e) => $e['effect'] === 'damage' && ($weapon || $e['spell'] !== 'Divine Favor')));
+    foreach ($foe['effects'] ?? [] as $e) { // Bestow Curse: my attack hits on it
+        if ($e['effect'] === 'damage' && $e['caster_id'] === $me['id']) {
+            $extra[] = [$e['value'], $e['damage_type'], $e['spell']];
+        }
+    }
     $extra = [...$extra, ...$more];
     foreach ($extra as &$x) {
         $x[0] = $x[2] === "Hunter's Mark" && $me['class'] === 'ranger' && $me['level'] >= 20 ? '1d10' : $x[0];
@@ -4306,7 +4528,8 @@ function cmd_cast(array $me, string $arg): array
         $lines[] = "Your spells (save DC $dc, spell attack +" . ($me['prof_bonus'] + $mod)
             . ($me['slots'] ? '; slots ' . slots_left($me) : '') . '):';
         foreach ($known as $k) {
-            $usage = strtolower($k['name']) . (['foe' => ' <monster>', 'ally' => ' [hero]'][$k['targets']] ?? '');
+            $usage = strtolower($k['name']) . ($k['effect'] === 'resist' ? ' <energy>' : '')
+                . (['foe' => ' <monster>', 'ally' => ' [hero]'][$k['targets']] ?? '');
             $lines[] = sprintf('  %-28s %s', $usage, ($k['level'] === 0 ? 'cantrip: ' : '') . $k['about']);
         }
         return [...$lines, ...(isset(CLASSES[$me['class']]['prepared']) ? ["'prepare' shows the others."] : [])];
@@ -4347,6 +4570,17 @@ function cmd_cast(array $me, string $arg): array
     }
     if ($spell['level'] > 0 && $slot === 0 && !$free) {
         return ['You have no spell slots left for that. A long rest restores them.'];
+    }
+    if ($spell['effect'] === 'resist') { // Protection from Energy: the damage type first ('fire testb')
+        $energy = explode(' ', $target)[0];
+        if (!in_array($energy, ['acid', 'cold', 'fire', 'lightning', 'thunder'], true)) {
+            return ["Protection from what? Say acid, cold, fire, lightning or thunder: 'cast protection from energy "
+                . "fire [hero]'."];
+        }
+        [$spell['value'], $target] = [$energy, trim(substr($target, strlen($energy)))];
+    }
+    if ($spell['name'] === 'Prayer of Healing' && $me['fighting'] !== null) { // shortcut: no 10 minutes' wait
+        return ['Prayer of Healing takes 10 minutes: not in the middle of a fight.'];
     }
     $tier = 1 + intdiv($me['level'] + 1, 6); // cantrips: twice the dice at 5, three times at 11, four at 17
     $beams = $spell['name'] === 'Eldritch Blast'; // whose upgrade is more beams, each its own attack, not more dice
@@ -4412,7 +4646,11 @@ function cmd_cast(array $me, string $arg): array
                 $names = array_map(fn ($t) => $t['id'] === $me['id'] ? 'you' : $t['name'], $targets);
                 return "You cast $name on " . implode(', ', $names) . ".$slots";
             }
-            $amount = max(0, roll($dice) + $mod); // one roll for every target
+            // One roll for every target. Prayer of Healing adds no modifier; Disciple of Life (Life Domain 3) adds 2
+            // + the slot's level to healing from a slot. shortcut: Prayer of Healing's Short Rest benefits and once a
+            // long rest per hero are left out.
+            $amount = max(0, roll($dice) + ($spell['name'] === 'Prayer of Healing' ? 0 : $mod)
+                + ($me['class'] === 'cleric' && $me['level'] >= 3 && $slot > 0 ? 2 + $slot : 0));
             $parts = [];
             foreach ($targets as $t) {
                 $t = $t['id'] === $me['id'] ? $me : with_stats($t);
@@ -4440,6 +4678,25 @@ function cmd_cast(array $me, string $arg): array
             $foe['effects'] = effects_on('spawn_id', $foe['id']); // a new Concentration may have ended one on it
             return false;
         }, 'Cast it at what?', PHP_INT_MAX);
+    }
+    if ($spell['effect'] === 'weapon') { // Spiritual Weapon: a Bonus Action, striking now and on my later turns
+        $start = function (array &$me, array &$foe, array &$lines) use ($spend, $spell, $dc, $dice, $name): bool {
+            $spend($me);
+            spend_bonus($me); // so it doesn't strike again this turn
+            start_effect($me, $spell, $dc, 'user_id', [$me], $foe['id'], $dice);
+            $me['effects'] = effects_on('user_id', (int) $me['id']);
+            $lines[] = "You cast $name: a spectral weapon appears beside the {$foe['name']}.";
+            return spiritual($me, $foe, $lines, true);
+        };
+        if ($me['fighting'] === null) { // it opens a fight, and is my turn
+            return fight($me, $target, $start, 'Cast it at what?', $spell['reach']);
+        }
+        if ($me['bonus_used']) {
+            return [BONUS_USED];
+        }
+        [$lines, $foe] = [[], named($me, find_foe($me, ''))]; // shortcut: at my target, whatever I name
+        $start($me, $foe, $lines);
+        return tell_lines($me, (int) $me['room_id'], $lines);
     }
     $foe = $spell['creature'] === null ? null : find_foe($me, $target);
     if ($foe !== null && $foe['type'] !== $spell['creature']) {
@@ -4482,6 +4739,7 @@ function cmd_cast(array $me, string $arg): array
             } elseif ($spell['effect'] !== null && !$saved) {
                 start_effect($me, $spell, $dc, 'spawn_id', [$foe], $foe['id']);
                 $foe['effects'] = effects_on('spawn_id', $foe['id']);
+                $me['effects'] = effects_on('user_id', (int) $me['id']); // a new Concentration ended one on me
             }
             if ($dice === null) {
                 $lines[] = "The {$foe['name']} " . ($saved ? "makes its $roll." : "fails its $roll and is "
@@ -4633,7 +4891,7 @@ function cmd_prepare(array $me, string $arg): array
             . ') AND level BETWEEN 1 AND ? AND NOT FIND_IN_SET(id, ?) ORDER BY level, name',
         [...$lists, count($me['slots']), implode(',', always_ids($me))]
     )->fetchAll();
-    $now = prepared_ids($me);
+    $now = array_values(array_diff(prepared_ids($me), always_ids($me))); // one that's now always prepared is free
     if ($arg === '') {
         $lines = ['Prepared spells (' . count($now) . "/$max), * marks one; change them after a long rest:"];
         foreach ($all as $k) {
@@ -5599,7 +5857,11 @@ function hero_sheet(array $me): array
                     ['Sneak Attack', intdiv($me['level'] + 1, 2) . 'd6'],
                     ...($me['level'] >= 3 ? [['Thief:', 'Fast Hands, Second-Story Work']] : []), // only shown
                 ],
-                'cleric' => [['Spell slots', slots_left($me)]],
+                'cleric' => [
+                    ...(channels($me) ? [['Channel Divinity', max(0, channels($me) - $me['feature_spent']) . '/'
+                        . channels($me)]] : []),
+                    ['Spell slots', slots_left($me)],
+                ],
                 'monk' => [['Martial Arts', "d{$me['martial_arts']}"], ...($me['uses'] ? [['Focus', $uses]] : [])],
                 'paladin' => [
                     ['Lay On Hands', $uses],
@@ -6300,8 +6562,8 @@ function actions(array $me): array
     }
     $mine = array_map(fn ($usage) => explode(' ', $usage)[0], array_keys(my_commands($me)));
     $mine = array_intersect(
-        ['breathe', 'reckless', 'surge', 'sacred', 'shove', 'grapple', 'flurry', 'patient', 'stun', 'land', 'second',
-            'rage', 'innate',
+        ['breathe', 'reckless', 'surge', 'sacred', 'spark', 'turn', 'preserve', 'shove', 'grapple', 'flurry', 'patient',
+            'stun', 'land', 'second', 'rage', 'innate',
             'wholeness', 'lay', 'cast'],
         $mine
     );

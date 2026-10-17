@@ -300,8 +300,10 @@ CREATE TABLE spells (
     -- What it leaves on a failed save, a hit, or a buff's targets: a condition, a die added to d20 tests ('1d4',
     -- '-1d4'), an AC bonus, a base AC + Dex without armor (Mage Armor), a Hit Point maximum bonus, an aura (`value`
     -- dice, `save` for half) that hurts the foe at the end of each of its turns, or extra damage dice of its
-    -- damage_type on my weapon hits, or a Bardic Inspiration die.
-    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration') NULL,
+    -- damage_type on my weapon hits (on a foe: on my attack hits on it, Bestow Curse), or a Bardic Inspiration die,
+    -- or a Spiritual Weapon (`value` dice, attacking as my Bonus Action), or Resistance to the `value` damage type.
+    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration',
+        'weapon', 'resist') NULL,
     value VARCHAR(20) NULL,
     repeat_save BOOLEAN NOT NULL DEFAULT FALSE, -- the target repeats the save at the end of each of its turns
     concentration BOOLEAN NOT NULL DEFAULT FALSE,
@@ -319,7 +321,8 @@ CREATE TABLE effects (
     spawn_id INT UNSIGNED NULL,
     caster_id INT UNSIGNED NOT NULL,
     spell_id INT UNSIGNED NOT NULL,
-    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration') NOT NULL,
+    effect ENUM('condition', 'd20', 'ac', 'base_ac', 'max_hp', 'aura', 'damage', 'inspiration',
+        'weapon', 'resist') NOT NULL,
     value VARCHAR(20) NOT NULL,
     -- The save the target repeats at the end of each of its turns, or an aura's save for half.
     save ENUM('str', 'dex', 'con', 'int', 'wis', 'cha') NULL,

@@ -137,13 +137,17 @@ The game uses a small subset of the D&D 5e rules from the SRD 5.2.1 (`ref/SRD_CC
 login a hero chooses a class (Fighter, Barbarian, Rogue, Cleric, Monk, Paladin, Ranger, Sorcerer, Wizard, Bard, Druid or Warlock) and assigns the Standard Array, and starts with
 that class's equipment A (no ammunition, packs or tools). Combat is d20 attack rolls against AC, monsters are SRD stat
 blocks, and XP and levels follow Character Advancement. Heroes make saving throws with their ability modifier, plus
-the Proficiency Bonus for their class's two. Fighters have Second Wind and Extra Attack; Barbarians Rage (with
-Advantage on Str saves), Unarmored Defense and from level 2 Reckless Attack and Danger Sense (Advantage on Dex saves);
-Rogues Sneak Attack (with Advantage, or another hero on the same foe) and from level 2 `flee` with no opportunity attack;
+the Proficiency Bonus for their class's two. Fighters have Second Wind, Extra Attack and from level 2 Action Surge
+(`surge`: attack twice over, or Dash and attack), and as Champions crit on a 19 and have Remarkable Athlete (3);
+Barbarians Rage (with Advantage on Str saves), Unarmored Defense and from level 2 Reckless Attack and Danger Sense
+(Advantage on Dex saves), and as Berserkers add Frenzy to a raging Reckless Attack (3); Rogues Sneak Attack (with
+Advantage, or another hero on the same foe), from level 2 `flee` with no opportunity attack, are Thieves (3) and halve
+a hit with Uncanny Dodge (5);
 Monks fight unarmored with Martial Arts (Dex attacks, the Martial Arts die, an Unarmed Strike as a Bonus Action) and
 from level 2 spend Focus Points (back on a short rest) on `flurry`, `patient` and from 5 `stun`, `flee` with no
 opportunity attack, get Focus back with Uncanny Metabolism, Deflect Attacks (3), topple with Open Hand Technique and heal with
-`wholeness` (6); Paladins `lay` on hands from a pool of 5 HP a level, smite on a melee hit (`cast divine smite`, free
+`wholeness` (6); Paladins `lay` on hands from a pool of 5 HP a level, spend Channel Divinity (3) on Divine `sense`
+and a `sacred` weapon, smite on a melee hit (`cast divine smite`, free
 once a long rest, and Shining Smite), cast Divine Favor, Cure Wounds and the Cleric's Bless, Command, Shield of Faith
 and Aid, and gain Defense (2), Extra Attack (5), Aura of Protection on their own saves (6) and Radiant Strikes (11);
 Rangers cast Hunter's Mark (free a few times a long rest), Ensnaring Strike, Entangle, Cure Wounds and Aid, and gain
@@ -168,7 +172,9 @@ as Fiend Warlocks always have Burning Hands, Command, Scorching Ray and Fireball
 (3) and add 1d10 to a failed save (6);
 Clerics `prepare` spells after a long rest (four at level 1, nine at 5) and `cast` them: Sacred Flame, Guiding Bolt,
 Cure Wounds, Healing Word, Mass Healing Word, Inflict Wounds, Bless, Bane, Command, Shield of Faith, Aid, Hold Person,
-Blindness/Deafness and Spirit Guardians. Healing reaches other heroes here. Spells are rows of the `spells` table;
+Blindness/Deafness, Spiritual Weapon, Prayer of Healing, Spirit Guardians, Bestow Curse and Protection from Energy;
+they spend Channel Divinity (2) on a Divine `spark` and to `turn` Undead (searing them from 5), and as Life Domain
+Clerics heal more from spell slots, always have its spells prepared and `preserve` life (3). Healing reaches other heroes here. Spells are rows of the `spells` table;
 their effects last their real duration and at least the fight they were cast in, and Concentration breaks on a failed
 Con save when hurt. Anyone can `shove` a foe Prone or `grapple` it in place of an attack. With a Light weapon in each
 hand (`equip dagger offhand`) you get an extra attack each round, using your Bonus Action unless the off-hand weapon

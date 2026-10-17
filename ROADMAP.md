@@ -11,9 +11,6 @@ and roads wait for Aaron's sketch (below).
 
 ### Characters
 
-10. **No class short at levels 1-5.** The Cleric gets the SRD's subclass, Life Domain, plus its Channel Divinity (2)
-    and spells of 2nd and 3rd level (Spiritual Weapon, Prayer of Healing, Bestow Curse, Protection from Energy). Can
-    ship a class at a time (the design is in the Decided entry).
 11. **Area spells, aimed before they're cast.** The SRD's areas (Cone, Cube, Cylinder, Emanation, Line, Sphere) hit
     every creature in them on the board: monsters, other heroes and hirelings alike, each saving on its own, and only
     those the point of origin has a line to (`sight()`, total cover blocks). A square counts if its centre is inside
@@ -71,26 +68,36 @@ Any time: **approve account requests** (friends ask on the login page):
 
 ## Decided
 
-- 2026-10-17 **No class short** (task 10, a class at a time). Design, from Aaron's answers: Action Surge and Channel
-  Divinity count in `users.feature_spent` (no migration); turned undead and Sacred Weapon are no-class `spells` rows
-  leaving condition effects, as Sanctuary does. Cleric: Channel Divinity from 2 (`spark`, `turn`; a
-  turned Undead cowers, as no monster flees yet), Life Domain at 3 (Disciple of Life, its spells, `preserve`), and
-  Spiritual Weapon, Prayer of Healing, Bestow Curse and Protection from Energy.
-  **Fighter (shipped):** `surge <monster>` (2) is two actions: the Attack action twice, or a Dash and then the
+- 2026-10-17 **No class short** (task 10, shipped a class at a time): every class has its SRD subclass and its
+  features to level 5. Action Surge and Channel Divinity count in `users.feature_spent`; turned Undead and Sacred
+  Weapon are no-class `spells` rows leaving condition effects, as Sanctuary does.
+  **Fighter:** `surge <monster>` (2) is two actions: the Attack action twice, or a Dash and then the
   Attack action when the foe is out of reach (a Dash that falls short spends nothing); once a short rest, twice from
   17. Champion (3): a 19 is a Critical Hit with weapons and Unarmed Strikes (18 from 15), and like a 20 it hits
   whatever the AC (the glossary's Critical Hit). Remarkable Athlete: Advantage on Initiative and Athletics checks, and
   after a Critical Hit a `kite` backs off half my Speed further, none of it drawing opportunity attacks.
-  **Barbarian (shipped):** Berserker's Frenzy (3): a `reckless` attack while raging adds Rage Damage d6s to the first
+  **Barbarian:** Berserker's Frenzy (3): a `reckless` attack while raging adds Rage Damage d6s to the first
   Str-based hit of the turn.
-  **Rogue (shipped):** Thief (3): Fast Hands and Second-Story Work are only shown, under `score` (nothing in the game
+  **Rogue:** Thief (3): Fast Hands and Second-Story Work are only shown, under `score` (nothing in the game
   picks locks, climbs or jumps, and a potion is already a Bonus Action). Uncanny Dodge (5) is automatic: it halves
   the first hit of each monster turn, rounding down (Deflect Attacks' shortcut: once a turn of theirs, not a round).
-  **Paladin (shipped):** two Channel Divinities from level 3 (`channels()`, 3 from 11), one back on a short rest.
+  **Paladin:** two Channel Divinities from level 3 (`channels()`, 3 from 11), one back on a short rest.
   `sense`, Divine Sense: a Bonus Action naming the Celestials, Fiends and Undead here and in the rooms next door, and
   the temple's consecrated ground (no ticks, so a look, not 10 minutes of knowing). `sacred <monster>`, Sacred Weapon
   (Devotion) with the Attack action: +Cha (at least 1) to hit with the melee weapon in hand, and Radiant when that
   beats the foe's resistances, for 10 minutes and the fight (spells row 47); it follows whatever melee weapon I wield.
+  **Cleric:** Channel Divinity from level 2 (2, 3 from 6), one back on a short rest. `spark <monster|hero>`, Divine
+  Spark: 1d8 + Wis healing for another hero here, or a Con save against that much Radiant or Necrotic (whichever
+  hurts more) to a monster within 30 ft, half on a success. `turn`, Turn Undead: each Undead in my fight within 30 ft
+  that I can see saves (Wis) or is Turned, which ends when it takes damage (shortcut: it cowers, as no monster flees
+  yet); Sear Undead (5) burns one that fails for Wis d8s Radiant first. Life Domain (3): Disciple of Life (+2 + the
+  slot's level on healing from a slot), its spells always prepared (Aid, Bless, Cure Wounds; Mass Healing Word at 5;
+  Lesser Restoration and Revivify not modeled), and `preserve`, Preserve Life: 5 HP a level among the Bloodied heroes
+  here, lowest first, none past half its max. New spells (Aaron's picks), with two new kinds of effect (migration):
+  Spiritual Weapon (a Bonus Action attack now and on each later turn while my Bonus Action is free; shortcut: the force
+  isn't on the board), Prayer of Healing (2d8 with no modifier, not in a fight; shortcut: no 10 minutes' wait, no Short
+  Rest benefits, no once a long rest per hero), Bestow Curse (the game picks the curse: my attack hits on it deal 1d8
+  Necrotic more; save spells don't get it) and Protection from Energy (`cast protection from energy fire [hero]`).
 
 - 2026-10-16 **Characters and the town next:** with fights done, the backlog's character and town ideas became tasks
   8-15 in that order (skills and choices first, since later picks build on them). The town redraw and roads wait
